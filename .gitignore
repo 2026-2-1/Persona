@@ -1,0 +1,25 @@
+# 비밀값: 예시 파일만 공유합니다.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# 로컬 실행 환경/생성 결과
+.runtime/
+.cache/
+artifacts/
+**/.venv/
+**/node_modules/
+**/.next/
+**/logs/
+*.log
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+**/.coverage
+**/htmlcov/
+**/coverage/
+*.tsbuildinfo
+.DS_Store

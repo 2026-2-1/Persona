@@ -1,0 +1,30 @@
+name: 개발 작업
+description: 담당자가 바로 시작할 수 있도록 작업과 완료 기준을 정합니다.
+title: "[작업] "
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 구현할 결과
+      description: 사용자가 어떤 동작을 할 수 있게 되는지 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 작업 범위
+      description: 수정할 모듈과 함께 맞춰야 하는 API 또는 데이터 구조를 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 기준
+      description: 동작을 확인하는 순서와 기대 결과를 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: dependency
+    attributes:
+      label: 선행 작업과 참고 자료
+      description: 관련 Issue나 자료가 있으면 연결해 주세요.

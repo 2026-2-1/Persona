@@ -1,0 +1,33 @@
+[project]
+name = "persona-backend"
+version = "0.1.0"
+description = "Persona local browser experiment starter"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1",
+  "pydantic-settings>=2.6,<3", "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4", "alembic>=1.14,<2",
+  "celery[redis]>=5.4,<6", "playwright>=1.48,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.9,<1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/persona"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["browser: opt-in real Chromium integration test"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]

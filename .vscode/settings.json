@@ -1,0 +1,20 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "ruff.path": ["${workspaceFolder}/backend/.venv/bin/ruff"],
+  "ruff.configuration": "${workspaceFolder}/backend/pyproject.toml",
+  "git.openRepositoryInParentFolders": "never",
+  "eslint.workingDirectories": ["apps/web"],
+  "files.exclude": {
+    "**/.cache": true,
+    "**/.runtime": true,
+    "**/.venv": true,
+    "**/.next": true
+  },
+  "files.watcherExclude": {
+    "**/.cache/**": true,
+    "**/.runtime/**": true,
+    "**/.venv/**": true,
+    "**/node_modules/**": true,
+    "**/.next/**": true
+  }
+}

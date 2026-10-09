@@ -398,3 +398,5 @@ shadcn/ui is built on three principles visible in every token: (1) achromatic by
   --shadow-subtle-2: lab(2.75381 0 0) 0px 0px 0px 0px;
 }
 ```
+
+로고 간격 보정: 심볼의 투명 여백을 고려해 brand gap은 0, 심볼 margin-right는 -3px로 설정한다.

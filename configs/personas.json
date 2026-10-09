@@ -1,0 +1,8 @@
+{
+  "count": 6,
+  "seed": 42,
+  "sampling_mode": "quota",
+  "example_persona_file": "persona.json",
+  "attributes": {"digital_familiarity": {"낮음": 0.333333, "보통": 0.333333, "높음": 0.333334}},
+  "fixed_constraints": {"budget_krw": 30000}
+}

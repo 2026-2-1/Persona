@@ -1,0 +1,8 @@
+{
+  "persona_id": "p001",
+  "background": "대학생이며 통학용 가방을 찾고 있다.",
+  "digital_familiarity": "보통",
+  "preferences": ["가격을 먼저 확인", "검은색 선호"],
+  "constraints": {"budget_krw": 30000},
+  "intent": "조건에 맞는 가방의 상세 정보를 확인한다."
+}

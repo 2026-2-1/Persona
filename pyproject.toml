@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uxagent"
+version = "0.1.0"
+description = "Local browser-based UX task exploration agent"
+requires-python = ">=3.11"
+dependencies = ["pydantic==2.13.4", "playwright==1.55.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "pytest-asyncio==1.2.0"]
+
+[project.scripts]
+uxagent = "uxagent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+uxagent = ["dashboard/*.html", "dashboard/*.js"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["src"]

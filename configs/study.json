@@ -1,0 +1,15 @@
+{
+  "study_id": "local-shopping-v1",
+  "start_url": "http://127.0.0.1:8000/shop.html",
+  "task": "3만원 이하의 검은색 가방을 찾아 상세 정보를 확인하세요.",
+  "allowed_origins": ["http://127.0.0.1:8000"],
+  "persona_file": "persona.json",
+  "evaluator_id": "local-bag-detail-v1",
+  "viewport": {"width": 1440, "height": 900},
+  "observation_policy": "viewport",
+  "explicit_scroll": false,
+  "max_steps": 30,
+  "run_timeout_seconds": 300,
+  "max_llm_requests": 40,
+  "max_total_tokens": 50000
+}

@@ -1,68 +1,68 @@
-# UXAgent
+# Persona / UXAgent Prototype
 
-UXAgent runs persona-based tasks against a local browser page and records observations, actions, evaluator results, and screenshots. Simulated answers and issue candidates are research aids; they do not represent real user reports or validated human behavior.
+가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.
 
-## Setup
+## 빠른 시작 (Windows)
 
-Requires Python 3.11+ and a Playwright-supported local OS. On macOS, Linux, or Windows:
-
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-python -m playwright install chromium
-python -m uxagent doctor --study configs/study.json
+```powershell
+python -m venv .venv
+.venv/Scripts/python.exe -m pip install -e '.[dev]'
+.venv/Scripts/python.exe -m playwright install chromium
+.venv/Scripts/python.exe -m uxagent doctor --study configs/study.json
+.venv/Scripts/python.exe -m uxagent dashboard
 ```
 
-The default mock run uses no key and follows a deterministic path through the local fixture. For `--provider jev`, put `TYPESAFE_API_KEY` and `GEMINI_API_KEY` in a root `.env` file (see `.env.example`). The runner loads `.env` without overriding variables already present in the process environment. Jev (`jev-latest`) ranks code-generated actions from visible, enabled elements; Gemini `gemini-2.5-flash-lite` runs only when Jev confidence is below 0.65, returns an invalid choice, fails, or the page has no supported candidates. Use `--provider gemini` to run Gemini directly. `--provider live` retains the existing OpenAI provider.
+[로컬 대시보드](http://127.0.0.1:8765)를 열고 **기본 데모 설정 → 페르소나 생성 → 과업 테스트 시작**을 누릅니다. API 키 없이 실행할 수 있습니다. 같은 설정으로 **AI 비교 → AI 비교 시작**을 누르면 일반 AI와 페르소나 AI를 대응 비교합니다.
 
-Each model request is recorded in `llm_calls.jsonl` with provider, model, elapsed time, token counts, cost estimate, error status, and fallback reason. `summary.json` groups request counts, tokens, and estimated cost by provider. Gemini estimates use the current paid text rates ($0.10/1M input and $0.40/1M output); actual free-tier billing may be zero. Jev estimates use TypeSafe's published $0.042/1M input-token rate and free output tokens. Missing usage is marked estimated and has unknown cost.
+macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 참고하세요. Python 3.11+가 필요합니다.
 
-Gemini 2.5 Flash-Lite's current free tier lists text input and output as free, but says free-tier prompts may be used to improve Google products; paid-tier prompts are not used for that purpose under the published pricing terms. Exact RPM/TPM/RPD quotas are per account and shown in AI Studio; they can change, so check the project's active limits there. Jev is in early access, with account access and limits controlled in the TypeSafe console; TypeSafe's privacy policy says it does not train on API inputs, while its policy says data is retained as reasonably necessary and its agreement allows telemetry derived from customer data to be retained. No guaranteed public Jev free-use quota is stated. The agent sends the current observation, task, and limited recent memory to the selected provider.
+## 현재 MVP
 
-Provider references: [TypeSafe System One API](https://docs.typesafe.ai/api), [TypeSafe privacy policy](https://typesafe.ai/legal/privacy-policy), [TypeSafe pricing announcement](https://typesafe.ai/blog/introducing-system-one-models-and-jev), [Gemini pricing and free-tier data use](https://ai.google.dev/gemini-api/docs/pricing), and [Gemini billing and quota guidance](https://ai.google.dev/gemini-api/docs/billing).
+- **과업 테스트:** 검색·가격/색상 필터·상세 확인을 로컬 fixture의 독립 평가기로 판정합니다.
+- **외부 사이트:** visible / text_contains / url_contains 확인 조건을 등록할 수 있습니다. 조건이 없으면 성공 미확인입니다.
+- **AI 비교:** 같은 구매 제약·모델·환경·호출 상한에서 인물 배경·탐색 성향만 제외한 일반 AI와 페르소나 AI를 비교합니다. 예정 세션·중지·오류도 분모에 남깁니다.
+- **실행 기록:** 전후 화면·URL·행동·판정·모델 호출과 기록 확보율을 봅니다. 복구는 '오류 후 3행동 내 도구 실행 성공'이라는 보조 지표이며 과업 성공과 구분합니다.
+- **개선 보드:** 관찰·원인 가설·제안·완료 조건·근거를 구분한 미검토 후보를 제공합니다. JSON·CSV·Markdown·HTML로 내보냅니다.
+- **디자인:** 사용자 제공 [디자인 기준](docs/design.md)의 단색 UI를 적용했습니다.
 
-## Run
+## API 연결
 
-```sh
-python -m uxagent run --study configs/study.json --provider mock --headless
-python -m uxagent run --study configs/study.json --provider jev --headless
-python -m uxagent observe --study configs/study.json --headless
-python -m uxagent review --run runs/<run_id>
-python -m uxagent survey --run runs/<run_id>
-python -m uxagent interview --run runs/<run_id> --at-step 4 --question "이때 어떤 정보를 찾고 있었나요?"
+대시보드에서 OpenAI / Gemini / Jev+Gemini 제공자를 선택해 키를 입력하고 **API 연결**을 누릅니다. 작은 실제 요청으로 연결을 확인하므로 API 사용 요금이 발생할 수 있습니다. 키는 서버 프로세스 메모리에만 보관하고 브라우저 저장소·원자료·저장소에 쓰지 않습니다. 서버 재시작 시 다시 연결해야 합니다. 로컬 `.env`로 설정해도 되며 프로세스의 기존 값을 덮어쓰지 않습니다. `.env.example`에는 빈 변수만 있습니다.
+
+Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 입력 문구가 필요하면 Gemini가 생성합니다. 낮은 신뢰도·잘못된 선택·Jev 오류에도 Gemini fallback을 사용합니다. OpenAI 경로는 기존 Chat Completions API를 사용합니다.
+
+**ChatGPT 구독 로그인은 아직 구현하지 않았습니다.** 적격 로컬/오픈소스 앱의 공식 구독 연동 PoC는 후속 이슈로 관리합니다. 공개 호스팅·다중 사용자 키 관리도 이 MVP 범위 밖입니다.
+
+## 명령과 검증
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q
+.venv/Scripts/python.exe scripts/check_repo.py
+.venv/Scripts/python.exe -m uxagent run --study configs/study.json --provider mock --headless
+.venv/Scripts/python.exe -m uxagent personas --config configs/personas.json --output runs/personas
+.venv/Scripts/python.exe -m uxagent compare --study configs/study.json --personas runs/personas/personas.jsonl --provider mock --repetitions 1
 ```
 
-Run artifacts are written under `runs/<run_id>/`. To view the fixture directly, run `python -m uxagent serve`; it serves `tests/fixtures` at `http://127.0.0.1:8000`.
+관찰·실행 원자료는 Git에서 제외된 `runs/` 아래에 저장합니다. 비교 실험은 `runs/experiments/<id>/experiment.json`과 대응 실행 기록을 생성합니다. `review`, `survey`, `interview` CLI도 유지하며 기존 설문·인터뷰는 기록 기반 템플릿입니다.
 
-## Personas and batch
+[검증 기록](docs/verification.md)에서 실제 확인 범위를 확인하세요. CI는 Windows/Python 3.13과 Ubuntu/Python 3.11의 mock·테스트만 실행하며 라이브 API 키를 사용하지 않습니다.
 
-```sh
-python -m uxagent personas --config configs/personas.json
-python -m uxagent batch --study configs/study.json --personas personas.jsonl --provider mock
-```
+## 개발 진입점
 
-Batch execution is sequential and creates a new browser context per persona. Persona generation uses a seeded local template and reports its provenance; it does not call an LLM.
+- AI 작업 규칙: [AGENTS.md](AGENTS.md)
+- 문서 목차: [docs/README.md](docs/README.md)
+- 현재 구현과 제한: [현재 상태](docs/current-state.md)
+- 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
+- 입출력·판정 기준: [계약](docs/contracts.md)
+- 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)
+- 장기 제품 제안: [통합 기획 초안](docs/2026-10-09-persona-product-plan.md)
 
-## Dashboard
+기능 브랜치에서 `prototype` 대상 PR로 작업합니다. GitHub 이슈 템플릿은 기본 브랜치에 반영된 뒤 생성 UI에 나타납니다. 이번 설정은 `prototype`에 적용하며 `main` 통합은 별도로 진행합니다.
 
-Open the local dashboard to generate personas, run them sequentially, and follow each persona's latest page screenshot, URL, action timeline, and model-call usage:
+## 해석과 제한
 
-```sh
-python3 -m uxagent dashboard
-```
+모의 행동·응답은 실제 사용자 증언이나 인간 행동 재현의 증거가 아닙니다. 문제 후보는 사람 검토 전이며, 후보가 없다고 사이트에 문제가 없다는 뜻도 아닙니다. 비교의 mock 결과는 시스템 흐름 검증용이고 페르소나 효과 측정 결과가 아닙니다.
 
-Then visit `http://127.0.0.1:8765`:
+viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·custom combobox·password 입력·독립 scroll/keypress는 아직 미지원입니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Slow Loop·Wonder는 기본 비활성이며 비교에서는 persona 정보 누출을 막기 위해 Slow Loop를 비활성으로 제한합니다.
 
-1. Enter the website URL, task, persona description, and number of personas (1–12).
-2. Click **페르소나 생성**. The free local template uses your description and task, varies exploration habits and digital familiarity, and records the generation seed and time.
-3. Choose **Jev 우선** or **Gemini 직접** for external websites, then click **순차 테스트 시작**. **Mock** is for the bundled shop fixture; **기본 데모 설정** prepares that example with two personas.
-4. Follow the current persona's logs, model calls, page URL, and latest screenshot. Select a persona or stored run to inspect it, or click a step to see its recorded screen. **현재 실행 따라가기** follows the running batch again.
-
-The dashboard reads existing `runs/` artifacts, including runs in subdirectories, and stores generated personas under `runs/personas/`. Each job saves its configuration under `runs/.dashboard/` with an absolute persona path. Job failures display a reason; API key values are never returned to the page. Form values are saved in the local browser after starting a job.
-
-The server binds to localhost. Screenshots appear after the browser records an observation. External websites do not have a task-specific evaluator, so an agent's completion judgment is not automatically a verified success. Navigation remains restricted to the entered website's origin.
-
-## Scope
-
-Observation is viewport-based. Iframes, canvas controls, complex shadow DOM, custom comboboxes, and password fields are unsupported. The executor validates all target IDs against the newest observation. The local fixture evaluator runs independently from the model prompt. Live provider support uses the OpenAI Chat Completions API and requires an explicit live flag.
+`.env`, API 키, OAuth 토큰, 인증 상태, 원본 개인 문서와 고객 개인정보는 push하지 않습니다.

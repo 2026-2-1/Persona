@@ -1,4 +1,11 @@
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+storage-state*.json
+.auth/
 .venv/
 __pycache__/
 .pytest_cache/

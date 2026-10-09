@@ -13,6 +13,27 @@ class Viewport(StrictModel):
     height: int = Field(default=900, gt=0)
 
 
+class EvaluationCheck(StrictModel):
+    id: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=200)
+    kind: Literal['visible', 'text_contains', 'url_contains']
+    selector: str | None = Field(default=None, min_length=1, max_length=1000)
+    expected: str | None = Field(default=None, min_length=1, max_length=2000)
+
+    @model_validator(mode='after')
+    def check_fields(self):
+        if self.kind == 'url_contains':
+            if self.selector is not None or self.expected is None:
+                raise ValueError('url_contains requires expected and forbids selector')
+        elif self.selector is None:
+            raise ValueError('DOM checks require selector')
+        if self.kind == 'visible' and self.expected is not None:
+            raise ValueError('visible forbids expected')
+        if self.kind == 'text_contains' and self.expected is None:
+            raise ValueError('text_contains requires expected')
+        return self
+
+
 class StudyConfig(StrictModel):
     schema_version: str = "1.0"
     study_id: str
@@ -21,6 +42,7 @@ class StudyConfig(StrictModel):
     allowed_origins: list[str]
     persona_file: str = "configs/persona.json"
     evaluator_id: str = "local-bag-detail-v1"
+    evaluation_checks: list[EvaluationCheck] = Field(default_factory=list, max_length=50)
     viewport: Viewport = Field(default_factory=Viewport)
     observation_policy: Literal["viewport"] = "viewport"
     explicit_scroll: Literal[False] = False
@@ -44,6 +66,13 @@ class StudyConfig(StrictModel):
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_output_tokens: int = Field(default=1200, gt=0)
     headed: bool = True
+
+    @field_validator('evaluation_checks')
+    @classmethod
+    def unique_evaluation_ids(cls, checks):
+        if len({check.id for check in checks}) != len(checks):
+            raise ValueError('evaluation check IDs must be unique')
+        return checks
 
     @field_validator("start_url")
     @classmethod

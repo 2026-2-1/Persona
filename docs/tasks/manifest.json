@@ -1,0 +1,101 @@
+[
+  {
+    "slug": "01-search-actions",
+    "title": "[phase:1] 검색 입력과 세부 행동 지원",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/01-search-actions.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/2",
+    "issue_number": 2
+  },
+  {
+    "slug": "02-task-evaluators",
+    "title": "[phase:1] 검색·필터·상세의 독립 평가기",
+    "phase": "phase:1",
+    "area": "area:evaluation",
+    "path": "docs/tasks/02-task-evaluators.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/3",
+    "issue_number": 3
+  },
+  {
+    "slug": "03-metrics",
+    "title": "[phase:1] 사전 등록 세션과 성공률·복구·기록 지표",
+    "phase": "phase:1",
+    "area": "area:evaluation",
+    "path": "docs/tasks/03-metrics.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/4",
+    "issue_number": 4
+  },
+  {
+    "slug": "04-ai-comparison",
+    "title": "[phase:1] 일반 AI·페르소나 AI 대응 비교 실행",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/04-ai-comparison.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/5",
+    "issue_number": 5
+  },
+  {
+    "slug": "05-ai-connection",
+    "title": "[phase:1] 쉬운 API 연결과 ChatGPT 구독 연동 PoC",
+    "phase": "phase:1",
+    "area": "area:ui",
+    "path": "docs/tasks/05-ai-connection.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/6",
+    "issue_number": 6
+  },
+  {
+    "slug": "06-dashboard",
+    "title": "[phase:1] 초보자용 설정·테스트·비교 대시보드",
+    "phase": "phase:1",
+    "area": "area:ui",
+    "path": "docs/tasks/06-dashboard.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/7",
+    "issue_number": 7
+  },
+  {
+    "slug": "07-developer-output",
+    "title": "[phase:1] 개발자 개선 카드와 HTML·Markdown·CSV/JSON 출력",
+    "phase": "phase:1",
+    "area": "area:ui",
+    "path": "docs/tasks/07-developer-output.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/8",
+    "issue_number": 8
+  },
+  {
+    "slug": "08-demo-validation",
+    "title": "[phase:1] 1차 최소 제품 통합 검증과 발표 시연",
+    "phase": "phase:1",
+    "area": "area:evaluation",
+    "path": "docs/tasks/08-demo-validation.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/9",
+    "issue_number": 9
+  },
+  {
+    "slug": "09-human-ab",
+    "title": "[phase:2] 4개 과업·환경 편차·2인 검토·개선 전후 실험",
+    "phase": "phase:2",
+    "area": "area:evaluation",
+    "path": "docs/tasks/09-human-ab.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/10",
+    "issue_number": 10
+  },
+  {
+    "slug": "10-technology-experiments",
+    "title": "[phase:2] Jev·Slow Loop·MiroFish·프롬프트 기술 비교",
+    "phase": "phase:2",
+    "area": "area:research",
+    "path": "docs/tasks/10-technology-experiments.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/11",
+    "issue_number": 11
+  },
+  {
+    "slug": "11-research-mcp",
+    "title": "[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동",
+    "phase": "phase:3",
+    "area": "area:research",
+    "path": "docs/tasks/11-research-mcp.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/12",
+    "issue_number": 12
+  }
+]

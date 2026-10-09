@@ -12,8 +12,16 @@ class FastLoop:
         self.provider, self.budget, self.model, self.temperature, self.max_output_tokens = provider,budget,model,temperature,max_output_tokens
         self.call_log=call_log
 
-    async def decide(self, persona, task, observation, memories, previous_error=None, remaining_steps=0):
+    async def decide(self, persona, task, observation, memories, previous_error=None, remaining_steps=0, persona_mode="persona"):
+        if persona_mode not in {"general", "persona"}:
+            raise ValueError("persona_mode must be general or persona")
+        persona_context = persona.model_dump() if persona_mode == "persona" else {"constraints":persona.constraints,"intent":persona.intent}
         if hasattr(self.provider, "choose"):
+            if any(element.enabled and not element.value for element in observation.input_elements):
+                # A classifier cannot invent a search query. Let the generative provider
+                # supply a bounded input action rather than typing the whole task.
+                return await self._fallback_decide(persona, task, observation, memories, previous_error,
+                    remaining_steps, "input_text_required", persona_context=persona_context)
             candidates = self._candidates(observation, task)
             fallback_reason = None
             if not candidates:
@@ -25,7 +33,7 @@ class FastLoop:
                 settled = False
                 try:
                     choice, confidence, probabilities, usage = await self.provider.choose(
-                        {"task": task, "persona": persona.model_dump(), "observation": observation.model_dump(),
+                        {"task": task, "persona": persona_context, "observation": observation.model_dump(),
                          "recent_memory": memories[-4:], "previous_error": previous_error}, candidates)
                     input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
                     actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
@@ -42,6 +50,9 @@ class FastLoop:
                                 "elapsed_ms":int((time.monotonic()-started)*1000), "input_tokens":input_tokens,
                                 "output_tokens":output_tokens, "estimated":actual is None, "estimated_cost_usd":estimate_cost_usd("typesafe",input_tokens,output_tokens),
                                 "choice":choice,"confidence":confidence,"probabilities":probabilities,"fallback_reason":None})
+                        if selected["action"]["type"] == "type":
+                            return await self._fallback_decide(persona, task, observation, memories, previous_error,
+                                remaining_steps, "input_text_required", persona_context=persona_context)
                         return self._decision(selected, observation, confidence, probabilities)
                     if self.call_log:
                         self.call_log({"module":"fast", "provider":"typesafe", "model":usage.get("model", self.provider.model),
@@ -60,9 +71,9 @@ class FastLoop:
                             "output_tokens":None, "estimated":True, "estimated_cost_usd":None,
                             "error":str(exc).split(":",1)[0], "fallback_reason":fallback_reason})
             result = await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps,
-                                                fallback_reason, candidates or None)
+                                                fallback_reason, candidates or None, persona_context)
             return result
-        return await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps, None)
+        return await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps, None, persona_context=persona_context)
 
     @staticmethod
     def _decision(candidate, observation, confidence, probabilities, source="Jev"):
@@ -79,26 +90,27 @@ class FastLoop:
     def _candidates(observation, task):
         obs = observation.model_dump()
         candidates = []
-        def add(kind, element, action, description):
+        def add(kind, element, action, description, option_index=None):
             if not element.enabled: return
             cid = f"{kind}:{element.id}"
+            if option_index is not None:
+                cid += f":{option_index}"
             action.update({"observation_id":obs["observation_id"], "tab_id":obs["tab_id"]})
             candidates.append({"id":cid, "description":description, "action":action})
         for element in observation.clickable_elements:
             add("click", element, {"type":"click", "target_id":element.id}, f"화면의 '{element.name}' 버튼/링크 클릭")
         for element in observation.input_elements:
-            # Typing uses the requested task as the query; model decides whether this input is the right next step.
-            add("type", element, {"type":"type", "target_id":element.id, "text":task}, f"'{element.name}' 입력란에 사용자 과제 텍스트 입력")
+            add("type", element, {"type":"type", "target_id":element.id}, f"'{element.name}' 입력값을 과업에 맞는 새 검색어로 변경 (생성 모델이 입력값 결정)")
         for element in observation.select_elements:
             if not element.options: continue
             options = [o for o in element.options if o.get("value")]
-            for option in options:
+            for option_index, option in enumerate(options):
                 add("select", element, {"type":"select", "target_id":element.id, "option_value":option["value"]},
-                    f"'{element.name}'에서 '{option.get('label') or option['value']}' 선택")
+                    f"'{element.name}'에서 '{option.get('label') or option['value']}' 선택", option_index)
         return candidates[:255]
 
-    async def _fallback_decide(self, persona, task, observation, memories, previous_error, remaining_steps, fallback_reason, candidates=None):
-        payload={"persona":persona.model_dump(),"task":task,"observation":observation.model_dump(),
+    async def _fallback_decide(self, persona, task, observation, memories, previous_error, remaining_steps, fallback_reason, candidates=None, persona_context=None):
+        payload={"persona":persona.model_dump() if persona_context is None else persona_context,"task":task,"observation":observation.model_dump(),
                  "memories":memories[-6:],"previous_error":previous_error,"remaining_steps":remaining_steps}
         if fallback_reason:
             payload["fallback_reason"] = fallback_reason
@@ -134,6 +146,9 @@ class FastLoop:
                 if candidates:
                     selected=next((candidate for candidate in candidates if candidate["id"]==raw.get("candidate_id")),None)
                     if selected is None: raise ValueError("fallback candidate_id is not in the supplied candidate list")
+                    if selected["action"]["type"] == "type":
+                        return await self._fallback_decide(persona,task,observation,memories,previous_error,
+                            remaining_steps,"input_text_required",persona_context=persona_context)
                     return self._decision(selected,observation,0.0,{},source="Gemini fallback")
                 if raw.get("action") is not None: raw["action"]=Action.model_validate(raw["action"])
                 raw["decision_id"]="d-"+uuid.uuid4().hex[:10]

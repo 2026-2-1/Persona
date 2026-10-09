@@ -1,0 +1,33 @@
+name: Prototype checks
+on:
+  push:
+    branches: [prototype, 'feat/**', 'fix/**', 'chore/**']
+  pull_request:
+    branches: [prototype, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: windows-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m playwright install --with-deps chromium
+      - run: python scripts/check_repo.py
+      - run: python -m pytest -q
+      - run: python -m uxagent doctor --study configs/study.json
+      - run: python -m uxagent run --study configs/study.json --provider mock --headless

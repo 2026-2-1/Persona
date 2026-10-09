@@ -1,268 +1,35 @@
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state = null, detail = null, selectedPersona = null, selectedRun = null, selectedStep = null;
-let initialized = false, refreshing = false, posting = false, manualRun = false, pendingJob = null;
-
-const reasons = {
-  verified_success: '완료 검증됨', agent_finished: '에이전트 완료 판단', agent_gave_up: '에이전트 중단',
-  browser_error: '브라우저 오류', model_error: '모델 오류', max_steps: '단계 한도 도달',
-  run_timeout: '실행 시간 초과', budget_exceeded: '호출 한도 도달', stuck: '반복 감지', interrupted: '중단됨'
-};
-const statusLabel = run => !run ? '대기' : run.active ? '실행 중' : reasons[run.termination_reason] || '실행 종료';
-const statusClass = run => !run ? '' : run.active ? 'running' : run.verification === 'success' ? 'success' : 'failure';
 const empty = text => `<div class="empty">${esc(text)}</div>`;
-
-function notify(message, error = false) {
-  $('notice').textContent = message;
-  $('notice').classList.toggle('error', error);
-}
-
-async function api(path, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
-  try {
-    const response = await fetch(path, {...options, cache: 'no-store', signal: controller.signal});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `요청 실패 (${response.status})`);
-    return data;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function isDemoUrl(value) {
-  try {
-    const url = new URL(value);
-    return ['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname.endsWith('shop.html');
-  } catch { return false; }
-}
-
-function updateProvider() {
-  if (!isDemoUrl($('target-url').value) && $('provider').value === 'mock') {
-    $('provider').value = state?.providers?.jev ? 'jev' : 'gemini';
-  }
-  $('provider-note').textContent = $('provider').value === 'mock'
-    ? 'Mock은 기본 데모 사이트 전용입니다. 페르소나는 무료 로컬 템플릿으로 생성합니다.'
-    : '입력한 사이트에서 선택한 모델로 실행합니다. 페르소나는 무료 로컬 템플릿으로 생성합니다.';
-}
-
-function initializeSetup() {
-  if (initialized) return;
-  const g = state.generation || {};
-  $('target-url').value = g.start_url || state.study.start_url || '';
-  $('task-input').value = g.task || state.study.task || '';
-  $('persona-count-input').value = g.requested_count || state.persona_defaults.count || 6;
-  $('persona-background').value = g.background || state.persona_defaults.background || '';
-  try {
-    const saved = JSON.parse(localStorage.getItem('uxagent-dashboard-setup') || 'null');
-    if (saved) {
-      for (const id of ['target-url', 'task-input', 'persona-count-input', 'persona-background', 'provider']) {
-        if (typeof saved[id] === 'string') $(id).value = saved[id];
-      }
-    }
-  } catch { /* Local storage may be unavailable in private browser sessions. */ }
-  initialized = true;
-  updateProvider();
-}
-
-function chooseRun() {
-  const job = state.job;
-  if ($('follow-live').checked && job?.kind === 'batch') {
-    const runs = state.runs.filter(run => (job.run_ids || []).includes(run.run_id));
-    const run = runs.find(run => run.active) || runs[0];
-    if (run || job.status === 'running') {
-      if (selectedRun !== (run?.run_id || null)) selectedStep = null;
-      selectedRun = run?.run_id || null;
-      selectedPersona = run?.persona_id || null;
-      return;
-    }
-  }
-  if (manualRun) return;
-  if (!selectedPersona && state.personas.length) selectedPersona = state.personas[0].persona_id;
-  const persona = state.personas.find(p => p.persona_id === selectedPersona);
-  const runId = persona ? persona.run?.run_id || null : state.runs[0]?.run_id || null;
-  if (selectedRun !== runId) selectedStep = null;
-  selectedRun = runId;
-}
-
-function renderStats() {
-  const runs = state.runs, done = runs.filter(r => !r.active);
-  const stats = [
-    ['페르소나', `${state.personas.length}명`, '현재 생성된 참여자'],
-    ['진행 중', `${runs.filter(r => r.active).length}명`, '브라우저 세션'],
-    ['완료 검증', `${done.filter(r => r.verification === 'success').length}건`, '평가기로 확인된 성공'],
-    ['총 액션', `${runs.reduce((sum, r) => sum + (r.action_attempts || 0), 0)}회`, '저장된 실행 기록 전체']
-  ];
-  $('stats').innerHTML = stats.map(s => `<div class="stat"><label>${esc(s[0])}</label><strong>${esc(s[1])}</strong><div class="hint">${esc(s[2])}</div></div>`).join('');
-}
-
-function renderPersonas() {
-  $('persona-count').textContent = `${state.personas.length}명`;
-  $('persona-list').innerHTML = state.personas.length ? state.personas.map(p => `
-    <button class="persona ${p.persona_id === selectedPersona ? 'active' : ''}" data-persona="${esc(p.persona_id)}">
-      <span class="avatar">${esc(p.persona_id.slice(-2))}</span>
-      <span class="persona-copy"><span class="persona-name">${esc(p.persona_id)} · ${esc(p.digital_familiarity)}</span><span class="persona-meta">${esc(p.background)}</span></span>
-      <span class="status-pill ${statusClass(p.run)}">${esc(statusLabel(p.run))}</span>
-    </button>`).join('') : empty('설명과 인원을 입력하고 페르소나 생성을 누르세요.');
-  $('persona-list').querySelectorAll('[data-persona]').forEach(button => {
-    button.onclick = () => {
-      selectedPersona = button.dataset.persona;
-      selectedRun = null; selectedStep = null; detail = null; manualRun = false;
-      $('follow-live').checked = false;
-      refresh();
-    };
-  });
-}
-
-function renderGeneration() {
-  const g = state.generation;
-  if (!g) {
-    $('generation').innerHTML = '<div><h2>페르소나 생성</h2><p>입력한 설명과 작업을 바탕으로 숙련도와 탐색 습관이 다른 페르소나를 만듭니다.</p></div>';
-    return;
-  }
-  const when = g.generated_at ? new Date(g.generated_at).toLocaleString('ko-KR') : '기존 생성 기록';
-  $('generation').innerHTML = `<div><h2>페르소나 생성 완료</h2><p>${esc(when)} · 로컬 템플릿 · seed ${esc(g.seed)}</p><p>${esc(g.task || '')}</p></div><div class="generation-values"><div><strong>${esc(g.generated_count)} / ${esc(g.requested_count)}</strong><span>생성 성공</span></div><div><strong>${esc(g.usage?.tokens || 0)}</strong><span>생성 토큰</span></div></div>`;
-}
-
-function renderProfile() {
-  const p = detail?.persona || state.personas.find(p => p.persona_id === selectedPersona);
-  if (!p) { $('profile').innerHTML = empty('페르소나를 선택하세요.'); return; }
-  const tags = [...(p.preferences || []), ...Object.entries(p.constraints || {}).map(([k,v]) => `${k}: ${v}`)];
-  $('profile').innerHTML = `<div class="profile-head"><h2>페르소나 정보</h2><span class="profile-id">${esc(p.persona_id)}</span></div><p class="profile-text">${esc(p.background)}</p><div class="tags">${tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div><div class="profile-grid"><div class="profile-cell"><label>디지털 숙련도</label><strong>${esc(p.digital_familiarity)}</strong></div><div class="profile-cell"><label>목표</label><strong>${esc(p.intent)}</strong></div></div>`;
-}
-
-function renderCalls() {
-  const calls = detail?.calls || [];
-  $('call-count').textContent = `${calls.length} calls`;
-  $('call-list').innerHTML = calls.length ? [...calls].reverse().map(c => `<div class="call"><span class="provider-chip ${esc(c.provider)}">${esc(c.provider)}</span><span><span class="call-model">${esc(c.model)}</span><br><span class="call-meta">in ${esc(c.input_tokens ?? '—')} · out ${esc(c.output_tokens ?? '—')} · ${esc(c.elapsed_ms || 0)}ms</span>${c.fallback_reason ? `<div class="call-reason">fallback · ${esc(c.fallback_reason)}</div>` : ''}${c.error ? `<div class="call-reason">오류 · ${esc(c.error)}</div>` : ''}</span><span class="call-meta">${c.estimated_cost_usd == null ? '비용 미확인' : '$' + Number(c.estimated_cost_usd).toFixed(5)}</span></div>`).join('') : empty('이 실행에는 아직 모델 호출 기록이 없습니다.');
-}
-
-function renderShot() {
-  const run = state.runs.find(r => r.run_id === selectedRun);
-  const row = selectedStep == null ? null : detail?.steps[selectedStep];
-  const id = row ? row.next_observation_id || row.observation_id : run?.latest_observation_id;
-  const obs = id ? detail?.observations[id] : null;
-  const wrap = $('shot-wrap');
-  const src = obs?.screenshot_url;
-  const shotKey = src || `empty:${statusLabel(run)}`;
-  if (wrap.dataset.shot !== shotKey) {
-    wrap.dataset.shot = shotKey;
-    wrap.innerHTML = src ? `<img alt="브라우저 관찰 스크린샷" src="${esc(src)}">` : `<div class="shot-placeholder"><b>▧</b>${esc(run && !run.active ? statusLabel(run) + ' · 기록된 스크린샷이 없습니다.' : '브라우저의 첫 관찰을 기다리고 있습니다.')}</div>`;
-    if (src) wrap.querySelector('img').onerror = () => { wrap.innerHTML = empty('스크린샷을 읽지 못했습니다. 다음 갱신을 기다려 주세요.'); wrap.dataset.shot = ''; };
-  }
-  const url = obs?.url || run?.latest_url || '';
-  $('screen-title').textContent = obs?.title || run?.latest_title || (selectedRun ? '실행 화면 대기' : '페르소나 생성 후 테스트를 시작하세요');
-  $('screen-url').textContent = url;
-  $('screen-url').href = /^https?:\/\//.test(url) ? url : '#';
-  $('shot-step').textContent = selectedStep == null ? '최근 화면' : `STEP ${selectedStep + 1}`;
-  $('shot-caption').textContent = obs ? `viewport · ${obs.observation_id}` : '캡처 준비 중';
-}
-
-function renderSteps() {
-  const run = state.runs.find(r => r.run_id === selectedRun), rows = detail?.steps || [];
-  $('run-status').textContent = run ? `${rows.length} steps · ${statusLabel(run)}` : '실행 대기';
-  $('steps').innerHTML = rows.length ? rows.map((s,i) => {
-    const a = s.action || {}, result = s.result || {}, error = result.error || s.error;
-    const title = a.type ? `${a.type} · ${a.target_id || a.url || a.text || ''}` : s.decision?.finish ? '종료 판단' : '판단 오류';
-    const description = error?.message || s.decision?.rationale_summary || s.decision?.finish?.summary || '';
-    return `<button class="step ${(selectedStep == null ? rows.length - 1 : selectedStep) === i ? 'selected' : ''}" data-step="${i}"><span class="step-no">${i+1}</span><span class="step-main"><span class="step-title">${esc(title)}</span><div class="step-desc">${esc(description)}</div>${a.type ? `<span class="step-action">${esc(result.ok ? '✓ 실행됨' : error?.code || '결과 대기')}</span>` : ''}</span><span class="step-time">${esc(s.timing_ms?.llm ?? '—')}ms</span></button>`;
-  }).join('') : empty(run?.summary?.last_error?.message || (run && !run.active ? statusLabel(run) + ' · 기록된 액션이 없습니다.' : '첫 액션 기록을 기다리고 있습니다.'));
-  $('steps').querySelectorAll('[data-step]').forEach(button => {
-    button.onclick = () => { selectedStep = Number(button.dataset.step); $('follow-live').checked = false; renderSteps(); renderShot(); };
-  });
-  $('run-select').innerHTML = '<option value="">실행 기록 선택</option>' + state.runs.map(r => `<option value="${esc(r.run_id)}">${esc(r.persona_id)} · ${esc(statusLabel(r))} · ${esc(r.run_id)}</option>`).join('');
-  $('run-select').value = selectedRun || '';
-}
-
-function renderJob() {
-  const job = state?.job, active = job?.status === 'running';
-  $('generate').disabled = posting || active;
-  $('run-batch').disabled = posting || active || !state?.personas.length;
-  $('demo').disabled = posting || active;
-  $('generate').textContent = active && job.kind === 'generate' ? '생성 중…' : '＋　페르소나 생성';
-  $('run-batch').textContent = active && job.kind === 'batch' ? '테스트 실행 중…' : '순차 테스트 시작';
-  const progress = job?.kind === 'batch' ? ` · ${job.finished_personas || 0}/${job.persona_count}명 실행 종료` : '';
-  $('job-line').textContent = job ? `${job.label} · ${job.message}${progress}` : 'URL과 작업·설명을 입력하고 페르소나를 생성하세요.';
-  $('job-line').classList.toggle('failed', job?.status === 'failed');
-  if (pendingJob && job?.job_id === pendingJob && job.status !== 'running') {
-    notify(job.message, job.status === 'failed');
-    pendingJob = null;
-  }
-}
-
-function render() {
-  renderStats(); renderPersonas(); renderGeneration(); renderProfile(); renderCalls(); renderSteps(); renderShot(); renderJob();
-  $('connection').textContent = '실시간 갱신';
-  $('updated').textContent = '업데이트 ' + new Date().toLocaleTimeString('ko-KR');
-}
-
-async function refresh() {
-  if (refreshing) return;
-  refreshing = true;
-  try {
-    state = await api('/api/state');
-    initializeSetup();
-    chooseRun();
-    const runId = selectedRun;
-    detail = null;
-    if (runId) {
-      const loaded = await api('/api/run/' + encodeURIComponent(runId));
-      if (runId === selectedRun) detail = loaded;
-    }
-    render();
-  } catch (error) {
-    $('connection').textContent = '연결 오류';
-    notify(error.name === 'AbortError' ? '서버 응답이 지연됩니다. 다시 연결하고 있습니다.' : error.message, true);
-    if (state) renderJob();
-  } finally { refreshing = false; }
-}
-
-async function start(kind) {
-  if (posting) return;
-  const fields = ['target-url','task-input'];
-  if (kind === 'generate') fields.push('persona-count-input','persona-background');
-  for (const id of fields) {
-    if (!$(id).reportValidity()) { notify('필수 입력 내용을 확인하세요.', true); return; }
-  }
-  posting = true;
-  renderJob();
-  notify(kind === 'generate' ? '페르소나 생성을 요청하고 있습니다…' : '브라우저 테스트를 시작하고 있습니다…');
-  try {
-    const job = await api('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
-      kind, provider:$('provider').value, start_url:$('target-url').value.trim(), task:$('task-input').value.trim(),
-      persona_count:Number($('persona-count-input').value), persona_background:$('persona-background').value.trim()
-    })});
-    pendingJob = job.job_id;
-    state.job = job;
-    notify(job.message);
-    if (kind === 'batch') { $('follow-live').checked = true; manualRun = false; selectedRun = null; selectedStep = null; }
-    try {
-      localStorage.setItem('uxagent-dashboard-setup',JSON.stringify(Object.fromEntries(['target-url','task-input','persona-count-input','persona-background','provider'].map(id => [id,$(id).value]))));
-    } catch { /* Saving preferences is optional. */ }
-  } catch (error) {
-    notify(error.name === 'AbortError' ? '시작 요청 시간이 초과됐습니다. 실행 상태를 확인한 뒤 다시 시도하세요.' : error.message, true);
-  } finally { posting = false; renderJob(); await refresh(); }
-}
-
-$('generate').onclick = () => start('generate');
-$('run-batch').onclick = () => start('batch');
-$('refresh').onclick = refresh;
-$('target-url').addEventListener('change', updateProvider);
-$('provider').addEventListener('change', updateProvider);
-$('follow-live').onchange = () => { manualRun = false; selectedStep = null; refresh(); };
-$('latest-shot').onclick = () => { selectedStep = null; renderSteps(); renderShot(); };
-$('run-select').onchange = () => {
-  selectedRun = $('run-select').value || null; selectedPersona = null; selectedStep = null; manualRun = true; detail = null;
-  $('follow-live').checked = false; refresh();
-};
-$('demo').onclick = () => {
-  $('target-url').value = state.study.start_url;
-  $('task-input').value = state.study.task;
-  $('persona-background').value = state.persona_defaults.background;
-  $('persona-count-input').value = 2;
-  $('provider').value = 'mock'; updateProvider();
-  notify('기본 데모 설정을 적용했습니다. 페르소나 생성 후 테스트를 시작하세요.');
-};
-window.addEventListener('error', event => notify(`화면 오류: ${event.message}`,true));
-async function poll() { await refresh(); setTimeout(poll, 1000); }
-poll();
+const valueText = value => value == null ? '미확인' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+const verdict = value => ({success:'성공 확인',failure:'실패 확인',running:'진행 중',pass:'통과',fail:'실패',unknown:'미확인',unsupported:'미지원'}[value] || '미확인');
+const reasons = {verified_success:'독립 성공 확인',agent_finished:'AI 종료 선언',agent_gave_up:'AI 중단',browser_error:'브라우저 오류',model_error:'모델 오류',max_steps:'단계 한도',run_timeout:'시간 초과',budget_exceeded:'호출 한도',stuck:'반복 감지',interrupted:'중단',cancelled:'취소'};
+let state = null, detail = null, experiments = [], selectedRun = null, selectedStep = null, initialized = false, refreshing = false, posting = false, currentView = 'test', pendingJobId = null;
+function notify(text, error = false) { $('notice').textContent = text || ''; $('notice').classList.toggle('error',error); }
+async function api(path,options={}) { const controller = new AbortController(); const timer=setTimeout(()=>controller.abort(),path==='/api/connection'?90000:15000); try { const response=await fetch(path,{...options,cache:'no-store',signal:controller.signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error || `요청 실패 (${response.status})`); return body; } finally { clearTimeout(timer); } }
+function post(path,body) { return api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+function isDemoUrl(text) { try {const u=new URL(text);return ['localhost','127.0.0.1'].includes(u.hostname)&&u.pathname.endsWith('shop.html');}catch{return false;} }
+function navigate(view) { currentView=view; document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;}); ['test','compare','board','history'].forEach(v=>$('view-'+v).hidden=v!==view); const copy={test:['사용자의 과업을 검증하세요.','사이트와 목표를 입력하세요. AI의 행동과 독립 판정의 근거를 함께 확인합니다.'],compare:['AI의 차이를 근거로 비교하세요.','대응하는 세션과 같은 성공 기준으로 결과, 행동 수, 시간과 비용을 비교합니다.'],board:['관찰을 개선 작업으로 이어가세요.','AI가 제안한 후보를 검토하고, 근거와 완료 조건을 개발 작업에 활용하세요.'],history:['모든 판단에는 근거가 있습니다.','브라우저 화면과 행동 타임라인을 따라 독립 판정의 이유를 확인하세요.']}[view];$('page-title').textContent=copy[0];$('page-description').textContent=copy[1]; }
+function plan() { const provider=$('provider').value, demo=isDemoUrl($('target-url').value); $('provider-note').textContent=provider==='mock'?'Mock은 로컬 shop.html 데모 전용이며 API 비용이 없습니다.':`${provider}는 실제 API를 호출하며 제공자의 사용 요금이 발생할 수 있습니다.`; const checks=$('evaluation-checks').value.trim(); $('plan-preview').innerHTML=`<ol><li><strong>대상</strong><br>${esc($('target-url').value || '테스트 URL을 입력하세요.')}</li><li><strong>목표</strong><br>${esc($('task-input').value || '사용자가 이루려는 목표를 입력하세요.')}</li><li><strong>실행</strong><br>${esc(provider)} · 페르소나 ${esc($('persona-count-input').value)}명 · 브라우저 순차 실행</li><li><strong>성공 기준</strong><br>${demo?'데모 상품 조건을 독립 평가기가 확인합니다.':checks?'등록한 기능 점검으로 확인합니다. 조건 자체가 적절한지 검토하세요.':'등록된 독립 평가 조건이 없어 결과는 미확인입니다.'}</li></ol><p class="help">AI의 완료 선언은 독립 성공 판정과 별도로 기록합니다.</p>`;const total=Number($('persona-count-input').value)*Number($('repetitions').value);$('compare-plan').textContent=`계획: 조건별 ${total}세션, 총 ${total*2}세션 · ${provider} · 현재 입력한 과업. 작은 표본의 차이를 실제 사용자 효과로 단정하지 마세요.`; }
+function initialize() {if(initialized)return;const g=state.generation||{};$('target-url').value=g.start_url||state.study?.start_url||'';$('task-input').value=g.task||state.study?.task||'';$('persona-background').value=g.background||state.persona_defaults?.background||'';$('persona-count-input').value=g.requested_count||2;initialized=true;plan();}
+function renderStats() { const runs=state.runs||[], done=runs.filter(r=>!r.active);$('stats').innerHTML=[['페르소나',`${state.personas?.length||0}명`],['실행 기록',`${runs.length}건`],['독립 성공 확인',`${done.filter(r=>r.verification==='success').length}건`],['미확인 결과',`${done.filter(r=>!['success','failure'].includes(r.verification)).length}건`]].map(([label,value])=>`<div class="stat"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join(''); }
+function renderJob() { const active=state?.job?.status==='running'; if(pendingJobId&&state?.job?.job_id===pendingJobId&&!active){notify(state.job.message,state.job.status==='failed');pendingJobId=null;}['generate','run-batch','run-compare'].forEach(id=>$(id).disabled=posting||active||(id!=='generate'&&!state?.personas?.length));$('stop-job').disabled=posting||!active;$('job-line').textContent=state?.job?`${state.job.label||state.job.kind} · ${state.job.message||state.job.status}`:'실행 준비 · 설정을 입력하고 페르소나를 생성하세요.';$('job-line').classList.toggle('error',state?.job?.status==='failed');$('provider-status').textContent=['gemini','live','jev'].map(p=>`${p}: ${state?.providers?.[p]?'키 설정됨':'연결 필요'}`).join(' · ');const g=state?.generation;$('generation').innerHTML=g?`<h3>페르소나 생성 기록</h3><p class="help">${esc(g.generated_count)} / ${esc(g.requested_count)}명 · 로컬 템플릿</p><p class="help">${esc(g.task)}</p>`:'<h3>페르소나 생성</h3><p class="help">사용자 배경과 과업으로 무료 로컬 템플릿을 생성합니다. 실제 사람을 조사한 결과와 구분하세요.</p>'; }
+function runButtons(runs) {return runs.length?runs.slice(0,12).map(r=>`<button class="run-row ${r.run_id===selectedRun?'selected':''}" data-run="${esc(r.run_id)}"><strong>${esc(r.persona_id||'일반 AI')}</strong> <span class="badge">${esc(verdict(r.verification))}</span><span class="muted">${esc(r.run_id)} · ${esc(r.active?'실행 중':reasons[r.termination_reason]||r.termination_reason||'종료')} · ${esc(r.action_attempts??r.steps??'미확인')} 행동</span></button>`).join(''):empty('아직 실행 기록이 없습니다. 페르소나 생성 후 과업 테스트를 시작하세요.');}
+function renderRuns() {const runs=state.runs||[];$('test-runs').innerHTML=runButtons(runs);$('history-runs').innerHTML=runButtons(runs);$('run-select').innerHTML='<option value="">실행 기록 선택</option>'+runs.map(r=>`<option value="${esc(r.run_id)}">${esc(r.persona_id||'일반 AI')} · ${esc(verdict(r.verification))} · ${esc(r.run_id)}</option>`).join('');$('run-select').value=selectedRun||''; }
+function metric(label,value){return `<div><span>${esc(label)}</span><strong>${esc(valueText(value))}</strong></div>`;}
+function renderDetail() {const run=state.runs.find(r=>r.run_id===selectedRun);const summary=detail?.summary||{}, m=detail?.metrics||{},rows=detail?.steps||[];$('screen-title').textContent=run?`${run.persona_id||'일반 AI'} · 실행 근거`:'실행을 선택하세요';$('run-status').textContent=run?`독립 판정: ${verdict(run.verification)} · 종료 상태: ${run.active?'진행 중':reasons[run.termination_reason]||run.termination_reason||'종료'}`:'독립 판정과 종료 상태를 함께 확인합니다.';const cost=m.estimated_cost_usd??m.cost_usd??summary.cost;$('run-metrics').innerHTML=`<div class="metric-grid">${metric('행동 시도',m.action_attempts??summary.action_attempts??run?.action_attempts)}${metric('실행 시간',summary.elapsed_ms==null?'미확인':`${(summary.elapsed_ms/1000).toFixed(1)}초`)}${metric('추정 API 비용',cost==null?'미확인':`$${Number(cost).toFixed(5)}`)}${metric('기록 확보율',m.recording?.rate==null?'미확인':`${(m.recording.rate*100).toFixed(1)}%`)}${metric('복구 사건',m.recovery?.episodes?.length??'미확인')}${metric('복구율',m.recovery?.rate==null?'미확인':`${(m.recovery.rate*100).toFixed(1)}%`)}</div>`;$('steps').innerHTML=rows.length?rows.map((s,i)=>{const a=s.action||{},result=s.result||{};return `<button class="step ${selectedStep===i?'selected':''}" data-step="${i}"><strong>${i+1}. ${esc(a.type||'모델 판단')} ${esc(a.target_id||a.url||'')}</strong><small>${esc(s.decision?.rationale_summary||s.decision?.finish?.summary||result.error?.message||'판단 설명 없음')}</small><small>${esc(a.type?(result.ok?'행동 실행됨':result.error?.code||'결과 미확인'):'실행 행동 없음')}</small></button>`;}).join(''):empty('기록된 행동이 없습니다.');const row=selectedStep==null?null:rows[selectedStep],obsId=row?(row.next_observation_id||row.observation_id):run?.latest_observation_id,obs=detail?.observations?.[obsId],src=obs?.screenshot_url;const wrap=$('shot-wrap');if(wrap.dataset.shot!==(src||'')){wrap.dataset.shot=src||'';wrap.innerHTML=src?`<img src="${esc(src)}" alt="선택한 행동의 브라우저 관찰 화면">`:empty('이 실행에는 저장된 관찰 화면이 없습니다.');if(src)wrap.querySelector('img').onerror=()=>{wrap.innerHTML=empty('관찰 화면 파일을 읽지 못했습니다.');wrap.dataset.shot='';};}else if(!src){wrap.innerHTML=empty('이 실행에는 저장된 관찰 화면이 없습니다.');}const url=obs?.url||run?.latest_url||'';$('screen-url').textContent=url;$('screen-url').href=/^https?:\/\//.test(url)?url:'#';$('shot-caption').textContent=obs?`${selectedStep==null?'최근 관찰':`행동 ${selectedStep+1} 이후`} · ${obsId}`:'저장된 관찰 없음';const features=summary.evaluator?.feature_checks||[];$('feature-checks').innerHTML=features.length?features.map(f=>`<div class="feature"><div><strong>${esc(f.label||f.id)}</strong><p class="muted">${esc(valueText(f.evidence))}</p></div><span class="badge ${f.status==='fail'?'fail':''}">${esc(verdict(f.status))}</span></div>`).join(''):empty('기능별 점검 근거가 없습니다. 외부 사이트는 성공 조건을 먼저 등록하세요.');const p=detail?.persona;$('profile').innerHTML=p?`<h2>페르소나 맥락</h2><p class="help">${esc(p.background||'일반 AI 조건')}</p><p class="help">숙련도: ${esc(p.digital_familiarity??'해당 없음')}<br>목표: ${esc(p.intent||'기록 없음')}</p>`:'<h2>페르소나 맥락</h2>'+empty('실행을 선택하세요.');const calls=detail?.calls||[];$('call-count').textContent=`${calls.length}회`;$('call-list').innerHTML=calls.length?`<div class="table-wrap"><table><thead><tr><th>제공자 / 모델</th><th>토큰 입력 / 출력</th><th>시간</th><th>추정 비용</th></tr></thead><tbody>${calls.map(c=>`<tr><td>${esc(c.provider)} / ${esc(c.model)}${c.error?`<p class="error">${esc(c.error)}</p>`:''}${c.fallback_reason?`<p class="muted">fallback: ${esc(c.fallback_reason)}</p>`:''}</td><td>${esc(c.input_tokens??'미확인')} / ${esc(c.output_tokens??'미확인')}</td><td>${esc(c.elapsed_ms??'미확인')} ms</td><td>${c.estimated_cost_usd==null?'미확인':'$'+Number(c.estimated_cost_usd).toFixed(5)}</td></tr>`).join('')}</tbody></table></div>`:empty('모델 호출 기록이 없습니다.');$('exports').innerHTML=selectedRun?['json','csv','md','html'].map(f=>`<a class="btn" href="/api/export/${encodeURIComponent(selectedRun)}?format=${f}" download>${f.toUpperCase()} 다운로드</a>`).join(''):empty('실행을 선택하면 내보낼 수 있습니다.');renderCards(); }
+function evidenceButtons(card){return (card.evidence_step_ids||[]).map(id=>{const i=(detail?.steps||[]).findIndex(s=>s.step_id===id);return i<0?esc(id):`<button class="btn soft" data-evidence-step="${i}">행동 ${i+1} 근거 보기</button>`;}).join(' ');}
+function renderCards(){const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 검토할 실행을 선택하세요.';$('cards').innerHTML=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><h3>${esc(c.title||c.issue_id||c.id||'개선 후보')}</h3><span class="badge">${esc(c.review_status==='confirmed'?'사람 검토 확인':'미검토 후보')}</span></div><dl>${[['관찰 사실',c.observed_behavior],['원인 가설',c.hypothesis],['개선 제안',c.recommendation],['완료 조건',c.acceptance],['회귀 확인',c.regression_checks],['관찰 근거',c.evidence]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)}</div></article>`).join(''):empty('선택한 실행에 개선 후보가 없습니다. 후보가 없다는 사실은 UX 문제가 없다는 증거가 아닙니다.');}
+function pairedSessions(sessions) { const pairs=new Map();for(const s of sessions){const key=`${s.pair_persona_id||s.persona_id||'세션'}:${s.repetition||1}`;if(!pairs.has(key))pairs.set(key,{});pairs.get(key)[s.condition]=s;} const cell=s=>s?`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled'}>${esc(verdict(s.verification))} · ${esc({running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행'}[s.status]||s.status)}</button>`:'미등록';return `<div class="table-wrap gap-top"><table><thead><tr><th>대응 세션 / 반복</th><th>일반 AI</th><th>페르소나 AI</th></tr></thead><tbody>${[...pairs].map(([key,p])=>`<tr><td>${esc(key)}</td><td>${cell(p.general)}</td><td>${cell(p.persona)}</td></tr>`).join('')}</tbody></table></div>`;}
+function renderExperiments(){const fmtRate=g=>g.rate==null?'미확인':`${(g.rate*100).toFixed(1)}%`; $('experiments').innerHTML=experiments.length?experiments.map(e=>`<article class="card"><h2>대응 비교</h2><p class="help">${esc(e.experiment_id)} · ${esc(e.settings?.provider||'제공자 기록 확인')}</p><div class="table-wrap gap-top"><table><thead><tr><th>조건</th><th>성공 / 계획</th><th>성공률</th><th>성공 세션 중앙 행동 수</th><th>성공 세션 중앙 시간</th><th>비용</th></tr></thead><tbody>${['general','persona'].map(k=>{const g=e.groups?.[k]||{};return `<tr><td>${k==='general'?'일반 AI':'페르소나 AI'}</td><td>${esc(g.success??'미확인')} / ${esc(g.requested??'미확인')}</td><td>${esc(fmtRate(g))}</td><td>${esc(g.median_actions??'미확인')}</td><td>${g.median_ms==null?'미확인':`${(g.median_ms/1000).toFixed(1)}초`}</td><td>${g.cost==null?'미확인':esc(typeof g.cost==='number'?'$'+g.cost.toFixed(5):valueText(g.cost))}</td></tr>`;}).join('')}</tbody></table></div>${pairedSessions(e.sessions||[])}<div class="session-links" hidden>${(e.sessions||[]).map(s=>`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled'}>${esc(s.condition==='general'?'일반 AI':'페르소나 AI')} · ${esc(s.persona_id||s.session_id||'세션')} · ${esc(verdict(s.verification||s.outcome))}</button>`).join('')}</div><p class="help">오류·취소·미실행·미확인도 계획된 분모에 남습니다. 각 세션을 클릭해 실제 근거를 확인하세요.</p></article>`).join(''):empty('비교 기록이 없습니다. 페르소나를 생성하고 AI 비교를 시작하세요.');}
+async function refresh(){if(refreshing)return;refreshing=true;try{state=await api('/api/state');initialize();if($('follow-live').checked){const ids=state.job?.run_ids||[];const live=state.runs.find(r=>r.active&&(ids.length?ids.includes(r.run_id):true));if(live&&live.run_id!==selectedRun){selectedRun=live.run_id;selectedStep=null;}}if(!selectedRun&&state.runs.length)selectedRun=state.runs[0].run_id;const id=selectedRun;const results=await Promise.allSettled([id?api('/api/run/'+encodeURIComponent(id)):Promise.resolve(null),api('/api/experiments')]);if(results[0].status==='fulfilled'&&id===selectedRun)detail=results[0].value;if(results[1].status==='fulfilled'){const v=results[1].value;experiments=Array.isArray(v)?v:v.experiments||[];}renderStats();renderJob();renderRuns();renderDetail();renderExperiments();$('connection').textContent='연결됨';$('updated').textContent='마지막 갱신 '+new Date().toLocaleTimeString('ko-KR');}catch(error){$('connection').textContent='연결 오류';notify(error.name==='AbortError'?'서버 응답이 지연됩니다. 자동으로 다시 시도합니다.':error.message,true);}finally{refreshing=false;}}
+function checks(){const raw=$('evaluation-checks').value.trim();if(!raw)return [];let value;try{value=JSON.parse(raw);}catch{throw new Error('기능 점검 JSON 형식을 확인하세요.');}if(!Array.isArray(value)||value.some(c=>!c||!c.id||!c.label||!['visible','text_contains','url_contains'].includes(c.kind)))throw new Error('기능 점검은 id, label, kind를 가진 배열이어야 합니다.');return value;}
+async function start(kind){if(posting)return;for(const id of ['target-url','task-input','persona-count-input','persona-background']){if(!$(id).reportValidity()){navigate('test');notify('필수 입력을 확인하세요.',true);return;}}let evaluation_checks;try{evaluation_checks=checks();}catch(e){notify(e.message,true);navigate('test');return;}posting=true;renderJob();try{const job=await post('/api/jobs',{kind,provider:$('provider').value,start_url:$('target-url').value.trim(),task:$('task-input').value.trim(),persona_count:Number($('persona-count-input').value),persona_background:$('persona-background').value.trim(),repetitions:Number($('repetitions').value),evaluation_checks});state.job=job;pendingJobId=job.job_id;notify(job.message||'실행을 시작했습니다.');if(kind!=='generate'){$('follow-live').checked=true;selectedStep=null;}}catch(e){notify(e.name==='AbortError'?'요청 시간이 초과됐습니다. 실행 상태를 확인한 뒤 다시 시도하세요.':e.message,true);}finally{posting=false;renderJob();await refresh();}}
+async function chooseRun(id){selectedRun=id||null;selectedStep=null;detail=null;$('follow-live').checked=false;navigate('history');await refresh();}
+document.addEventListener('click',event=>{const run=event.target.closest('[data-run]');if(run)chooseRun(run.dataset.run);const evidence=event.target.closest('[data-evidence-step]');if(evidence){selectedStep=Number(evidence.dataset.evidenceStep);$('follow-live').checked=false;navigate('history');renderDetail();}const step=event.target.closest('[data-step]');if(step){selectedStep=Number(step.dataset.step);$('follow-live').checked=false;renderDetail();}const link=event.target.closest('[data-navigate]');if(link)navigate(link.dataset.navigate);});
+document.querySelectorAll('[data-view]').forEach((button,i,list)=>{button.onclick=()=>navigate(button.dataset.view);button.onkeydown=event=>{if(['ArrowRight','ArrowDown','ArrowLeft','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();let n=event.key==='Home'?0:event.key==='End'?list.length-1:(i+(event.key==='ArrowRight'||event.key==='ArrowDown'?1:-1)+list.length)%list.length;navigate(list[n].dataset.view);list[n].focus();}};});
+$('setup-form').onsubmit=e=>e.preventDefault();$('generate').onclick=()=>start('generate');$('run-batch').onclick=()=>start('batch');$('run-compare').onclick=()=>start('compare');$('refresh').onclick=refresh;$('run-select').onchange=()=>chooseRun($('run-select').value);$('follow-live').onchange=()=>{selectedStep=null;refresh();};$('latest-shot').onclick=()=>{selectedStep=null;renderDetail();};['target-url','task-input','persona-count-input','persona-background','provider','evaluation-checks','repetitions'].forEach(id=>$(id).addEventListener('input',plan));
+$('demo').onclick=()=>{if(!state)return;$('target-url').value=state.study?.start_url||'';$('task-input').value=state.study?.task||'';$('persona-background').value=state.persona_defaults?.background||'';$('persona-count-input').value=2;$('provider').value='mock';$('evaluation-checks').value='';plan();notify('기본 데모 설정을 적용했습니다. 페르소나 생성 후 시작하세요.');};$('external-preset').onclick=()=>{$('target-url').value='';$('provider').value='gemini';$('task-input').value='검색어로 상품을 검색하고 필터 적용·해제 후 조건에 맞는 상품의 상세 정보를 확인한다.';$('evaluation-checks').value='';plan();$('target-url').focus();notify('테스트 URL과 사이트에 맞는 성공 조건을 입력하세요.');};
+$('connection-provider').onchange=()=>{$('fallback-field').hidden=$('connection-provider').value!=='jev';};$('connect-provider').onclick=async()=>{const key=$('api-key').value.trim(),fallback=$('fallback-key').value.trim(),provider=$('connection-provider').value;if(!key||(provider==='jev'&&!fallback)){notify('연결에 필요한 API 키를 입력하세요.',true);return;}$('connect-provider').disabled=true;try{const result=await post('/api/connection',{provider,api_key:key,...(provider==='jev'?{fallback_key:fallback}:{})});$('api-key').value='';$('fallback-key').value='';$('provider').value=provider;plan();notify(result.message||'API 연결을 검증했습니다.');await refresh();}catch(e){notify(e.name==='AbortError'?'연결 요청 시간이 초과됐습니다. 상태를 확인하세요.':e.message,true);}finally{$('connect-provider').disabled=false;}};
+$('stop-job').onclick=async()=>{if(posting)return;posting=true;renderJob();try{await post('/api/jobs/stop',{});notify('실행 중지를 요청했습니다. 종료 기록을 확인하세요.');}catch(e){notify(e.message,true);}finally{posting=false;await refresh();}};
+window.addEventListener('error',event=>notify('화면 오류: '+event.message,true));async function poll(){await refresh();setTimeout(poll,1500);}poll();

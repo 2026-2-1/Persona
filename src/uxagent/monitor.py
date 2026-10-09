@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import os
 import re
 import subprocess
@@ -10,12 +11,14 @@ import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, parse_qs
 
 from .security import normalize_origin
 from .llm import load_env_file
 from .runner import load_study
 from .schemas import Persona, StudyConfig
+from .reports import build_cards, export_report, redact
+from .storage import write_json
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +85,7 @@ class Dashboard:
                 self.job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 if process.returncode == 0:
                     self.job["message"] = (f"페르소나 {self.job['persona_count']}명 생성 완료" if self.job["kind"] == "generate"
+                                           else "AI 비교 실행을 마쳤습니다. 비교 결과를 확인하세요." if self.job["kind"] == "compare"
                                            else "순차 테스트 실행을 마쳤습니다. 각 페르소나의 결과를 확인하세요.")
                 else:
                     self.job["message"] = self._job_error(self.job["log_path"], process.returncode, self.job.get("study_id"))
@@ -128,6 +132,8 @@ class Dashboard:
             for folder in self._run_folders():
                 run = _json_file(folder / "run.json", {})
                 persona = _json_file(folder / "persona.json", {})
+                if run.get("condition") == "general":
+                    persona = {"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
                 summary = _json_file(folder / "summary.json")
                 steps = _jsonl_file(folder / "steps.jsonl")
                 calls = _jsonl_file(folder / "llm_calls.jsonl")
@@ -140,6 +146,7 @@ class Dashboard:
                 runs.append({
                     "run_id": folder.name,
                     "persona_id": persona.get("persona_id"),
+                    "condition": run.get("condition","persona"),
                     "persona": persona,
                     "study_id": run.get("study_id"),
                     "provider": run.get("provider"),
@@ -194,7 +201,7 @@ class Dashboard:
                 if item:
                     item["screenshot_url"] = f"/artifacts/{run_id}/observations/{path.stem}.png" if (obs_dir / f"{path.stem}.png").is_file() else None
                     observations[path.stem] = item
-        return {
+        detail = {
             "run": _json_file(folder / "run.json", {}),
             "persona": _json_file(folder / "persona.json", {}),
             "config": _json_file(folder / "config.json", {}),
@@ -203,9 +210,79 @@ class Dashboard:
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
             "observations": observations,
         }
+        from .metrics import run_metrics
+        if detail["run"].get("condition") == "general":
+            persona=detail["persona"]
+            detail["persona"]={"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
+        detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
+        detail["cards"] = build_cards(detail)
+        return redact(detail)
 
-    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None):
-        if kind not in {"generate", "batch"}:
+    def experiments(self):
+        if not self.runs_dir.is_dir(): return []
+        rows = [_json_file(p) for p in self.runs_dir.rglob("experiment.json") if p.resolve().is_relative_to(self.runs_dir)]
+        return redact(sorted([row for row in rows if row],key=lambda row:row.get("started_at",""),reverse=True))
+
+    def _verify_connection(self, provider):
+        from .llm import OpenAIProvider, GeminiProvider, JevProvider
+        async def verify():
+            if provider == "jev":
+                await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
+                await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],max_tokens=32)
+            else:
+                implementation = OpenAIProvider() if provider == "live" else GeminiProvider()
+                model = "gpt-4o-mini" if provider == "live" else implementation.model
+                await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=model,max_tokens=32)
+        asyncio.run(verify())
+
+    def connect(self, provider, api_key, fallback_key=None):
+        if provider not in {"live","gemini","jev"}: raise ValueError("지원하지 않는 연결입니다")
+        keys = {"live":"OPENAI_API_KEY","gemini":"GEMINI_API_KEY","jev":"TYPESAFE_API_KEY"}
+        supplied = {keys[provider]:api_key}
+        if provider == "jev": supplied["GEMINI_API_KEY"] = fallback_key or os.environ.get("GEMINI_API_KEY")
+        if any(not isinstance(v,str) or not v.strip() or len(v)>2048 or any(c.isspace() for c in v) for v in supplied.values()):
+            raise ValueError("공백 없는 API 키를 입력하세요. Jev는 Gemini 키도 필요합니다.")
+        with self.job_lock:
+            if self.job and self.job["process"].poll() is None: raise RuntimeError("실행 중에는 연결을 변경할 수 없습니다")
+            previous = {name:os.environ.get(name) for name in supplied}
+            os.environ.update(supplied)
+            try:
+                self._verify_connection(provider)
+            except Exception:
+                for name,value in previous.items():
+                    if value is None: os.environ.pop(name,None)
+                    else: os.environ[name]=value
+                raise ValueError("연결 확인에 실패했습니다. 키·API 사용 권한·결제 설정·네트워크를 확인하세요.") from None
+        return {"provider":provider,"configured":True,"validated":True,"message":"연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
+
+    def stop_job(self):
+        with self.job_lock:
+            if not self.job or self.job["process"].poll() is not None: raise ValueError("실행 중인 작업이 없습니다")
+            process=self.job["process"]
+            if os.name=="nt" and getattr(process,"pid",None):
+                subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],capture_output=True,check=False)
+            elif os.name!="nt" and getattr(process,"pid",None):
+                import signal
+                os.killpg(process.pid,signal.SIGTERM)
+            else: process.terminate()
+            self.job.update(status="cancelled",message="사용자가 실행을 중지했습니다. 미실행 세션도 비교 분모에 남습니다.",finished_at=datetime.now(timezone.utc).isoformat())
+            for folder in self._run_folders():
+                if _json_file(folder/"run.json",{}).get("study_id")==self.job.get("study_id") and not (folder/"summary.json").exists():
+                    write_json(folder/"summary.json",{"run_id":folder.name,"termination_reason":"cancelled","verification":"unknown","last_error":None})
+            from .metrics import aggregate_sessions
+            for path in self.runs_dir.rglob("experiment.json"):
+                if not path.resolve().is_relative_to(self.runs_dir): continue
+                item=_json_file(path,{})
+                if item.get("study_id")!=self.job.get("study_id"): continue
+                for session in item.get("sessions",[]):
+                    if session.get("status")=="running": session.update(status="cancelled",verification="unknown",termination_reason="cancelled")
+                item["groups"]=aggregate_sessions(item.get("sessions",[]))
+                item["finished_at"]=datetime.now(timezone.utc).isoformat()
+                write_json(path,item)
+            return self._job_state()
+
+    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None, repetitions=1, evaluation_checks=None):
+        if kind not in {"generate", "batch", "compare"}:
             raise ValueError("unknown job")
         if provider not in PROVIDERS:
             raise ValueError("unknown provider")
@@ -225,7 +302,10 @@ class Dashboard:
         except ValueError:
             raise ValueError("http:// 또는 https://로 시작하는 올바른 URL을 입력하세요") from None
         fixture = parsed.hostname in {"localhost", "127.0.0.1"} and parsed.path.endswith("shop.html")
-        if kind == "batch":
+        if type(repetitions) is not int or not 1 <= repetitions <= 3: raise ValueError("반복 수는 1~3회로 입력하세요")
+        if evaluation_checks is not None:
+            config = StudyConfig.model_validate({**config.model_dump(),"evaluation_checks":evaluation_checks})
+        if kind in {"batch", "compare"}:
             if provider == "mock" and not fixture:
                 raise ValueError("Mock은 기본 데모 사이트 전용입니다. 외부 사이트에는 Jev 또는 Gemini를 선택하세요.")
             required = {"jev": ("TYPESAFE_API_KEY", "GEMINI_API_KEY"), "gemini": ("GEMINI_API_KEY",),
@@ -271,6 +351,7 @@ class Dashboard:
                 if not generated:
                     raise ValueError("생성된 페르소나가 없습니다. 먼저 생성하세요.")
                 count = len(generated)
+                if count > 12: raise ValueError("최대 12개 페르소나로 실행할 수 있습니다")
                 example_path = job_dir / f"{job_id}-persona.json"
                 example_path.write_text(generated[0].model_dump_json(indent=2), encoding="utf-8")
                 study = config.model_dump()
@@ -282,8 +363,9 @@ class Dashboard:
                 StudyConfig.model_validate(study)
                 study_path = job_dir / f"{job_id}-study.json"
                 study_path.write_text(json.dumps(study, ensure_ascii=False, indent=2), encoding="utf-8")
-                command = [sys.executable, "-m", "uxagent", "batch", "--study", str(study_path), "--personas", str(personas_file), "--provider", provider, "--output", str(self.runs_dir)]
-                label = "순차 사용자 테스트"
+                command = [sys.executable, "-m", "uxagent", "compare" if kind=="compare" else "batch", "--study", str(study_path), "--personas", str(personas_file), "--provider", provider, "--output", str(self.runs_dir)]
+                if kind=="compare": command.extend(["--repetitions",str(repetitions)])
+                label = "일반 AI · 페르소나 AI 비교" if kind=="compare" else "순차 사용자 테스트"
             log_handle = log_path.open("ab")
             try:
                 process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log_handle,
@@ -293,7 +375,7 @@ class Dashboard:
             self.job = {"job_id": job_id, "kind": kind, "label": label, "provider": "mock" if kind == "generate" else provider,
                         "status": "running", "started_at": datetime.now(timezone.utc).isoformat(),
                         "log_path": str(log_path), "process": process, "persona_count": count,
-                        "study_id": f"dashboard-{job_id}" if kind == "batch" else None,
+                        "study_id": f"dashboard-{job_id}" if kind in {"batch","compare"} else None,
                         "message": "페르소나를 생성하고 있습니다." if kind == "generate" else "첫 페르소나의 브라우저를 시작하고 있습니다."}
             return self._job_state()
 
@@ -321,7 +403,16 @@ def make_handler(dashboard: Dashboard):
         def _get(self):
             path = urlsplit(self.path).path
             if path == "/api/state":
-                return self._send(200, dashboard.state())
+                return self._send(200, redact(dashboard.state()))
+            if path == "/api/experiments":
+                return self._send(200, dashboard.experiments())
+            if path.startswith("/api/export/"):
+                detail=dashboard.run_detail(unquote(path.removeprefix("/api/export/")))
+                if not detail: return self._send(404,{"error":"run_not_found"})
+                kind=parse_qs(urlsplit(self.path).query).get("format",["json"])[0]
+                types={"json":"application/json","csv":"text/csv","md":"text/markdown","html":"text/html"}
+                if kind not in types: return self._send(400,{"error":"unsupported_format"})
+                return self._send(200,export_report(detail,kind).encode("utf-8"),types[kind]+"; charset=utf-8")
             if path.startswith("/api/run/"):
                 detail = dashboard.run_detail(unquote(path.removeprefix("/api/run/")))
                 return self._send(200, detail) if detail else self._send(404, {"error": "run_not_found"})
@@ -343,8 +434,12 @@ def make_handler(dashboard: Dashboard):
             return self._send(404, {"error": "not_found"})
 
         def do_POST(self):
-            if urlsplit(self.path).path != "/api/jobs":
+            path=urlsplit(self.path).path
+            if path not in {"/api/jobs","/api/connection","/api/jobs/stop"}:
                 return self._send(404, {"error": "not_found"})
+            origin=self.headers.get("Origin")
+            if origin and urlsplit(origin).netloc != self.headers.get("Host"):
+                return self._send(403,{"error":"다른 사이트에서 보낸 요청은 허용하지 않습니다"})
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 0 or length > 16384:
@@ -352,11 +447,14 @@ def make_handler(dashboard: Dashboard):
                 payload = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(payload, dict):
                     raise ValueError("요청 형식이 올바르지 않습니다")
+                if path=="/api/connection":
+                    return self._send(200,dashboard.connect(payload.get("provider"),payload.get("api_key"),payload.get("fallback_key")))
+                if path=="/api/jobs/stop": return self._send(200,dashboard.stop_job())
                 job = dashboard.start_job(payload.get("kind"), payload.get("provider", "mock"), payload.get("start_url"), payload.get("task"),
-                                          payload.get("persona_count"), payload.get("persona_background"))
+                                          payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"))
                 return self._send(202, job)
             except (ValueError, OSError, RuntimeError) as exc:
-                return self._send(409 if isinstance(exc, RuntimeError) else 400, {"error": str(exc)})
+                return self._send(409 if isinstance(exc, RuntimeError) else 400, redact({"error": str(exc)}))
 
         def log_message(self, format, *args):
             # Keep HTTP access logs free of query strings and request data.

@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ -x .venv/Scripts/python.exe ]; then
+  .venv/Scripts/python.exe scripts/check_repo.py --staged
+elif [ -x .venv/bin/python ]; then
+  .venv/bin/python scripts/check_repo.py --staged
+else
+  python scripts/check_repo.py --staged
+fi

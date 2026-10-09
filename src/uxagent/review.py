@@ -17,12 +17,13 @@ def read_jsonl(path):
 def derive_issues(steps):
     actions=Counter();errors=Counter();sources={}
     for s in steps:
-        a=s.get("action") or {};key=(a.get("type"),a.get("target_id"));actions[key]+=1
-        if s.get("result",{}).get("error"):
+        a=s.get("action") or {};key=(a.get("type"),a.get("target_id"))
+        if a: actions[key]+=1
+        if (s.get("result") or {}).get("error"):
             code=s["result"]["error"].get("code","unknown");errors[code]+=1;sources.setdefault(code,[]).append(s["step_id"])
     issues=[]
     for (kind,target),n in actions.items():
-        if n>=3:issues.append({"issue_id":f"issue-{len(issues)+1:02d}","hypothesis":"The same control may be difficult to use or its state may be unclear.","evidence_step_ids":[s["step_id"] for s in steps if (s.get("action") or {}).get("target_id")==target],"observed_behavior":f"Repeated {kind} action on {target}.","alternative_explanations":["observation extraction missed a state change","model misread the current page"],"review_status":"needs_human_review"})
+        if n>=3:issues.append({"issue_id":f"issue-{len(issues)+1:02d}","hypothesis":"The same control may be difficult to use or its state may be unclear.","evidence_step_ids":[s["step_id"] for s in steps if ((s.get("action") or {}).get("type"),(s.get("action") or {}).get("target_id"))==(kind,target)],"observed_behavior":f"Repeated {kind} action on {target}.","alternative_explanations":["observation extraction missed a state change","model misread the current page"],"review_status":"needs_human_review"})
     for code,n in errors.items():
         if code not in ("action_timeout","navigation_blocked") and n>=2:
             issues.append({"issue_id":f"issue-{len(issues)+1:02d}","hypothesis":"Repeated interaction errors may indicate a usability issue.","evidence_step_ids":sources[code],"observed_behavior":f"Repeated system interaction error: {code}.","alternative_explanations":["browser or network instability","unsupported control behavior"],"review_status":"needs_human_review","classification":"system_error_candidate"})

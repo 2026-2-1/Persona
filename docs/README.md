@@ -6,6 +6,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 |---|---|
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [현재 상태](current-state.md) | 구현됨·미구현·기존 제한 |
+| [후속 개선 이슈](changes/README.md) | 단일 흐름·Claude·기록 개선 PR 작업 |
 | [개발 순서](roadmap.md) | 1차 최소 제품과 후속 실험 |
 | [개발 환경과 협업](development.md) | 설치·검사·브랜치·이슈·PR |
 | [구조](architecture.md) | 모듈별 책임과 변경 영향 |

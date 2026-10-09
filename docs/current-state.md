@@ -6,7 +6,7 @@
 
 - Python 3.11+ / Playwright Chromium / Pydantic.
 - 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
-- Mock, OpenAI Chat Completions, Gemini, Jev 후보 선택과 Gemini fallback.
+- Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
 - 요청·토큰 예산, 반복/시간/단계 제한, 허용 origin 검사.
 - 메모리 검색, 선택적인 embedding·Slow Loop·Wonder (기본 비활성).
 - 로컬 템플릿 persona 생성, 순차 격리 batch, 로그/PNG, 로컬 대시보드.
@@ -24,7 +24,7 @@
 ## 미구현 또는 미검증
 
 - 실제 대상 4개 과업의 독립 평가기, 기능별 검색·필터 검증.
-- 자유로운 AI 대화형 설정/근거 Q&A, ChatGPT 구독 OAuth/Responses 연동. 현재 설정은 안내형 폼/계획 카드다.
+- 자유로운 AI 대화형 설정/근거 Q&A, ChatGPT 구독 OAuth/Responses 연동. 현재 설정은 목표 → 사용자 → 모델 → 실행의 안내형 4단계이며 생성과 실행은 자동으로 이어진다.
 - 2인 사람 판정·합의와 개선 전후 자동 재검증. 현재 카드는 미검토 후보다.
 - 환경별 비교, 복구 사건 분석, 전체 서비스 큐/DB/스토리지.
 - 실제 API·외부 사이트·사람 행동 재현은 이번 저장소 설정의 검증 범위가 아님.

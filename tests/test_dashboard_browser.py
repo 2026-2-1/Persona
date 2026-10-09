@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def local_dashboard(tmp_path, monkeypatch):
     dashboard=Dashboard(tmp_path/"runs",tmp_path/"personas",ROOT/"configs/study.json")
     monkeypatch.setattr(dashboard,"_verify_connection",lambda provider:None)
-    for i in range(2):
+    for i in range(14):
         run=dashboard.runs_dir/f"run-{i}"
         run.mkdir(parents=True)
-        (run/"run.json").write_text(json.dumps({"run_id":run.name,"started_at":f"2026-10-09T00:00:0{i}"}),encoding="utf-8")
+        (run/"run.json").write_text(json.dumps({"run_id":run.name,"started_at":f"2026-10-09T00:00:{i:02d}","model":"claude-sonnet-4-6" if i==13 else "mock-v1"}),encoding="utf-8")
         (run/"persona.json").write_text((ROOT/"configs/persona.json").read_text(encoding="utf-8"),encoding="utf-8")
-        (run/"summary.json").write_text('{"verification":"success","termination_reason":"verified_success"}',encoding="utf-8")
+        (run/"summary.json").write_text(json.dumps({"verification":"failure" if i==1 else "success","termination_reason":"max_steps" if i==1 else "verified_success"}),encoding="utf-8")
     experiment=dashboard.runs_dir/"experiments"/"e1"
     experiment.mkdir(parents=True)
     (experiment/"experiment.json").write_text(json.dumps({"experiment_id":"e1","sessions":[
@@ -61,9 +61,11 @@ def test_key_explicit_connection_is_cleared_and_never_browser_stored(local_dashb
         browser=p.chromium.launch()
         page=browser.new_page()
         page.goto(local_dashboard)
-        page.locator("#connection-provider").select_option("live")
+        page.get_by_role('button',name='다음',exact=True).click()
+        page.get_by_role('button',name='다음',exact=True).click()
+        page.locator("#provider").select_option("live")
         page.locator("#api-key").fill("test-ui-credential")
-        page.get_by_role("button",name="API 연결",exact=True).click()
+        page.get_by_role("button",name="연결 확인",exact=True).click()
         expect(page.locator("#api-key")).to_have_value("")
         assert page.evaluate("localStorage.length + sessionStorage.length") == 0
         assert "test-ui-credential" not in page.request.get(local_dashboard+"/api/state").text()
@@ -94,4 +96,84 @@ def test_unstarted_session_does_not_link_to_nonexistent_run(local_dashboard):
         page.locator('#experiments [data-run="run-0"]').first.click()
         expect(page.locator("#view-history")).to_be_visible()
         expect(page.locator("#run-select")).to_have_value("run-0")
+        browser.close()
+
+
+def test_wizard_validates_and_preserves_inputs(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        page.goto(local_dashboard)
+        expect(page.locator('#wizard-step-1')).to_be_visible()
+        expect(page.locator('#persona-background')).not_to_be_visible()
+        page.locator('#target-url').fill('')
+        page.get_by_role('button',name='다음',exact=True).click()
+        expect(page.locator('#wizard-step-1')).to_be_visible()
+        page.locator('#target-url').fill('http://127.0.0.1:8000/shop.html')
+        page.locator('#task-input').fill('검은 가방 찾기')
+        page.get_by_role('button',name='다음',exact=True).click()
+        expect(page.locator('#wizard-step-2')).to_be_visible()
+        page.get_by_role('button',name='다음',exact=True).click()
+        expect(page.locator('#wizard-step-3')).to_be_visible()
+        page.locator('#provider').select_option('jev')
+        expect(page.locator('#api-key')).to_be_visible()
+        expect(page.locator('#fallback-key')).to_be_visible()
+        assert page.locator('#provider option[value="claude"]').count()==1
+        page.get_by_role('button',name='이전',exact=True).click()
+        page.get_by_role('button',name='이전',exact=True).click()
+        expect(page.locator('#task-input')).to_have_value('검은 가방 찾기')
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.close()
+
+
+def test_history_search_and_filter_reach_records_beyond_twelve(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        expect(page.locator('#history-runs .run-row')).to_have_count(14)
+        page.locator('#record-filter').select_option('failure')
+        expect(page.locator('#history-runs .run-row')).to_have_count(1)
+        expect(page.locator('#history-runs [data-run="run-1"]')).to_be_visible()
+        page.locator('#record-filter').select_option('all')
+        page.locator('#record-search').fill('run-0')
+        expect(page.locator('#history-runs .run-row')).to_have_count(1)
+        page.wait_for_timeout(1700)
+        expect(page.locator('#record-search')).to_have_value('run-0')
+        page.locator('#history-runs .run-row').click()
+        expect(page.locator('#run-select')).to_have_value('run-0')
+        page.locator('#record-search').fill('claude-sonnet-4-6')
+        expect(page.locator('#history-runs [data-run="run-13"]')).to_be_visible()
+        browser.close()
+
+
+@pytest.mark.parametrize('generation_status,expected_jobs',[('completed',['generate','batch']),('failed',['generate'])])
+def test_wizard_automatically_chains_only_successful_generation(local_dashboard,generation_status,expected_jobs):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        baseline=page.request.get(local_dashboard+'/api/state').json()
+        job=None
+        submitted=[]
+        def state_route(route):
+            route.fulfill(json={**baseline,'job':job})
+        def job_route(route):
+            nonlocal job
+            body=route.request.post_data_json
+            submitted.append(body['kind'])
+            job={'job_id':body['kind'],'kind':body['kind'],'status':generation_status if body['kind']=='generate' else 'completed','message':'사용자 생성 실패' if generation_status=='failed' else '완료'}
+            route.fulfill(status=202,json={**job,'status':'running'})
+        page.route('**/api/state',state_route)
+        page.route('**/api/jobs',job_route)
+        page.goto(local_dashboard)
+        for _ in range(3):
+            page.get_by_role('button',name='다음',exact=True).click()
+        page.get_by_role('button',name='테스트 실행',exact=True).click()
+        if generation_status=='completed':
+            expect(page.locator('#view-history')).to_be_visible()
+        else:
+            expect(page.locator('#notice')).to_have_text('사용자 생성 실패')
+            expect(page.locator('#view-test')).to_be_visible()
+        assert submitted==expected_jobs
         browser.close()

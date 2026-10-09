@@ -23,9 +23,9 @@ def _parser():
     p=sub.add_parser("serve");p.add_argument("--host",default="127.0.0.1");p.add_argument("--port",type=int,default=8000)
     p=sub.add_parser("observe");p.add_argument("--study",default="configs/study.json");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs/observe")
     p=sub.add_parser("act");p.add_argument("--study",default="configs/study.json");p.add_argument("--action",required=True,help="Action JSON file");p.add_argument("--headless",action="store_true")
-    providers=["mock","jev","gemini","live"]
+    providers=["mock","jev","gemini","live","claude"]
     p=sub.add_parser("run");p.add_argument("--study",default="configs/study.json");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs")
-    p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=providers,default="mock")
+    p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=["mock","live"],default="mock")
     p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs")
     p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs")
     p=sub.add_parser("dashboard",help="Open the local UXAgent run dashboard");p.add_argument("--port",type=int,default=8765);p.add_argument("--runs",default="runs");p.add_argument("--personas-dir",default="runs/personas");p.add_argument("--study",default="configs/study.json")

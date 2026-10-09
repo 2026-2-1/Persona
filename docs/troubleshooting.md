@@ -33,3 +33,11 @@
 - 중첩 experiments 폴더의 비교 데이터 누락을 재현하고 안전한 runs 하위 전체 검색으로 수정했다.
 
 각 사례는 tests/test_regressions.py, test_metrics.py, test_experiments.py, test_dashboard_mvp.py로 보호한다. 실제 실행 결과는 verification.md에 기록한다.
+
+## 단일 실행 흐름과 Claude (PR 작업)
+
+- 생성 실패·중지 후 테스트가 추가로 시작되지 않게 상태와 job ID를 확인한다. 위저드 이전/다음과 polling에도 입력을 보존한다.
+- Jev는 TypeSafe+Gemini, Claude는 ANTHROPIC_API_KEY가 필요하다. 키는 서버 메모리에만 보관하고 실패 시 이전 값으로 복원한다.
+- Claude 실제 FastLoop 호출이 mock으로 집계되는 것을 실패 테스트로 확인하고 Claude로 분류했다. 비용 미확인은 0원으로 바꾸지 않는다.
+- 모델명 검색 안내와 실제 검색 대상의 불일치를 재현하고 run.model을 포함했다. 14개 기록/결과 필터/모델명 검색을 브라우저로 검사한다.
+- 성공 조건의 간단한 완료 문구는 body text_contains 확인이다. 실제 과업 전체를 증명하는 일반 평가기로 해석하지 않는다.

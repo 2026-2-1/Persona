@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = Path(__file__).resolve().parent
 RUN_ID = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 OBS_ID = re.compile(r"^obs-[A-Za-z0-9_-]{1,100}$")
-PROVIDERS = {"mock", "jev", "gemini", "live"}
+PROVIDERS = {"mock", "jev", "gemini", "live", "claude"}
 PERSONA_CONTEXTS = [
     "검색 결과에서 여러 후보를 비교한 뒤 선택한다.",
     "안내 문구와 조건을 꼼꼼히 읽고 진행한다.",
@@ -104,11 +104,11 @@ class Dashboard:
                 error = next((run["error"] for run in batch.get("runs", []) if run.get("error")), None)
                 if error:
                     message = f"{batch['failed']}/{batch['requested']}명 실행 오류: {error}"
-        for name in ("TYPESAFE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"):
+        for name in ("TYPESAFE_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
             value = os.environ.get(name)
             if value:
                 message = message.replace(value, "[redacted]")
-        return message[:1000]
+        return redact(message)[:1000]
 
     def _run_folders(self):
         if not self.runs_dir.is_dir():
@@ -186,7 +186,7 @@ class Dashboard:
             "study": _json_file(self.study, {}),
             "persona_defaults": {"count": persona_config.get("count", 6), "background": example.background},
             "providers": {"jev": bool(os.environ.get("TYPESAFE_API_KEY") and os.environ.get("GEMINI_API_KEY")),
-                          "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY"))},
+                          "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(os.environ.get("ANTHROPIC_API_KEY"))},
         }
 
     def run_detail(self, run_id):
@@ -224,20 +224,20 @@ class Dashboard:
         return redact(sorted([row for row in rows if row],key=lambda row:row.get("started_at",""),reverse=True))
 
     def _verify_connection(self, provider):
-        from .llm import OpenAIProvider, GeminiProvider, JevProvider
+        from .llm import OpenAIProvider, GeminiProvider, JevProvider, ClaudeProvider
         async def verify():
             if provider == "jev":
                 await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
                 await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],max_tokens=32)
             else:
-                implementation = OpenAIProvider() if provider == "live" else GeminiProvider()
+                implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else GeminiProvider()
                 model = "gpt-4o-mini" if provider == "live" else implementation.model
                 await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=model,max_tokens=32)
         asyncio.run(verify())
 
     def connect(self, provider, api_key, fallback_key=None):
-        if provider not in {"live","gemini","jev"}: raise ValueError("지원하지 않는 연결입니다")
-        keys = {"live":"OPENAI_API_KEY","gemini":"GEMINI_API_KEY","jev":"TYPESAFE_API_KEY"}
+        if provider not in {"live","gemini","jev","claude"}: raise ValueError("지원하지 않는 연결입니다")
+        keys = {"live":"OPENAI_API_KEY","gemini":"GEMINI_API_KEY","jev":"TYPESAFE_API_KEY","claude":"ANTHROPIC_API_KEY"}
         supplied = {keys[provider]:api_key}
         if provider == "jev": supplied["GEMINI_API_KEY"] = fallback_key or os.environ.get("GEMINI_API_KEY")
         if any(not isinstance(v,str) or not v.strip() or len(v)>2048 or any(c.isspace() for c in v) for v in supplied.values()):
@@ -309,7 +309,7 @@ class Dashboard:
             if provider == "mock" and not fixture:
                 raise ValueError("Mock은 기본 데모 사이트 전용입니다. 외부 사이트에는 Jev 또는 Gemini를 선택하세요.")
             required = {"jev": ("TYPESAFE_API_KEY", "GEMINI_API_KEY"), "gemini": ("GEMINI_API_KEY",),
-                        "live": ("OPENAI_API_KEY",)}.get(provider, ())
+                        "live": ("OPENAI_API_KEY",), "claude": ("ANTHROPIC_API_KEY",)}.get(provider, ())
             if any(not os.environ.get(name) for name in required):
                 raise ValueError(f"{provider} 실행에 필요한 API 키가 .env에 없습니다")
         with self.job_lock:

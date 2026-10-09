@@ -141,7 +141,7 @@ class FastLoop:
                 self.budget.settle(reservation,actual)
                 settled=True
                 gemini = hasattr(self.provider, "choose") or getattr(self.provider,"model",None)=="gemini-2.5-flash-lite"
-                if self.call_log: self.call_log({"module":"fast","provider":"gemini" if gemini else "openai" if getattr(self.provider,"model",None) is None else "mock","model":usage.get("model",self.model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":usage.get("input_tokens"),"output_tokens":usage.get("output_tokens"),"estimated":actual is None,"estimated_cost_usd":estimate_cost_usd("gemini" if gemini else "other",usage.get("input_tokens"),usage.get("output_tokens")),"fallback_reason":fallback_reason})
+                if self.call_log: self.call_log({"module":"fast","provider":"gemini" if gemini else "claude" if str(getattr(self.provider,"model","")).startswith("claude-") else "openai" if getattr(self.provider,"model",None) is None else "mock","model":usage.get("model",self.model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":usage.get("input_tokens"),"output_tokens":usage.get("output_tokens"),"estimated":actual is None,"estimated_cost_usd":estimate_cost_usd("gemini" if gemini else "other",usage.get("input_tokens"),usage.get("output_tokens")),"fallback_reason":fallback_reason})
                 raw=json.loads(response)
                 if candidates:
                     selected=next((candidate for candidate in candidates if candidate["id"]==raw.get("candidate_id")),None)
@@ -172,7 +172,7 @@ class FastLoop:
                     transient_retries+=1
                     await asyncio.sleep(min(2**transient_retries,4))
                     continue
-                if any(key in last_error for key in ("OPENAI_API_KEY is required", "GEMINI_API_KEY is required", "TYPESAFE_API_KEY is required")) or last_error.startswith(("provider_http_", "provider_tls_error")):
+                if any(key in last_error for key in ("OPENAI_API_KEY is required", "GEMINI_API_KEY is required", "TYPESAFE_API_KEY is required", "ANTHROPIC_API_KEY is required")) or last_error.startswith(("provider_http_", "provider_tls_error")):
                     raise RuntimeError(last_error) from exc
                 if not transient and not format_repaired:
                     messages.append({"role":"assistant","content":response or ""})

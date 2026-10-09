@@ -13,7 +13,7 @@ from .review import derive_issues
 
 def redact(value):
     text = json.dumps(value, ensure_ascii=False)
-    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "TYPESAFE_API_KEY"):
+    for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "TYPESAFE_API_KEY", "ANTHROPIC_API_KEY"):
         secret = os.environ.get(name)
         if secret:
             text = text.replace(json.dumps(secret)[1:-1], "[redacted]")

@@ -431,6 +431,11 @@ def make_handler(dashboard: Dashboard):
                 return self._send(200, (PACKAGE / "dashboard" / "index.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/dashboard.js":
                 return self._send(200, (PACKAGE / "dashboard" / "app.js").read_bytes(), "text/javascript; charset=utf-8")
+            assets = {"/assets/persona-mark.svg": ("persona-mark.svg", "image/svg+xml"),
+                      "/assets/PretendardVariable.woff2": ("PretendardVariable.woff2", "font/woff2")}
+            if path in assets:
+                name, mime = assets[path]
+                return self._send(200, (PACKAGE / "dashboard" / "assets" / name).read_bytes(), mime)
             return self._send(404, {"error": "not_found"})
 
         def do_POST(self):

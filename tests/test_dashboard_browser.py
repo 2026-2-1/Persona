@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -88,7 +89,7 @@ def test_unstarted_session_does_not_link_to_nonexistent_run(local_dashboard):
         page=browser.new_page()
         page.goto(local_dashboard)
         page.get_by_role("tab",name="AI 비교",exact=True).click()
-        expect(page.locator("#experiments").get_by_role("button",name="미확인 · 미실행",exact=True)).to_be_disabled()
+        expect(page.locator("#experiments").get_by_role("button",name=re.compile("미확인.*미실행"))).to_be_disabled()
         assert page.locator('#experiments [data-run="planned-only"]').count()==0
         page.locator('#experiments [data-run="run-0"]').first.click()
         expect(page.locator("#view-history")).to_be_visible()

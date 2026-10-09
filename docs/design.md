@@ -1,3 +1,15 @@
+# 사용자 적용 사항 (2026-10-09, 아래 원본보다 우선)
+
+- UI 글꼴은 로컬 Pretendard Variable, 전체 자간은 -3% (-0.03em). 입력·버튼에도 상속한다.
+- Persona 심볼은 dashboard/assets/persona-mark.svg를 브랜드와 favicon에 사용한다.
+- 반복되는 연구 설명·주의문·슬로건은 기본 화면에서 제거하고 문서와 필요한 상세 도움말에 둔다.
+- 작업 상태는 ‘AI 비교 완료’, ‘과업 테스트 진행 중’처럼 표시한다. 긴 문장을 점으로 연결하지 않는다.
+- 실행 목록은 사용자/상태/행동 수를 시각적으로 구분한다. 완료 시 중지 버튼을 숨기고 완료 안내를 중복 표시하지 않는다.
+- 비용 안내·오류·미검토 상태 등 실제 선택에 필요한 정보는 짧게 유지한다.
+- Pretendard v1.3.9의 원본과 SIL OFL 고지는 assets/OFL.txt에 포함한다. 출처: https://github.com/orioncactus/pretendard
+
+---
+
 # Ui — Style Reference
 > clinical blueprint on frosted paper
 

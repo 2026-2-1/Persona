@@ -15,3 +15,6 @@ playwright/.cache/
 ms-playwright/
 
 .DS_Store
+
+build/
+dist/

@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
+CLAUDE_MODEL = "claude-sonnet-4-6"
 GEMINI_INPUT_USD_PER_MILLION = 0.10
 GEMINI_OUTPUT_USD_PER_MILLION = 0.40
 JEV_INPUT_USD_PER_MILLION = 0.042
@@ -128,6 +129,39 @@ class GeminiProvider:
         usage = data.get("usageMetadata", {})
         content = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
         return content, {"model": model, "input_tokens": usage.get("promptTokenCount"), "output_tokens": usage.get("candidatesTokenCount")}
+
+
+class ClaudeProvider:
+    model = CLAUDE_MODEL
+
+    async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
+        return await asyncio.to_thread(self._complete, messages, model or self.model, temperature, max_tokens)
+
+    def _complete(self, messages, model, temperature, max_tokens):
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required for --provider claude")
+        system = [message["content"] for message in messages if message["role"] == "system"]
+        body = {"model": model, "messages": [message for message in messages if message["role"] != "system"],
+                "temperature": temperature, "max_tokens": max_tokens}
+        if system:
+            body["system"] = "\n".join(system)
+        request = urllib.request.Request("https://api.anthropic.com/v1/messages",
+            data=json.dumps(body, ensure_ascii=False).encode(),
+            headers={"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                data = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == 529:
+                raise RuntimeError("provider_transient:provider_http_529") from None
+            raise RuntimeError(f"provider_http_{exc.code}") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise RuntimeError(_transport_error(exc)) from None
+        content = "".join(block.get("text", "") for block in data.get("content", []) if block.get("type") == "text")
+        usage = data.get("usage", {})
+        return content, {"model": data.get("model", model), "input_tokens": usage.get("input_tokens"),
+                         "output_tokens": usage.get("output_tokens")}
 
 
 class BudgetExceeded(RuntimeError): pass

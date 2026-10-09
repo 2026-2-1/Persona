@@ -431,7 +431,9 @@ def make_handler(dashboard: Dashboard):
                 return self._send(200, (PACKAGE / "dashboard" / "index.html").read_bytes(), "text/html; charset=utf-8")
             if path == "/dashboard.js":
                 return self._send(200, (PACKAGE / "dashboard" / "app.js").read_bytes(), "text/javascript; charset=utf-8")
-            assets = {"/assets/persona-wordmark.svg": ("persona-wordmark.svg", "image/svg+xml"),
+            assets = {"/assets/persona-icon.png": ("persona-icon.png", "image/png"),
+                      "/assets/persona-generated-logo.png": ("persona-generated-logo.png", "image/png"),
+                      "/assets/persona-wordmark.svg": ("persona-wordmark.svg", "image/svg+xml"),
                       "/assets/persona-wordmark-light.svg": ("persona-wordmark-light.svg", "image/svg+xml"),
                       "/assets/persona-mark.svg": ("persona-mark.svg", "image/svg+xml"),
                       "/assets/PretendardVariable.woff2": ("PretendardVariable.woff2", "font/woff2")}

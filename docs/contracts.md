@@ -16,6 +16,12 @@
 
 ## 기능 점검
 
+API 없는 시나리오는 `provider=scenario`, `execution_mode=scripted`, `condition=scenario`이며 `source_kind=synthetic_fixture/live_configured`로 출처를 분리한다. LLM 요청/토큰/모델은 사용하지 않는다. 코드 판정 checkpoint마다 `task_id`, `step_id`, `observation_id`, `evaluation_method=code`, `reason`, 실제 evidence를 연결한다. 성공은 등록된 체크 범위만 뜻한다. 이 데이터는 일반 AI/페르소나 AI 효과 비교의 분모에 섞지 않는다.
+
+공개 부분 프로필은 `partial=true`, `scope=visible_cards/detail_name_price`, `unchecked_fields`로 미검증 범위를 보존한다. `search_results`는 URL과 표시 이름만 확인하므로 입력/폼 제출 성공이 아니다. `filters_price`는 URL 상한과 표시 가격, `detail_basic`은 이름/가격만 확인한다. DOM 값의 누락·서로 다른 중복 값은 unknown이며 넓은 상세 필드 성공으로 바꾸지 않는다.
+
+키보드는 Enter/Escape/Tab/ArrowUp/ArrowDown/Space, scroll은 명시적 허용 후 ±900px이다. 신뢰된 시나리오 selector도 최신 관찰 registry에 들어 있는 목표에만 적용한다. 이동·스크롤 후에는 새 관찰을 발행하고 stale 목표를 거절한다. native select는 관찰한 옵션 값만 허용하며 custom combobox를 native select로 간주하지 않는다.
+
 feature_id, scenario_id, 시작 상태, 입력, expected_result, 판정 방법(code/AI-assisted/human), 결과(pass/fail/unknown/unsupported), evidence를 가진다. 검색·필터·정렬은 실행 전 정의한 조건으로 확인한다. AI 해석만 있는 판정은 확정 결과로 둔갑시키지 않는다.
 
 ## 오류 복구
@@ -23,6 +29,8 @@ feature_id, scenario_id, 시작 상태, 입력, expected_result, 판정 방법(c
 사전에 recoverable 오류 코드를 정한다. 같은 오류가 계속되는 동안 하나의 사건으로 묶고 정상 상태에 복귀하면 닫는다. 예비 기본안은 3회 후속 행동 내 복귀이며 본 실험 전 고정한다. 복구 여부·추가 행동·시간·최종 과업 성공을 구분한다. 정상 정책 차단은 도구 실패로 세지 않는다.
 
 ## 문제 카드와 사람 검토
+
+scripted 실행의 실패 체크는 `classification=unmet_checkpoint`, 행동/관찰 오류는 `system_error_candidate`로 기록한다. checkpoint에 연결된 단계와 원래 evidence를 보존하고 스크립트 반복 행동을 AI 혼란으로 분류하지 않는다. 제안·완료 조건은 과업별이며 사람 검토 전이다.
 
 카드에는 ID, task/feature/environment/site_version, 관찰 사실, 원인 가설/대안 설명, 영향 세션/해당 세션, 근거 step, 분류, 심각도, 개선 제안, 완료 조건, 회귀 검사, 독립 reviewer 2명 판정, 합의, 재검증을 둔다.
 

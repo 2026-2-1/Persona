@@ -12,6 +12,32 @@ from uxagent.monitor import Dashboard, make_handler
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_scenario_wizard_has_registered_checks_and_no_key_or_generation(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        requests=[]
+        def accept(route):
+            requests.append(route.request.post_data_json)
+            route.fulfill(json={'job_id':'scenario-ui','kind':'scenario','status':'completed'})
+        page.route('**/api/jobs',accept)
+        page.goto(local_dashboard)
+        page.locator('#scenario-demo').click()
+        page.locator('#wizard-next').click()
+        expect(page.locator('#scenario-settings')).to_be_visible()
+        expect(page.locator('#persona-settings')).not_to_be_visible()
+        page.locator('#wizard-next').click()
+        expect(page.locator('#model-connection')).not_to_be_visible()
+        page.locator('#wizard-next').click()
+        expect(page.locator('#plan-preview')).to_contain_text('등록된 과업별 코드 평가')
+        expect(page.locator('#goal-text-field')).not_to_be_visible()
+        expect(page.locator('#evaluation-checks')).not_to_be_visible()
+        page.locator('#run-batch').click()
+        expect(page.locator('#view-history')).to_be_visible()
+        assert requests==[{'kind':'scenario','provider':'scenario','scenario_case':'flow','fixture_defect':None}]
+        browser.close()
+
+
 @pytest.fixture
 def local_dashboard(tmp_path, monkeypatch):
     dashboard=Dashboard(tmp_path/"runs",tmp_path/"personas",ROOT/"configs/study.json")

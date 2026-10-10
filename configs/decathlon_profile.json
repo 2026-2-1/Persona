@@ -1,0 +1,26 @@
+{
+  "profile_id": "decathlon-synthetic-v1",
+  "synthetic": true,
+  "description": "데카트론 과업 재현 · 합성 데이터. 공식 상품·사이트·live 캡처가 아니다. 실제 사이트에 사용하려면 검증된 선택자로 교체하고 synthetic을 false로 설정한다.",
+  "selectors": {
+    "query": "[aria-label=\"상품 검색\"]",
+    "applied_query": "#applied-query",
+    "results": "#results",
+    "cards": "[data-product]",
+    "card_name": ".product-name",
+    "card_price": ".product-price",
+    "card_color": ".product-color",
+    "empty": "#empty-results",
+    "color": "[aria-label=\"검정\"]",
+    "max_price": "[aria-label=\"최대 가격\"]",
+    "applied_color": "#applied-color",
+    "applied_price": "#applied-price",
+    "detail": "[data-detail]",
+    "detail_fields": {
+      "name": "[data-field=\"name\"]", "price": "[data-field=\"price\"]",
+      "color": "[data-field=\"color\"]", "sizes": "[data-field=\"sizes\"]",
+      "use": "[data-field=\"use\"]", "stock": "[data-field=\"stock\"]",
+      "pickup": "[data-field=\"pickup\"]"
+    }
+  }
+}

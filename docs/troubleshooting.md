@@ -34,6 +34,12 @@
 
 각 사례는 tests/test_regressions.py, test_metrics.py, test_experiments.py, test_dashboard_mvp.py로 보호한다. 실제 실행 결과는 verification.md에 기록한다.
 
+## 2026-10-11 API 없는 과업 점검
+
+- 증상: 화면 밖 가격 popup의 Max 입력을 selector로 찾아도 관찰 후보가 없어 실패했다. 원인: registry는 viewport의 최신 목표만 포함한다. 해결: 가격 메뉴 후 명시적 scroll → 재관찰 → 두 번째 가격 입력을 선택하는 live 시나리오로 제한했다. 회귀: 전역 selector로 관찰을 우회하지 않기, stale ID·허용 origin·password 차단과 Min/Max 순서 확인. 실제 결과: 지정 검색 결과부터 가격/상세 부분 실행은 성공, 전체 결과는 verification.md에 기록한다.
+- 증상: 홈페이지 한글 검색 입력·Enter 후 URL 검색어를 확인하지 못했다. 원인: 한글 순차 입력과 검색 제안/제출 이벤트의 실제 원인은 아직 확정하지 못했다. 대응: `input_mode=sequential`과 한정된 키·대기를 제공하고 검색 결과 URL부터 시작하는 부분 과업을 별도로 정의했다. 회귀: 검색 결과 URL 성공을 폼 제출 성공으로 바꾸지 않기. 실제 결과: 홈페이지 제출 시도는 unknown; 해결 완료로 표시하지 않는다.
+- 증상: scripted 실행의 반복 조작을 AI 혼란 후보로 해석하거나 필터 실패 카드를 마지막 단계에 연결할 수 있었다. 원인: 기존 AI 기록 해석과 최종 상태 가정을 시나리오에 적용했다. 해결: checkpoint별 단계·observation·판정 근거와 과업별 제안을 연결하고 실행 오류를 별도 후보로 구분한다. 회귀: null action/result 체크, 정상 스크립트의 반복 클릭, 실패 체크 단계와 카드 근거 일치. 실제 검사 목록과 결과는 verification.md를 따른다.
+
 ## 단일 실행 흐름과 Claude (PR 작업)
 
 - 생성 실패·중지 후 테스트가 추가로 시작되지 않게 상태와 job ID를 확인한다. 위저드 이전/다음과 polling에도 입력을 보존한다.
@@ -41,3 +47,12 @@
 - Claude 실제 FastLoop 호출이 mock으로 집계되는 것을 실패 테스트로 확인하고 Claude로 분류했다. 비용 미확인은 0원으로 바꾸지 않는다.
 - 모델명 검색 안내와 실제 검색 대상의 불일치를 재현하고 run.model을 포함했다. 14개 기록/결과 필터/모델명 검색을 브라우저로 검사한다.
 - 성공 조건의 간단한 완료 문구는 body text_contains 확인이다. 실제 과업 전체를 증명하는 일반 평가기로 해석하지 않는다.
+
+
+## 마지막 checkpoint가 실행 시간 상한 뒤 성공한 문제 (2026-10-11)
+
+- 증상: 3초 제한인데 마지막 코드 검사가 4초 뒤 pass를 반환하면 scenario_completed/success가 됐다.
+- 원인: 단계 시작 전만 deadline을 확인해 await 중 소요 시간을 제한하지 못했다.
+- 해결: 남은 시간의 asyncio.timeout으로 브라우저 작업 전체를 제한하고 timeout은 unknown으로 기록한다. 중간 action/result와 관찰 ID를 보존하고 초기 진입 중 중단된 브라우저를 정리한다.
+- 함께 확인할 회귀: 수동 검사·행동 후 검사·실행 중 timeout·브라우저 시작 중 timeout, 기존 정상 합성 실행.
+- 실제 검증: 위 timeout 회귀 4개 통과, 재리뷰에서 중요 미해결 결함 없음. 전체 결과는 verification.md 참고.

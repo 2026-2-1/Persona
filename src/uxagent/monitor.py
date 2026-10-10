@@ -85,6 +85,7 @@ class Dashboard:
                 self.job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 if process.returncode == 0:
                     self.job["message"] = (f"페르소나 {self.job['persona_count']}명 생성 완료" if self.job["kind"] == "generate"
+                                           else "시나리오 점검을 마쳤습니다. 과업 판정과 근거를 확인하세요." if self.job["kind"] == "scenario"
                                            else "AI 비교 실행을 마쳤습니다. 비교 결과를 확인하세요." if self.job["kind"] == "compare"
                                            else "순차 테스트 실행을 마쳤습니다. 각 페르소나의 결과를 확인하세요.")
                 else:
@@ -171,7 +172,7 @@ class Dashboard:
             matches = [run for run in runs if run.get("persona") == persona]
             persona["run"] = matches[0] if matches else None
         job = self._job_state()
-        if job and job["kind"] == "batch":
+        if job and job["kind"] in {"batch","scenario"}:
             job_runs = [run for run in runs if run["study_id"] == job["study_id"]]
             job["run_ids"] = [run["run_id"] for run in job_runs]
             job["finished_personas"] = sum(not run["active"] for run in job_runs)
@@ -281,7 +282,30 @@ class Dashboard:
                 write_json(path,item)
             return self._job_state()
 
-    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None, repetitions=1, evaluation_checks=None):
+    def start_scenario(self, case='flow', defect=None):
+        presets={'flow':'decathlon-flow.json','empty':'decathlon-empty.json','reset':'decathlon-reset.json',
+                 'scroll':'decathlon-scroll.json','live':'decathlon-live-results.json'}
+        if case not in presets or defect not in (None,'search','filter','reset','detail'):
+            raise ValueError('등록된 시나리오와 재현 결함만 선택할 수 있습니다')
+        if case=='live' and defect:raise ValueError('실제 사이트에는 재현 결함을 적용하지 않습니다')
+        with self.job_lock:
+            if self.job and self.job['process'].poll() is None:
+                raise RuntimeError('another dashboard job is already running')
+            job_id=uuid.uuid4().hex[:10]
+            job_dir=self.runs_dir/'.dashboard';job_dir.mkdir(parents=True,exist_ok=True)
+            log_path=job_dir/f'{job_id}.log'
+            command=[sys.executable,'-m','uxagent','scenario','--config',str(ROOT/'configs'/'scenarios'/presets[case]),
+                     '--output',str(self.runs_dir),'--study-id',f'dashboard-{job_id}']
+            if defect:command.extend(['--defect',defect])
+            with log_path.open('ab') as log_handle:
+                process=subprocess.Popen(command,cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log_handle,stderr=subprocess.STDOUT,start_new_session=True)
+            self.job={'job_id':job_id,'kind':'scenario','label':'API 없는 과업 점검','provider':'scenario','status':'running',
+                      'started_at':datetime.now(timezone.utc).isoformat(),'log_path':str(log_path),'process':process,
+                      'persona_count':0,'study_id':f'dashboard-{job_id}','message':'사전 정의한 브라우저 단계를 실행하고 있습니다.'}
+            return self._job_state()
+
+    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None, repetitions=1, evaluation_checks=None, scenario_case='flow', fixture_defect=None):
+        if kind=='scenario':return self.start_scenario(scenario_case,fixture_defect)
         if kind not in {"generate", "batch", "compare"}:
             raise ValueError("unknown job")
         if provider not in PROVIDERS:
@@ -460,7 +484,7 @@ def make_handler(dashboard: Dashboard):
                     return self._send(200,dashboard.connect(payload.get("provider"),payload.get("api_key"),payload.get("fallback_key")))
                 if path=="/api/jobs/stop": return self._send(200,dashboard.stop_job())
                 job = dashboard.start_job(payload.get("kind"), payload.get("provider", "mock"), payload.get("start_url"), payload.get("task"),
-                                          payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"))
+                                          payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"),payload.get('scenario_case','flow'),payload.get('fixture_defect'))
                 return self._send(202, job)
             except (ValueError, OSError, RuntimeError) as exc:
                 return self._send(409 if isinstance(exc, RuntimeError) else 400, redact({"error": str(exc)}))

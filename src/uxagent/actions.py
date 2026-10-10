@@ -8,9 +8,10 @@ from .browser import wait_for_settle
 
 
 class ActionExecutor:
-    def __init__(self, session, allowed_origins: list[str], timeout_ms=5000, settle_ms=3000):
+    def __init__(self, session, allowed_origins: list[str], timeout_ms=5000, settle_ms=3000, *, allow_scroll=False):
         self.session, self.allowed_origins = session, allowed_origins
         self.timeout_ms, self.settle_ms = timeout_ms, settle_ms
+        self.allow_scroll = allow_scroll
         self.registries = {}
 
     def publish(self, registry):
@@ -31,6 +32,8 @@ class ActionExecutor:
                 raise ActionFailure("stale_observation", "Observation is no longer current")
             if registry.tab_id != action.tab_id or self.session.tab_id(page) != action.tab_id:
                 raise ActionFailure("stale_observation", "The action tab does not match the active observation")
+            if action.type in ("scroll", "keypress") and not origin_allowed(page.url, self.allowed_origins):
+                raise ActionFailure("navigation_blocked", "Current page origin is not allowed")
             if action.type in ("switch_tab", "close_tab"):
                 target = next((p for p in self.session.pages if not p.is_closed() and self.session.tab_id(p) == action.target_tab_id), None)
                 if not target:
@@ -56,11 +59,18 @@ class ActionExecutor:
                     raise ActionFailure("navigation_blocked", "Previous page is outside allowed origins")
                 if not origin_allowed(page.url, self.allowed_origins):
                     raise ActionFailure("navigation_blocked", "Previous page is outside allowed origins")
+            elif action.type == "scroll":
+                if not self.allow_scroll:
+                    raise ActionFailure("unsupported_control", "Explicit scrolling is disabled for this study")
+                # A bounded page scroll reveals new viewport targets only after recapture.
+                await page.evaluate("distance => window.scrollBy({top: distance, behavior: 'instant'})", action.scroll_y)
             else:
                 target_data = registry.targets.get(action.target_id or "")
                 if not target_data: raise ActionFailure("target_not_found", "Target was not in the current observation")
                 locator, tag = target_data.locator, target_data.tag
                 if await locator.count() == 0: raise ActionFailure("target_detached", "Target is no longer attached")
+                if not await locator.is_enabled() or await locator.get_attribute("aria-disabled") == "true":
+                    raise ActionFailure("not_interactable", "Target is disabled")
                 if action.type == "click":
                     if "click" not in target_data.capabilities:
                         raise ActionFailure("unsupported_control", "Target is not a click candidate")
@@ -71,8 +81,20 @@ class ActionExecutor:
                     if "type" not in target_data.capabilities: raise ActionFailure("unsupported_control", "Target is not a text input")
                     if not await locator.is_enabled(): raise ActionFailure("not_interactable", "Input is disabled")
                     if await locator.get_attribute("type") == "password": raise ActionFailure("unsupported_control", "Password input is not supported")
+                    if await locator.get_attribute("readonly") is not None: raise ActionFailure("unsupported_control", "Readonly input is not supported")
                     await locator.scroll_into_view_if_needed(timeout=self.timeout_ms)
-                    await locator.fill(action.text or "", timeout=self.timeout_ms)
+                    if action.input_mode == "sequential":
+                        await locator.fill("", timeout=self.timeout_ms)
+                        await locator.press_sequentially(action.text or "", timeout=self.timeout_ms)
+                    else:
+                        await locator.fill(action.text or "", timeout=self.timeout_ms)
+                elif action.type == "keypress":
+                    if not target_data.capabilities.intersection({"click", "type"}):
+                        raise ActionFailure("unsupported_control", "Target is not a safe keyboard control")
+                    if (await locator.get_attribute("type") or "").lower() == "password":
+                        raise ActionFailure("unsupported_control", "Password input is not supported")
+                    await locator.scroll_into_view_if_needed(timeout=self.timeout_ms)
+                    await locator.press(" " if action.key == "Space" else action.key, timeout=self.timeout_ms)
                 elif action.type == "hover":
                     if "hover" not in target_data.capabilities:raise ActionFailure("unsupported_control","Target is not an observed hover candidate")
                     await locator.scroll_into_view_if_needed(timeout=self.timeout_ms)

@@ -45,7 +45,7 @@ class StudyConfig(StrictModel):
     evaluation_checks: list[EvaluationCheck] = Field(default_factory=list, max_length=50)
     viewport: Viewport = Field(default_factory=Viewport)
     observation_policy: Literal["viewport"] = "viewport"
-    explicit_scroll: Literal[False] = False
+    explicit_scroll: bool = False
     max_steps: int = Field(default=30, gt=0)
     run_timeout_seconds: float = Field(default=300, gt=0)
     action_timeout_ms: int = Field(default=5000, gt=0)
@@ -153,7 +153,7 @@ class Observation(StrictModel):
 
 
 class Action(StrictModel):
-    type: Literal["click", "type", "hover", "select", "navigate", "back", "switch_tab", "close_tab"]
+    type: Literal["click", "type", "hover", "select", "keypress", "scroll", "navigate", "back", "switch_tab", "close_tab"]
     observation_id: str
     tab_id: str
     target_id: str | None = None
@@ -161,22 +161,29 @@ class Action(StrictModel):
     option_value: str | None = None
     url: str | None = None
     target_tab_id: str | None = None
+    key: Literal["Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "Space"] | None = None
+    scroll_y: int | None = Field(default=None, strict=True, ge=-900, le=900)
+    input_mode: Literal["fill", "sequential"] | None = None
 
     @model_validator(mode="after")
     def validate_fields(self):
         required = {"click": ["target_id"], "type": ["target_id", "text"], "hover": ["target_id"],
-                    "select": ["target_id", "option_value"], "navigate": ["url"],
+                    "select": ["target_id", "option_value"], "keypress": ["target_id", "key"],
+                    "scroll": ["scroll_y"], "navigate": ["url"],
                     "switch_tab": ["target_tab_id"], "close_tab": ["target_tab_id"]}
         for key in required.get(self.type, []):
             if getattr(self, key) is None:
                 raise ValueError(f"{key} is required for {self.type}")
-        allowed={"click":{"target_id"},"type":{"target_id","text"},"hover":{"target_id"},
-                 "select":{"target_id","option_value"},"navigate":{"url"},"back":set(),
+        allowed={"click":{"target_id"},"type":{"target_id","text","input_mode"},"hover":{"target_id"},
+                 "select":{"target_id","option_value"},"keypress":{"target_id","key"},
+                 "scroll":{"scroll_y"},"navigate":{"url"},"back":set(),
                  "switch_tab":{"target_tab_id"},"close_tab":{"target_tab_id"}}
-        fields={"target_id","text","option_value","url","target_tab_id"}
+        fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","input_mode"}
         supplied={key for key in fields if getattr(self,key) is not None}
         if supplied-allowed[self.type]:
             raise ValueError(f"fields {sorted(supplied-allowed[self.type])} are not allowed for {self.type}")
+        if self.type == "scroll" and self.scroll_y == 0:
+            raise ValueError("scroll_y must be nonzero")
         return self
 
 

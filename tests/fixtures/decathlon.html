@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>데카트론 과업 재현 · 합성 데이터</title>
+<style>
+body{font:16px system-ui,sans-serif;margin:0;color:#161616;background:#f7f7f7}main{max-width:1000px;margin:auto;padding:30px}button,input,select{font:inherit;padding:10px;border:1px solid #bbb;background:white;color:#111}button{cursor:pointer}h1{font-size:26px}section{margin:20px 0;padding:20px;border:1px solid #ccc;background:white}#results{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}article{border:1px solid #ccc;padding:16px}article h2{font-size:20px}[hidden]{display:none!important}.summary{display:flex;gap:18px;margin:15px 0}footer{margin-top:850px;padding:25px;border-top:1px solid #ccc}label{display:inline-block;margin-right:20px}#detail h2{font-size:22px}@media(max-width:650px){#results{grid-template-columns:1fr}.summary{display:block}}
+</style></head><body>
+<main data-persona-fixture="decathlon-synthetic-v1">
+<h1>데카트론 과업 재현 · 합성 데이터</h1>
+<p>공식 사이트 복제나 실제 상품 자료가 아닌 API 없는 기능 검증용 스포츠 상품 화면입니다.</p>
+<form id="search-form"><label>상품 검색 <input id="query" aria-label="상품 검색" autocomplete="off"></label><button type="submit">검색</button></form>
+<button id="filter-open" type="button" aria-expanded="false" aria-controls="filter-panel">필터 열기</button>
+<section id="filter-panel" hidden><h2>상품 조건</h2>
+<label><input id="color" type="checkbox" aria-label="검정">검정</label>
+<label>최대 가격 <select id="max-price" aria-label="최대 가격"><option value="">제한 없음</option><option value="30000">30,000원</option><option value="50000">50,000원</option></select></label>
+<button id="filter-apply" type="button">필터 적용</button><button id="filter-reset" type="button">필터 초기화</button>
+</section>
+<div class="summary" aria-live="polite"><span>검색어: <strong id="applied-query"></strong></span><span>색상: <strong id="applied-color">전체</strong></span><span>최대 가격: <strong id="applied-price">제한 없음</strong></span></div>
+<p id="loading" role="status" hidden>상품 결과를 업데이트하고 있습니다.</p>
+<section aria-label="검색 결과"><div id="results"></div><p id="empty-results" hidden>검색 결과가 없습니다. 다른 검색어를 입력해 주세요.</p></section>
+<section data-detail id="detail" hidden aria-label="상품 상세 정보"></section>
+<footer><h2>배송과 매장 픽업 안내</h2><p>합성 안내: 배송은 주문 후 2~3일, 매장 픽업은 재고 확인 후 가능합니다.</p><button type="button" id="pickup-guide">매장 픽업 안내 확인</button><p id="pickup-confirm" hidden>매장 픽업 안내를 확인했습니다.</p></footer>
+</main>
+<script>
+(() => {
+  const products = [
+    {id:'bag-black',name:'러닝 가방 블랙',price:24900,color:'검정',sizes:'10 L / 20 L',use:'러닝과 일상 운동',stock:'온라인 재고 있음',pickup:'합성 서울 매장 픽업 가능'},
+    {id:'bag-blue',name:'러닝 가방 블루',price:19900,color:'파랑',sizes:'10 L',use:'러닝과 가벼운 여행',stock:'온라인 재고 있음',pickup:'합성 부산 매장 픽업 가능'},
+    {id:'bag-premium',name:'러닝 가방 프로',price:45900,color:'검정',sizes:'25 L',use:'장거리 러닝',stock:'온라인 재고 있음',pickup:'합성 서울 매장 픽업 가능'},
+    {id:'shoe-black',name:'트레킹 신발 블랙',price:29900,color:'검정',sizes:'250 / 260 / 270 mm',use:'트레킹과 야외 걷기',stock:'온라인 재고 있음',pickup:'합성 대전 매장 픽업 가능'}
+  ];
+  const defect = new URLSearchParams(location.search).get('defect');
+  const $ = id => document.getElementById(id);
+  const price = n => n.toLocaleString('ko-KR')+'원';
+  let appliedQuery='', appliedColor='', appliedPrice='', revision=0;
+  function render() {
+    let shown = products.filter(p => p.name.includes(appliedQuery));
+    if (defect !== 'filter') shown=shown.filter(p => (!appliedColor||p.color===appliedColor)&&(!appliedPrice||p.price<=Number(appliedPrice)));
+    if (defect==='search' && appliedQuery) shown=products;
+    $('results').replaceChildren(...shown.map(p=>{
+      const card=document.createElement('article');card.dataset.product=p.id;card.dataset.name=p.name;card.dataset.price=p.price;card.dataset.color=p.color;
+      for(const [tag,cls,value] of [['h2','product-name',p.name],['p','product-price',price(p.price)],['p','product-color',p.color]]){const e=document.createElement(tag);e.className=cls;e.textContent=value;card.append(e);}
+      const button=document.createElement('button');button.type='button';button.textContent=p.name+' 상세 보기';button.onclick=()=>detail(p);card.append(button);return card;
+    }));
+    $('empty-results').hidden=shown.length>0;
+    $('applied-query').textContent=appliedQuery;$('applied-color').textContent=appliedColor||'전체';$('applied-price').textContent=appliedPrice?price(Number(appliedPrice)):'제한 없음';
+    $('loading').hidden=true;
+  }
+  function delayedRender(){const current=++revision;$('loading').hidden=false;setTimeout(()=>{if(current===revision)render();},100);}
+  function detail(p){
+    const panel=$('detail');panel.replaceChildren();panel.hidden=false;
+    for(const key of ['name','price','color','sizes','use','stock','pickup']){
+      if(defect==='detail' && key==='stock')continue;
+      const e=document.createElement(key==='name'?'h2':'p');e.dataset.field=key;e.textContent=key==='price'?price(p.price):p[key];panel.append(e);
+    }
+  }
+  $('search-form').onsubmit=e=>{e.preventDefault();appliedQuery=$('query').value.trim();$('detail').hidden=true;delayedRender();};
+  $('filter-open').onclick=()=>{$('filter-panel').hidden=false;$('filter-open').setAttribute('aria-expanded','true');};
+  $('filter-apply').onclick=()=>{appliedColor=$('color').checked?'검정':'';appliedPrice=$('max-price').value;$('detail').hidden=true;delayedRender();};
+  $('filter-reset').onclick=()=>{$('color').checked=false;$('max-price').value='';if(defect!=='reset'){appliedColor='';appliedPrice='';}$('detail').hidden=true;delayedRender();};
+  $('pickup-guide').onclick=()=>{$('pickup-confirm').hidden=false;};render();
+})();
+</script></body></html>

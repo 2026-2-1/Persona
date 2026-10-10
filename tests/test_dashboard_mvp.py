@@ -65,3 +65,17 @@ def test_nested_experiment_is_discoverable(setup):
     folder.mkdir(parents=True)
     (folder/"experiment.json").write_text('{"experiment_id":"e1","started_at":"2026-10-09"}',encoding="utf-8")
     assert dashboard.experiments()[0]["experiment_id"]=="e1"
+
+
+def test_scenario_job_has_no_key_or_persona_generation_requirement(setup,monkeypatch):
+    dashboard,commands,_=setup
+    for name in ('OPENAI_API_KEY','GEMINI_API_KEY','TYPESAFE_API_KEY','ANTHROPIC_API_KEY'):
+        monkeypatch.delenv(name,raising=False)
+    dashboard.personas_dir.joinpath('personas.jsonl').unlink()
+    job=dashboard.start_job('scenario',provider='scenario',scenario_case='flow')
+    assert 'scenario' in commands[-1]
+    assert '--provider' not in commands[-1]
+    assert job['provider']=='scenario'
+    assert job['kind']=='scenario'
+    with pytest.raises(ValueError):
+        dashboard.start_scenario('../../.env')

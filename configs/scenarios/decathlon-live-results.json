@@ -1,0 +1,89 @@
+{
+  "study_id": "decathlon-live-results-price-detail",
+  "task": "공개 데카트론의 사전 지정 검색 결과에서 가격 상한과 상품 상세 이름·가격을 확인한다. 검색 폼 제출과 색상/재고/픽업은 이 시나리오의 검증 범위가 아니다.",
+  "start_url": "https://www.decathlon.co.kr/search?query=러닝화",
+  "allowed_origins": [
+    "https://www.decathlon.co.kr",
+    "https://decathlon.co.kr"
+  ],
+  "profile_file": "../decathlon_live_profile.json",
+  "run_timeout_seconds": 300,
+  "action_timeout_ms": 15000,
+  "steps": [
+    {
+      "label": "지정된 검색 URL과 상품명 확인 (폼 제출 미검증)",
+      "type": "check",
+      "check": "search_results",
+      "expectations": {
+        "query": "러닝화"
+      },
+      "checkpoint_timeout_ms": 10000
+    },
+    {
+      "label": "프로모션 닫기(있는 경우)",
+      "type": "click",
+      "target_name": "Close",
+      "optional": true
+    },
+    {
+      "label": "프로모션 텍스트 닫기(있는 경우)",
+      "type": "click",
+      "target_name": "창 닫기",
+      "optional": true
+    },
+    {
+      "label": "알림 안내 닫기(있는 경우)",
+      "type": "click",
+      "target_name": "다음에",
+      "optional": true
+    },
+    {
+      "label": "가격 메뉴 열기",
+      "type": "click",
+      "target_name": "가격",
+      "target_role": "button"
+    },
+    {
+      "label": "가격 입력 영역까지 스크롤",
+      "type": "scroll",
+      "scroll_y": 600
+    },
+    {
+      "label": "최대 가격 입력",
+      "type": "type",
+      "target_selector": "input[data-testid=\"price-filter-input\"]",
+      "target_index": 1,
+      "text": "80000"
+    },
+    {
+      "label": "가격 변경 적용과 상품 가격 확인",
+      "type": "keypress",
+      "target_selector": "input[data-testid=\"price-filter-input\"]",
+      "target_index": 1,
+      "key": "Tab",
+      "check": "filters_price",
+      "expectations": {
+        "query": "러닝화",
+        "max_price": 80000
+      },
+      "checkpoint_timeout_ms": 10000
+    },
+    {
+      "label": "필터 결과 상품으로 복귀",
+      "type": "scroll",
+      "scroll_y": -600
+    },
+    {
+      "label": "관찰된 킵코어 상품 상세 진입",
+      "type": "click",
+      "target_selector": "a[data-cy=\"productTile\"][href*=\"-8926930.html\"]",
+      "check": "detail_basic",
+      "expectations": {
+        "product_name": "남성 러닝화 킵코어",
+        "max_price": 80000
+      },
+      "checkpoint_timeout_ms": 10000
+    }
+  ],
+  "warmup_ms": 1500
+}

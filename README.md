@@ -14,11 +14,14 @@ python -m venv .venv
 
 [로컬 대시보드](http://127.0.0.1:8765)에서 **무료 데모로 시작 → 다음 → 다음 → 다음 → 테스트 실행**으로 진행합니다. 목표·사용자·모델·실행 확인의 4단계이며 마지막 버튼에서 사용자 생성과 실행이 자동으로 이어집니다. 마지막 단계에서 **AI 비교**를 선택하면 일반 AI와 페르소나 AI를 같은 조건으로 비교합니다. 별도의 페르소나 생성 버튼을 찾을 필요가 없습니다.
 
+API 연결 없이 검색·필터·상세와 개선 후보를 점검하려면 **API 없는 과업 점검 → 다음 → 시나리오 선택 → 다음 → 다음 → 점검 실행**을 선택하세요. 준비된 합성 페이지의 네 가지 과업과 재현 결함을 실행합니다. **공개 데카트론 부분 점검 (실험)**은 지정된 검색 URL부터 가격 상한·상세 이름/가격을 확인합니다. [시나리오 사용법과 판정 범위](docs/offline-scenarios.md)를 참고하세요.
+
 macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 참고하세요. Python 3.11+가 필요합니다.
 
 ## 현재 MVP
 
 - **과업 테스트:** 검색·가격/색상 필터·상세 확인을 로컬 fixture의 독립 평가기로 판정합니다.
+- **API 없는 점검:** 검색→필터→상세, 빈 결과와 검색어 변경, 필터 초기화, 스크롤 안내의 사전 정의된 단계를 실행하고 단계별 코드 판정·PNG·URL·미검토 카드를 기록합니다. AI/페르소나 비교 결과와 구분합니다.
 - **외부 사이트:** visible / text_contains / url_contains 확인 조건을 등록할 수 있습니다. 조건이 없으면 성공 미확인입니다.
 - **AI 비교:** 같은 구매 제약·모델·환경·호출 상한에서 인물 배경·탐색 성향만 제외한 일반 AI와 페르소나 AI를 비교합니다. 예정 세션·중지·오류도 분모에 남깁니다.
 - **실행 기록:** 검색(사용자·모델·ID)과 결과 필터로 12건 이후 기록까지 접근할 수 있습니다. 전후 화면·URL·행동·판정·모델 호출과 기록 확보율을 봅니다. 복구는 '오류 후 3행동 내 도구 실행 성공'이라는 보조 지표이며 과업 성공과 구분합니다.
@@ -39,6 +42,8 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/python.exe scripts/check_repo.py
 .venv/Scripts/python.exe -m uxagent run --study configs/study.json --provider mock --headless
+.venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-flow.json
+.venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-flow.json --defect filter
 .venv/Scripts/python.exe -m uxagent personas --config configs/personas.json --output runs/personas
 .venv/Scripts/python.exe -m uxagent compare --study configs/study.json --personas runs/personas/personas.jsonl --provider mock --repetitions 1
 ```
@@ -63,6 +68,8 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 모의 행동·응답은 실제 사용자 증언이나 인간 행동 재현의 증거가 아닙니다. 문제 후보는 사람 검토 전이며, 후보가 없다고 사이트에 문제가 없다는 뜻도 아닙니다. 비교의 mock 결과는 시스템 흐름 검증용이고 페르소나 효과 측정 결과가 아닙니다.
 
-viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·custom combobox·password 입력·독립 scroll/keypress는 아직 미지원입니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Slow Loop·Wonder는 기본 비활성이며 비교에서는 persona 정보 누출을 막기 위해 Slow Loop를 비활성으로 제한합니다.
+viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력은 미지원입니다. 제한된 keypress와 명시적으로 활성화한 최대 ±900px scroll을 지원합니다. custom combobox는 관찰된 클릭/키보드/option 요소만 조작하며 native select와 같은 범용 지원을 보장하지 않습니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Slow Loop·Wonder는 기본 비활성이며 비교에서는 persona 정보 누출을 막기 위해 Slow Loop를 비활성으로 제한합니다.
+
+2026-10-11 공개 데카트론의 사전 지정 검색 결과 → 8만원 상한 → 킵코어 상세 79,900원 부분 점검을 실제 Python 실행기에서 확인했습니다. 홈페이지 한글 검색 폼 제출은 별도 시도에서 미확인이었습니다. 색상·사이즈·재고·픽업·전체 상품 목록은 성공 범위에 포함하지 않습니다. 상세 결과는 [검증 기록](docs/verification.md)에 남깁니다.
 
 `.env`, API 키, OAuth 토큰, 인증 상태, 원본 개인 문서와 고객 개인정보는 push하지 않습니다.

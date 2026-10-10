@@ -1,0 +1,62 @@
+{
+  "fixture": "decathlon.html",
+  "profile_file": "../decathlon_profile.json",
+  "task": "가방 검색 후 검정색·3만원 이하 필터를 적용하고 상품 상세 정보를 확인한다.",
+  "study_id": "decathlon-reset",
+  "steps": [
+    {
+      "label": "검색어 입력",
+      "type": "type",
+      "target_name": "상품 검색",
+      "text": "가방"
+    },
+    {
+      "label": "Enter로 검색 제출",
+      "type": "keypress",
+      "target_name": "상품 검색",
+      "key": "Enter",
+      "check": "search",
+      "expectations": {
+        "query": "가방"
+      }
+    },
+    {
+      "label": "필터 메뉴 열기",
+      "type": "click",
+      "target_name": "필터 열기"
+    },
+    {
+      "label": "검정색 선택",
+      "type": "click",
+      "target_name": "검정",
+      "target_role": "checkbox"
+    },
+    {
+      "label": "가격 상한 선택",
+      "type": "select",
+      "target_name": "최대 가격",
+      "option_value": "30000"
+    },
+    {
+      "label": "필터 적용 결과 확인",
+      "type": "click",
+      "target_name": "필터 적용",
+      "check": "filters",
+      "expectations": {
+        "query": "가방",
+        "color": "검정",
+        "max_price": 30000
+      }
+    },
+    {
+      "label": "필터 해제와 전체 검색 결과 복원",
+      "type": "click",
+      "target_name": "필터 초기화",
+      "check": "reset_filters",
+      "expectations": {
+        "query": "가방",
+        "minimum_results": 3
+      }
+    }
+  ]
+}

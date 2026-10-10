@@ -1,0 +1,40 @@
+{
+  "fixture": "decathlon.html",
+  "profile_file": "../decathlon_profile.json",
+  "task": "가방 검색 후 검정색·3만원 이하 필터를 적용하고 상품 상세 정보를 확인한다.",
+  "study_id": "decathlon-empty",
+  "steps": [
+    {
+      "label": "없는 상품 검색어 입력",
+      "type": "type",
+      "target_name": "상품 검색",
+      "text": "없는상품XYZ"
+    },
+    {
+      "label": "빈 결과 안내 확인",
+      "type": "keypress",
+      "target_name": "상품 검색",
+      "key": "Enter",
+      "check": "empty_search",
+      "expectations": {
+        "query": "없는상품XYZ"
+      }
+    },
+    {
+      "label": "검색어 입력",
+      "type": "type",
+      "target_name": "상품 검색",
+      "text": "가방"
+    },
+    {
+      "label": "Enter로 검색 제출",
+      "type": "keypress",
+      "target_name": "상품 검색",
+      "key": "Enter",
+      "check": "search",
+      "expectations": {
+        "query": "가방"
+      }
+    }
+  ]
+}

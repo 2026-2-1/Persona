@@ -88,7 +88,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     actual_headed=config.headed if headed is None else headed
     try:
         async with BrowserSession(actual_headed,config.viewport.width,config.viewport.height) as browser:
-            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms)
+            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll)
             await browser.set_allowed_origins(config.allowed_origins)
             page=browser.active
             await page.goto(config.start_url,wait_until="domcontentloaded",timeout=config.action_timeout_ms)

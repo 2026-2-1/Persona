@@ -41,3 +41,14 @@ python3 -m venv .venv
 GitHub Actions는 Windows/Python 3.13, Ubuntu/Python 3.11에서 pytest·repo 검사·doctor·mock을 실행한다. API 비밀값과 라이브 API 호출은 CI에 넣지 않는다. CI는 push/PR/manual trigger이며 main의 기존 설정을 변경하지 않는다.
 
 scripts/check_repo.py는 선택한 Git 파일의 민감 경로·일부 credential 패턴과 Markdown 로컬 링크를 검사하는 보조 장치다. 모든 비밀을 검출하는 보장은 없으므로 직접 검토도 수행한다.
+
+## API 없는 시나리오 검사
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q tests/test_extended_actions.py tests/test_decathlon_evaluator.py tests/test_offline_scenarios.py
+.venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-flow.json
+.venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-flow.json --defect filter
+.venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-reset.json --defect reset
+```
+
+대시보드의 `API 없는 과업 점검`은 별도 API 연결 없이 기록·개선 보드·내보내기로 이어진다. [사용법](offline-scenarios.md)에 네 합성 과업과 실제 공개 부분 검증을 구분한다. live config는 CI 기본 검사가 아니며 상품/사이트 변경 때문에 결과를 보장하지 않는다. `summary.json`의 판정·체크·종료 사유를 확인하고 실제 결과를 verification.md에 기록한다. CLI 종료 코드 0이 과업 성공을 뜻하지 않는다.

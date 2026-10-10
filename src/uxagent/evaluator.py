@@ -32,8 +32,17 @@ async def configured_checks(page, checks):
     return results
 
 
-async def evaluate(page, evaluator_id: str, checks=None) -> dict:
+async def evaluate(page, evaluator_id: str, checks=None, *, expectations=None, profile=None) -> dict:
     extra = await configured_checks(page, checks or [])
+    if evaluator_id.startswith('decathlon-') and evaluator_id.endswith('-v1'):
+        from .decathlon_eval import evaluate_decathlon
+        result = await evaluate_decathlon(page, evaluator_id[len('decathlon-'):-len('-v1')], expectations, profile)
+        result['feature_checks'].extend(extra)
+        if any(c['status'] == 'fail' for c in extra):
+            result['verification'] = 'failure'
+        elif any(c['status'] == 'unknown' for c in extra) and result['verification'] == 'success':
+            result['verification'] = 'unknown'
+        return result
     if evaluator_id != 'local-bag-detail-v1':
         statuses = {check['status'] for check in extra}
         verification = 'failure' if 'fail' in statuses else ('success' if statuses == {'pass'} else 'unknown')

@@ -28,6 +28,7 @@ def _parser():
     p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=["mock","live"],default="mock")
     p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs")
     p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs")
+    p=sub.add_parser("scenario",help="Run a preregistered browser scenario without any LLM API");p.add_argument("--config",default="configs/scenarios/decathlon-flow.json");p.add_argument("--output",default="runs");p.add_argument("--headed",action="store_true");p.add_argument("--defect",choices=["search","filter","reset","detail"]);p.add_argument("--study-id")
     p=sub.add_parser("dashboard",help="Open the local UXAgent run dashboard");p.add_argument("--port",type=int,default=8765);p.add_argument("--runs",default="runs");p.add_argument("--personas-dir",default="runs/personas");p.add_argument("--study",default="configs/study.json")
     p=sub.add_parser("review");p.add_argument("--run",required=True)
     p=sub.add_parser("survey");p.add_argument("--run",required=True)
@@ -76,7 +77,7 @@ async def _act(study_path, action_path, headless):
             await browser.active.goto(config.start_url,wait_until="domcontentloaded")
             obs,registry=await observe(browser);raw["observation_id"]=obs.observation_id;raw["tab_id"]=obs.tab_id
             action=Action.model_validate(raw)
-            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms);executor.publish(registry)
+            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll);executor.publish(registry)
             result=await executor.execute(action)
             print(result.model_dump_json(indent=2));return 0 if result.ok else 2
     finally:
@@ -133,6 +134,11 @@ def main():
             directory,summary=asyncio.run(run_comparison(args.study,args.personas,args.provider,args.repetitions,args.output))
             print(json.dumps({"experiment_dir":str(directory),"summary":summary},ensure_ascii=False,indent=2))
             return 1 if summary["system_errors"] else 0
+        if args.command=="scenario":
+            from .offline import run_scenario
+            directory,summary=asyncio.run(run_scenario(args.config,output_root=args.output,headed=args.headed,defect=args.defect,study_id_override=args.study_id))
+            print(json.dumps({"run_dir":str(directory),"summary":summary},ensure_ascii=False,indent=2))
+            return 1 if summary["termination_reason"] in ("browser_error","scenario_action_error","run_timeout") else 0
         if args.command=="dashboard":
             from .monitor import serve_dashboard
             serve_dashboard(args.port,args.runs,args.personas_dir,args.study)

@@ -49,13 +49,17 @@ def configure_ssl_certificates():
         os.environ["SSL_CERT_FILE"] = ca_file
 
 
-def estimate_cost_usd(provider: str, input_tokens: int | None, output_tokens: int | None):
+def estimate_cost_usd(provider: str, input_tokens: int | None, output_tokens: int | None, model: str | None = None):
     if input_tokens is None or output_tokens is None:
         return None
     if provider == "gemini":
+        if model is not None and model != GEMINI_MODEL:
+            return None
         return round(input_tokens * GEMINI_INPUT_USD_PER_MILLION / 1_000_000 +
                      output_tokens * GEMINI_OUTPUT_USD_PER_MILLION / 1_000_000, 10)
     if provider == "typesafe":
+        if model is not None and model != "jev-latest":
+            return None
         return round(input_tokens * JEV_INPUT_USD_PER_MILLION / 1_000_000, 10)
     return None
 

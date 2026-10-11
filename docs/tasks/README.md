@@ -15,3 +15,5 @@
 | 09 | [[phase:2] 4개 과업·환경 편차·2인 검토·개선 전후 실험](09-human-ab.md) | [#10](https://github.com/2026-2-1/Persona/issues/10) | phase:2 |
 | 10 | [[phase:2] Jev·Slow Loop·MiroFish·프롬프트 기술 비교](10-technology-experiments.md) | [#11](https://github.com/2026-2-1/Persona/issues/11) | phase:2 |
 | 11 | [[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동](11-research-mcp.md) | [#12](https://github.com/2026-2-1/Persona/issues/12) | phase:3 |
+
+- [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.

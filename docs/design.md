@@ -424,3 +424,7 @@ shadcn/ui is built on three principles visible in every token: (1) achromatic by
 ```
 
 로고 간격 보정: 심볼의 투명 여백을 고려해 brand gap은 0, 심볼 margin-right는 -3px로 설정한다.
+
+## 설정 지원
+
+4단계 입력 순서를 유지하고 오른쪽에 시작 예시·추천·짧은 질문 도우미를 배치한다. 최근 기록은 접어서 제공한다. 모델과 발급 안내는 3단계에 묶고 추천 적용은 명시적인 버튼으로만 처리한다. 단색·Pretendard·모바일 한 열을 유지한다.

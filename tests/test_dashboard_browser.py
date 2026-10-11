@@ -378,3 +378,19 @@ def test_wizard_automatically_chains_only_successful_generation(local_dashboard,
             expect(page.locator('#view-test')).to_be_visible()
         assert submitted==expected_jobs
         browser.close()
+
+
+def test_guide_connect_survives_initial_state_load(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        pending=[]
+        page.route('**/api/state',lambda route:pending.append(route))
+        page.goto(local_dashboard)
+        page.locator('#guide-connect').click()
+        expect(page.locator('#wizard-step-3')).to_be_visible()
+        response=page.request.get(local_dashboard+'/api/state').json()
+        pending[0].fulfill(json=response)
+        expect(page.locator('#target-url')).to_have_value(response['study']['start_url'])
+        expect(page.locator('#wizard-step-3')).to_be_visible()
+        browser.close()

@@ -50,7 +50,7 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
         save()
         try:
             run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'])
-            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost')})
+            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost', 'llm_request_count', 'llm_tokens', 'provider_usage', 'metrics', 'provider', 'model', 'execution_mode', 'source_kind')})
             session['run_dir'] = str(run_dir.resolve())
             reason = summary.get('termination_reason')
             session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason == 'interrupted' else 'completed'

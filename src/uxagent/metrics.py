@@ -6,24 +6,84 @@ from pathlib import Path
 from statistics import median
 
 
+def _number(value):
+    from math import isfinite
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value) and value >= 0
+
+
+def _count(value):
+    return _number(value) and int(value) == value
+
+
+def _coverage(values, name):
+    valid = _number if name in ('cost', 'estimated_cost_usd') else _count
+    known = [value for value in values if valid(value)]
+    return {name: sum(known) if values and len(known) == len(values) else None,
+            name + '_known_total': sum(known) if known else None,
+            name + '_known_sessions': len(known),
+            name + '_unknown_sessions': len(values) - len(known)}
+
+
 def aggregate_sessions(sessions):
     groups = {}
     for condition in ('general', 'persona'):
-        rows = [s for s in sessions if s['condition'] == condition]
-        costs = [s.get('cost') for s in rows]
+        rows = [s for s in sessions if s.get('condition') == condition
+                and s.get('execution_mode') != 'scripted' and s.get('provider') != 'scenario']
         successful = [s for s in rows if s.get('verification') == 'success']
-        success = sum(s.get('verification') == 'success' for s in rows)
-        groups[condition] = {
+        success = len(successful)
+        def successful_median(key):
+            values = [s.get(key) for s in successful if (_count if key == 'action_attempts' else _number)(s.get(key))]
+            return median(values) if values else None
+        group = {
             'requested': len(rows), 'success': success,
             'failure': sum(s.get('verification') == 'failure' for s in rows),
-            'unknown': sum(s.get('verification', 'unknown') == 'unknown' for s in rows),
+            'unknown': sum(s.get('verification') not in ('success', 'failure') for s in rows),
             'rate': success / len(rows) if rows else None,
-            'median_actions': median([s['action_attempts'] for s in successful if s.get('action_attempts') is not None]) if any(s.get('action_attempts') is not None for s in successful) else None,
-            'median_ms': median([s['elapsed_ms'] for s in successful if s.get('elapsed_ms') is not None]) if any(s.get('elapsed_ms') is not None for s in successful) else None,
+            'median_actions': successful_median('action_attempts'),
+            'median_ms': successful_median('elapsed_ms'),
             'median_population': 'verified_success',
-            'cost': sum(costs) if costs and all(c is not None for c in costs) else None,
-            'statuses': {status: sum(s['status'] == status for s in rows) for status in sorted({s['status'] for s in rows})},
+            'median_actions_sessions': sum(_count(s.get('action_attempts')) for s in successful),
+            'median_ms_sessions': sum(_number(s.get('elapsed_ms')) for s in successful),
+            'statuses': {status: sum((s.get('status') or 'unknown') == status for s in rows)
+                         for status in sorted({(s.get('status') or 'unknown') for s in rows})},
         }
+        for name in ('cost', 'llm_request_count', 'llm_tokens'):
+            group.update(_coverage([s.get(name) for s in rows], name))
+        # A present mapping enumerates the providers used; a missing mapping cannot
+        # establish zero usage. An empty mapping with nonzero requests is incomplete.
+        usages = [s.get('provider_usage') if isinstance(s.get('provider_usage'), dict)
+                  and (s['provider_usage'] or (_count(s.get('llm_request_count')) and s.get('llm_request_count') == 0)) else None for s in rows]
+        providers = sorted({name for usage in usages if usage is not None for name in usage})
+        group['provider_usage'] = {}
+        for provider in providers:
+            entry = {}
+            for key in ('requests', 'input_tokens', 'output_tokens', 'estimated_cost_usd'):
+                values = [None if usage is None else 0 if provider not in usage
+                          else usage[provider].get(key) if isinstance(usage[provider], dict) else None for usage in usages]
+                entry.update(_coverage(values, key))
+            group['provider_usage'][provider] = entry
+        for key in ('input_tokens', 'output_tokens'):
+            values = []
+            for usage in usages:
+                parts = [entry.get(key) if isinstance(entry, dict) else None for entry in usage.values()] if usage is not None else None
+                values.append(sum(parts) if parts is not None and all(_count(v) for v in parts) else None)
+            group.update(_coverage(values, key))
+        recordings = []
+        for row in rows:
+            metrics = row.get('metrics')
+            recording = metrics.get('recording') if isinstance(metrics, dict) else None
+            if not isinstance(recording, dict) or not _count(recording.get('attempted')) or not _count(recording.get('complete')) or recording['complete'] > recording['attempted']:
+                recording = None
+            recordings.append(recording)
+        recording = {}
+        for key in ('complete', 'attempted'):
+            recording.update(_coverage([r.get(key) if r else None for r in recordings], key))
+        recording['known_sessions'] = sum(r is not None for r in recordings)
+        recording['unknown_sessions'] = len(rows) - recording['known_sessions']
+        recording['rate'] = recording['complete'] / recording['attempted'] if recording['attempted'] else None
+        recording['known_rate'] = recording['complete_known_total'] / recording['attempted_known_total'] if recording['attempted_known_total'] else None
+        group['recording'] = recording
+        groups[condition] = group
     return groups
 
 

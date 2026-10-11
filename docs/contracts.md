@@ -57,3 +57,11 @@ scripted 실행의 실패 체크는 `classification=unmet_checkpoint`, 행동/�
 카드의 review_history는 현재 card_version과 일치하는 판정만 포함한다. latest_review는 그중 마지막 저장 판정이며 미검토는 null이다. 과거 버전 판정은 전체 reviews에 남는다. 상태는 needs_human_review/reviewed/deferred이며 verdict와 과업 verification은 별도 필드다. review_summary의 reviewed는 보류 제외 판정 완료 건수, deferred는 보류 건수, unreviewed는 현재 버전 미검토 건수다.
 
 검토자 별칭은 인증된 사용자 신원이나 독립 2인 합의를 의미하지 않는다. 이전 판정을 덮어쓰지 않고 실행 하위 candidate_reviews.jsonl에 저장한다. 메모에는 키·인증 URL·개인정보를 넣지 않는다. 손상된 이력은 미검토로 조용히 초기화하지 않고 오류로 드러내며, 저장 전 백업·복구가 필요하다. 로컬 단일 서버 사용 범위이며 다중 프로세스 동시 쓰기는 지원하지 않는다.
+
+## C/P08 집계 계약
+
+비교는 general/persona 예정 세션을 분모로 유지하며 명시적인 execution_mode=scripted 또는 provider=scenario는 배제한다. 독립 결과 success/failure/unknown과 실행 statuses는 두 축이다. rate는 세션이 없을 때 null, 예정 세션에 성공이 없으면 0이다. median_actions/median_ms는 성공 세션의 측정 가능한 값만 사용하며 대응쌍 변화량이 아니다. 실제 대상 수는 median_actions_sessions/median_ms_sessions로 제공한다.
+
+cost, llm_request_count, llm_tokens, input_tokens, output_tokens는 전체 대상의 값이 알려져 있을 때만 합계를 제공한다. 각 필드에 `_known_total`, `_known_sessions`, `_unknown_sessions`를 추가해 알려진 부분 합계와 누락을 보여준다. 알려진 값이 전혀 없으면 부분 합계도 null, 실제 알려진 0은 0이다. provider_usage는 같은 coverage 필드를 제공자별로 제공한다. 빈 usage와 비영 요청 수가 충돌하면 토큰을 0으로 추정하지 않는다.
+
+recording.complete/attempted와 rate는 전체 범위가 알려져 있을 때 제공한다. known_total/known_sessions/unknown_sessions와 known_rate는 확인된 범위만의 합계·비율이며 전체 기록 확보율로 바꿔 표시하지 않는다. 기존 실험 JSON은 조회 시 현재 집계를 계산하되 파일이나 예정 세션을 고치지 않는다. 예전 기록에 없는 측정값은 unknown이다.

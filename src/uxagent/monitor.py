@@ -257,6 +257,10 @@ class Dashboard:
     def experiments(self):
         if not self.runs_dir.is_dir(): return []
         rows = [_json_file(p) for p in self.runs_dir.rglob("experiment.json") if p.resolve().is_relative_to(self.runs_dir)]
+        from .metrics import aggregate_sessions
+        for row in rows:
+            if row:
+                row["groups"] = aggregate_sessions(row.get("sessions", []))
         return redact(sorted([row for row in rows if row],key=lambda row:row.get("started_at",""),reverse=True))
 
     def _verify_connection(self, provider, model=None):

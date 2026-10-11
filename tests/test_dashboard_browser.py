@@ -12,6 +12,45 @@ from uxagent.monitor import Dashboard, make_handler
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboard, tmp_path):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page(viewport={'width':1280,'height':720})
+        payload=page.request.get(local_dashboard+'/api/run/run-0').json()
+        payload['summary']['evaluator']['feature_checks']=[
+            {'id':'search','label':'검색 결과','status':'pass','evidence':'검색어와 표시 결과 일치'},
+            {'id':'filter','label':'가격 필터','status':'fail','evidence':'상한보다 비싼 상품 표시'},
+            {'id':'detail','label':'상품 상세','status':'unknown','evidence':'재고 정보 부족'},
+        ]
+        page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#feature-checks details.feature')).to_have_count(3)
+        for status,label in [('pass','통과'),('fail','실패'),('unknown','미확인')]:
+            expect(page.locator(f'.feature[data-status="{status}"] .feature-state')).to_have_text(label)
+        row=page.locator('.feature[data-check-id="filter"]')
+        row.locator('summary').click()
+        expect(row).to_have_attribute('open','')
+        expect(row.locator('.feature-evidence')).to_contain_text('상한보다 비싼 상품')
+        page.wait_for_timeout(1800)
+        expect(row).to_have_attribute('open','')
+        row.locator('summary').click()
+        row.locator('summary').press('Tab')
+        ring=row.locator('summary').evaluate("el=>{el.focus();const s=getComputedStyle(el);return {visible:el.matches(':focus-visible'),width:parseFloat(s.outlineWidth),offset:parseFloat(s.outlineOffset)}}")
+        assert ring['visible'] and ring['width']>0 and ring['width']+ring['offset']<=0
+        page.locator('#feature-panel h2').click()
+        page.locator('#feature-panel').screenshot(path=str(tmp_path/'check-status-preview.png'))
+        row.locator('summary').click()
+        expect(row).to_have_attribute('open','')
+        page.locator('#run-select').select_option('run-1')
+        expect(page.locator('#feature-checks details.feature')).to_have_count(0)
+        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#feature-checks details.feature')).to_have_count(3)
+        expect(row).not_to_have_attribute('open','')
+        browser.close()
+
+
 @pytest.mark.parametrize("viewport", [{"width":1365,"height":768},{"width":1280,"height":720}])
 def test_desktop_workspace_fits_and_keeps_results_beside_evidence(local_dashboard, tmp_path, viewport):
     with sync_playwright() as p:

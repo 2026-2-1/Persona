@@ -12,6 +12,46 @@ from uxagent.monitor import Dashboard, make_handler
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("viewport", [{"width":1365,"height":768},{"width":1280,"height":720}])
+def test_desktop_workspace_fits_and_keeps_results_beside_evidence(local_dashboard, tmp_path, viewport):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page(viewport=viewport)
+        baseline=page.request.get(local_dashboard+'/api/state').json()
+        job={'job_id':'finished','kind':'scenario','status':'completed'}
+        page.route('**/api/state',lambda route:route.fulfill(json={**baseline,'job':job}))
+        page.goto(local_dashboard)
+        expect(page.locator('#test-runs .run-row')).to_have_count(3)
+        expect(page.locator('#page-title')).not_to_be_visible()
+        setup=page.locator('.wizard-card').bounding_box()
+        recent=page.locator('#recent-panel').bounding_box()
+        assert recent['x'] >= setup['x']+setup['width']
+        assert max(setup['y']+setup['height'],recent['y']+recent['height']) <= viewport['height']
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#feature-checks .feature')).to_have_count(3)
+        expect(page.locator('#run-status')).to_contain_text('성공 확인')
+        expect(page.locator('#job-status-card')).not_to_be_visible()
+        primary=page.locator('#history-primary').bounding_box()
+        checks=page.locator('#feature-panel').bounding_box()
+        assert checks['x'] >= primary['x']+primary['width']
+        assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
+        page.get_by_text('자료 내보내기',exact=True).click()
+        expect(page.locator('#exports').get_by_text('JSON 다운로드',exact=True)).to_be_visible()
+        page.get_by_text('자료 내보내기',exact=True).click()
+        page.screenshot(path=str(tmp_path/'compact-history.png'))
+        job['status']='running'
+        expect(page.locator('#job-status-card')).to_be_visible()
+        expect(page.locator('#stop-job')).to_be_visible()
+        job['status']='failed'
+        page.reload()
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        expect(page.locator('#job-status-card')).to_be_visible()
+        expect(page.locator('#job-line')).to_contain_text('실패')
+        expect(page.locator('#stop-job')).not_to_be_visible()
+        browser.close()
+
+
 def test_scenario_wizard_has_registered_checks_and_no_key_or_generation(local_dashboard):
     with sync_playwright() as p:
         browser=p.chromium.launch()
@@ -47,7 +87,7 @@ def local_dashboard(tmp_path, monkeypatch):
         run.mkdir(parents=True)
         (run/"run.json").write_text(json.dumps({"run_id":run.name,"started_at":f"2026-10-09T00:00:{i:02d}","model":"claude-sonnet-4-6" if i==13 else "mock-v1"}),encoding="utf-8")
         (run/"persona.json").write_text((ROOT/"configs/persona.json").read_text(encoding="utf-8"),encoding="utf-8")
-        (run/"summary.json").write_text(json.dumps({"verification":"failure" if i==1 else "success","termination_reason":"max_steps" if i==1 else "verified_success"}),encoding="utf-8")
+        (run/"summary.json").write_text(json.dumps({"verification":"failure" if i==1 else "success","termination_reason":"max_steps" if i==1 else "verified_success","evaluator":{"feature_checks":[{"id":str(j),"label":label,"status":"pass","evidence":{"scope":"fixture"}} for j,label in enumerate(["공개 검색 URL과 표시 이름","공개 검색의 최대 가격","공개 상품 상세의 이름·가격"])]} if i==0 else {}}),encoding="utf-8")
     experiment=dashboard.runs_dir/"experiments"/"e1"
     experiment.mkdir(parents=True)
     (experiment/"experiment.json").write_text(json.dumps({"experiment_id":"e1","sessions":[
@@ -158,6 +198,7 @@ def test_history_search_and_filter_reach_records_beyond_twelve(local_dashboard):
         page=browser.new_page()
         page.goto(local_dashboard)
         page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.get_by_text('기록 검색·필터',exact=True).click()
         expect(page.locator('#history-runs .run-row')).to_have_count(14)
         page.locator('#record-filter').select_option('failure')
         expect(page.locator('#history-runs .run-row')).to_have_count(1)

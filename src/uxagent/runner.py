@@ -17,6 +17,7 @@ from .memory import MemoryStore
 from .slow_loop import SlowLoop
 from .storage import write_json, JsonlWriter
 from .security import normalize_origin
+from .model_catalog import resolve_model
 
 
 def load_study(path: str | Path):
@@ -56,6 +57,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     load_env_file(Path(study_path).resolve().parent / ".env")
     load_env_file()
     config,persona,config_path=load_study(study_path)
+    model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
     if not isinstance(run_id,str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
@@ -66,7 +68,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":config.model if provider_name=="live" else CLAUDE_MODEL if provider_name=="claude" else GEMINI_MODEL if provider_name in ("jev","gemini") else "mock-v1","prompt_version":"fast-2","condition":persona_mode})
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"fast-2","condition":persona_mode})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
@@ -78,11 +80,10 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             record["provider"]="gemini" if str(record.get("model","")).startswith("gemini-") else "typesafe" if str(record.get("model","")).startswith("jev-") else "mock" if record.get("model")=="mock-v1" else "claude" if str(record.get("model","")).startswith("claude-") else "openai"
         if "estimated_cost_usd" not in record:
             from .llm import estimate_cost_usd
-            record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"))
+            record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"),model=record.get("model"))
         record.setdefault("fallback_reason",None)
         calls.write(record)
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
-    model=config.model if provider_name=="live" else CLAUDE_MODEL if provider_name=="claude" else GEMINI_MODEL if provider_name in ("jev","gemini") else "mock-v1"
     memory=MemoryStore(run_id,memory_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     actual_headed=config.headed if headed is None else headed

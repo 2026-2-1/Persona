@@ -14,9 +14,11 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit, parse_qs
 
 from .security import normalize_origin
-from .llm import load_env_file
+from .llm import load_env_file, BudgetExceeded
 from .runner import load_study
 from .schemas import Persona, StudyConfig
+from .model_catalog import catalog_payload, resolve_model
+from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
 from .storage import write_json
 
@@ -72,6 +74,9 @@ class Dashboard:
         self.study = Path(study).resolve()
         load_env_file(ROOT / ".env")
         self.job = None
+        self.guide = SetupGuide()
+        self.guide_busy = False
+        self.connection_models = {}
         # start_job returns _job_state while holding this lock, so it must be reentrant.
         self.job_lock = threading.RLock()
 
@@ -185,6 +190,9 @@ class Dashboard:
             "batch": _json_file(self.runs_dir / "batch_summary.json"),
             "job": job,
             "study": _json_file(self.study, {}),
+            "model_catalog": catalog_payload(),
+            "guide_busy": self.guide_busy,
+            "connection_models": dict(self.connection_models),
             "persona_defaults": {"count": persona_config.get("count", 6), "background": example.background},
             "providers": {"jev": bool(os.environ.get("TYPESAFE_API_KEY") and os.environ.get("GEMINI_API_KEY")),
                           "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(os.environ.get("ANTHROPIC_API_KEY"))},
@@ -224,37 +232,67 @@ class Dashboard:
         rows = [_json_file(p) for p in self.runs_dir.rglob("experiment.json") if p.resolve().is_relative_to(self.runs_dir)]
         return redact(sorted([row for row in rows if row],key=lambda row:row.get("started_at",""),reverse=True))
 
-    def _verify_connection(self, provider):
+    def _verify_connection(self, provider, model=None):
         from .llm import OpenAIProvider, GeminiProvider, JevProvider, ClaudeProvider
+        selected_model = resolve_model(provider, model)
         async def verify():
             if provider == "jev":
                 await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
-                await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],max_tokens=32)
+                await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
             else:
                 implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else GeminiProvider()
-                model = "gpt-4o-mini" if provider == "live" else implementation.model
-                await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=model,max_tokens=32)
+                await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
         asyncio.run(verify())
 
-    def connect(self, provider, api_key, fallback_key=None):
+    def connect(self, provider, api_key, fallback_key=None, model=None):
         if provider not in {"live","gemini","jev","claude"}: raise ValueError("지원하지 않는 연결입니다")
+        selected_model = resolve_model(provider, model)
         keys = {"live":"OPENAI_API_KEY","gemini":"GEMINI_API_KEY","jev":"TYPESAFE_API_KEY","claude":"ANTHROPIC_API_KEY"}
-        supplied = {keys[provider]:api_key}
+        supplied = {keys[provider]:api_key if api_key is not None else os.environ.get(keys[provider])}
         if provider == "jev": supplied["GEMINI_API_KEY"] = fallback_key or os.environ.get("GEMINI_API_KEY")
         if any(not isinstance(v,str) or not v.strip() or len(v)>2048 or any(c.isspace() for c in v) for v in supplied.values()):
             raise ValueError("공백 없는 API 키를 입력하세요. Jev는 Gemini 키도 필요합니다.")
         with self.job_lock:
+            if self.guide_busy: raise RuntimeError("AI 추천을 마친 뒤 연결을 변경하세요")
             if self.job and self.job["process"].poll() is None: raise RuntimeError("실행 중에는 연결을 변경할 수 없습니다")
             previous = {name:os.environ.get(name) for name in supplied}
             os.environ.update(supplied)
             try:
-                self._verify_connection(provider)
+                if model is None:
+                    self._verify_connection(provider)
+                else:
+                    self._verify_connection(provider, selected_model)
             except Exception:
                 for name,value in previous.items():
                     if value is None: os.environ.pop(name,None)
                     else: os.environ[name]=value
                 raise ValueError("연결 확인에 실패했습니다. 키·API 사용 권한·결제 설정·네트워크를 확인하세요.") from None
-        return {"provider":provider,"configured":True,"validated":True,"message":"연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
+            if provider in {"gemini","jev"}:
+                self.connection_models.pop("gemini",None); self.connection_models.pop("jev",None)
+            self.connection_models[provider] = selected_model
+            if provider=="jev": self.connection_models["gemini"]=selected_model
+        return {"provider":provider,"model":selected_model,"configured":True,"validated":True,"message":"연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
+
+    def recommend_setup(self, provider="mock", model=None, message="", context=None, history=None):
+        with self.job_lock:
+            if self.guide_busy or (self.job and self.job['process'].poll() is None):
+                raise RuntimeError("실행이나 추천이 끝난 뒤 다시 요청하세요")
+            self.guide_busy = True
+        try:
+            return asyncio.run(self.guide.recommend(provider,model,message,context,history))
+        except ValueError as exc:
+            code=str(exc)
+            messages={"setup_guide_sensitive_input":"키나 인증정보는 대화에 입력하지 말고 연결 화면에만 입력하세요.",
+                      "setup_guide_key_required":"선택한 모델의 API를 먼저 연결하세요.",
+                      "setup_guide_url_credentials":"로그인·인증 정보가 없는 공개 주소를 입력하세요.",
+                      "setup_guide_invalid_response":"추천 응답 형식을 확인하지 못했습니다. 무료 예시를 이용하거나 다시 요청하세요."}
+            raise ValueError(messages.get(code,"추천 요청의 모델·입력·토큰 한도를 확인하세요.")) from None
+        except BudgetExceeded:
+            raise ValueError("도우미 요청·토큰 한도를 넘었습니다. 질문을 줄이거나 무료 예시를 이용하세요.") from None
+        except RuntimeError:
+            raise RuntimeError("AI 추천을 완료하지 못했습니다. 연결·한도·네트워크를 확인하세요.") from None
+        finally:
+            with self.job_lock: self.guide_busy=False
 
     def stop_job(self):
         with self.job_lock:
@@ -289,8 +327,8 @@ class Dashboard:
             raise ValueError('등록된 시나리오와 재현 결함만 선택할 수 있습니다')
         if case=='live' and defect:raise ValueError('실제 사이트에는 재현 결함을 적용하지 않습니다')
         with self.job_lock:
-            if self.job and self.job['process'].poll() is None:
-                raise RuntimeError('another dashboard job is already running')
+            if self.guide_busy or (self.job and self.job['process'].poll() is None):
+                raise RuntimeError('another dashboard job or guide request is already running')
             job_id=uuid.uuid4().hex[:10]
             job_dir=self.runs_dir/'.dashboard';job_dir.mkdir(parents=True,exist_ok=True)
             log_path=job_dir/f'{job_id}.log'
@@ -304,13 +342,19 @@ class Dashboard:
                       'persona_count':0,'study_id':f'dashboard-{job_id}','message':'사전 정의한 브라우저 단계를 실행하고 있습니다.'}
             return self._job_state()
 
-    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None, repetitions=1, evaluation_checks=None, scenario_case='flow', fixture_defect=None):
+    def start_job(self, kind, provider="mock", start_url=None, task=None, persona_count=None, persona_background=None, repetitions=1, evaluation_checks=None, scenario_case='flow', fixture_defect=None, model=None):
         if kind=='scenario':return self.start_scenario(scenario_case,fixture_defect)
         if kind not in {"generate", "batch", "compare"}:
             raise ValueError("unknown job")
         if provider not in PROVIDERS:
             raise ValueError("unknown provider")
         config, example, _ = load_study(self.study)
+        requested_model = model if model is not None else config.provider_model
+        selected_model = config.model if provider=='live' and requested_model is None else resolve_model(provider,requested_model)
+        snapshot_model = selected_model
+        if provider=='live' and requested_model is None:
+            try: resolve_model(provider,selected_model)
+            except ValueError: snapshot_model=None
         start_url = config.start_url if start_url is None else start_url
         task = config.task if task is None else task
         if not isinstance(start_url, str) or not start_url.strip() or len(start_url) > 2000:
@@ -337,8 +381,8 @@ class Dashboard:
             if any(not os.environ.get(name) for name in required):
                 raise ValueError(f"{provider} 실행에 필요한 API 키가 .env에 없습니다")
         with self.job_lock:
-            if self.job and self.job["process"].poll() is None:
-                raise RuntimeError("another dashboard job is already running")
+            if self.guide_busy or (self.job and self.job["process"].poll() is None):
+                raise RuntimeError("another dashboard job or guide request is already running")
             job_id = uuid.uuid4().hex[:10]
             job_dir = self.runs_dir / ".dashboard"
             job_dir.mkdir(parents=True, exist_ok=True)
@@ -380,7 +424,7 @@ class Dashboard:
                 example_path.write_text(generated[0].model_dump_json(indent=2), encoding="utf-8")
                 study = config.model_dump()
                 study.update({"study_id": f"dashboard-{job_id}", "start_url": start_url,
-                              "allowed_origins": [origin], "task": task, "persona_file": str(example_path)})
+                              "allowed_origins": [origin], "task": task, "persona_file": str(example_path), "provider_model": snapshot_model})
                 if not fixture:
                     study["evaluator_id"] = "unverified-external-site"
                     study["action_timeout_ms"] = max(study["action_timeout_ms"], 15000)
@@ -396,7 +440,7 @@ class Dashboard:
                                            stderr=subprocess.STDOUT, start_new_session=True)
             finally:
                 log_handle.close()
-            self.job = {"job_id": job_id, "kind": kind, "label": label, "provider": "mock" if kind == "generate" else provider,
+            self.job = {"job_id": job_id, "kind": kind, "label": label, "provider": "mock" if kind == "generate" else provider, "model": "mock-v1" if kind == "generate" else selected_model,
                         "status": "running", "started_at": datetime.now(timezone.utc).isoformat(),
                         "log_path": str(log_path), "process": process, "persona_count": count,
                         "study_id": f"dashboard-{job_id}" if kind in {"batch","compare"} else None,
@@ -426,6 +470,8 @@ def make_handler(dashboard: Dashboard):
 
         def _get(self):
             path = urlsplit(self.path).path
+            if path == "/api/setup-guide/options":
+                return self._send(200,{**catalog_payload(),**static_options()})
             if path == "/api/state":
                 return self._send(200, redact(dashboard.state()))
             if path == "/api/experiments":
@@ -468,7 +514,7 @@ def make_handler(dashboard: Dashboard):
 
         def do_POST(self):
             path=urlsplit(self.path).path
-            if path not in {"/api/jobs","/api/connection","/api/jobs/stop"}:
+            if path not in {"/api/jobs","/api/connection","/api/jobs/stop","/api/setup-guide"}:
                 return self._send(404, {"error": "not_found"})
             origin=self.headers.get("Origin")
             if origin and urlsplit(origin).netloc != self.headers.get("Host"):
@@ -481,10 +527,14 @@ def make_handler(dashboard: Dashboard):
                 if not isinstance(payload, dict):
                     raise ValueError("요청 형식이 올바르지 않습니다")
                 if path=="/api/connection":
-                    return self._send(200,dashboard.connect(payload.get("provider"),payload.get("api_key"),payload.get("fallback_key")))
+                    return self._send(200,dashboard.connect(payload.get("provider"),payload.get("api_key"),payload.get("fallback_key"),payload.get("model")))
+                if path=="/api/setup-guide":
+                    if set(payload)-{"provider","model","message","context","history"}:
+                        raise ValueError("추천 요청에 지원하지 않는 필드가 있습니다")
+                    return self._send(200,dashboard.recommend_setup(payload.get("provider","mock"),payload.get("model"),payload.get("message",""),payload.get("context"),payload.get("history")))
                 if path=="/api/jobs/stop": return self._send(200,dashboard.stop_job())
                 job = dashboard.start_job(payload.get("kind"), payload.get("provider", "mock"), payload.get("start_url"), payload.get("task"),
-                                          payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"),payload.get('scenario_case','flow'),payload.get('fixture_defect'))
+                                          payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"),payload.get('scenario_case','flow'),payload.get('fixture_defect'),payload.get('model'))
                 return self._send(202, job)
             except (ValueError, OSError, RuntimeError) as exc:
                 return self._send(409 if isinstance(exc, RuntimeError) else 400, redact({"error": str(exc)}))

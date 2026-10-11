@@ -63,6 +63,7 @@ class StudyConfig(StrictModel):
     memory_limit: int = Field(default=8, gt=0)
     embedding_model: str | None = None
     model: str = "gpt-4o-mini"
+    provider_model: str | None = None
     temperature: float = Field(default=0.2, ge=0, le=2)
     max_output_tokens: int = Field(default=1200, gt=0)
     headed: bool = True

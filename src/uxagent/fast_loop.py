@@ -147,8 +147,8 @@ class FastLoop:
                 actual=(usage.get("input_tokens") or 0)+(usage.get("output_tokens") or 0) if "input_tokens" in usage and "output_tokens" in usage else None
                 self.budget.settle(reservation,actual)
                 settled=True
-                gemini = hasattr(self.provider, "choose") or getattr(self.provider,"model",None)=="gemini-2.5-flash-lite"
-                if self.call_log: self.call_log({"module":"fast","provider":"gemini" if gemini else "claude" if str(getattr(self.provider,"model","")).startswith("claude-") else "openai" if getattr(self.provider,"model",None) is None else "mock","model":usage.get("model",self.model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":usage.get("input_tokens"),"output_tokens":usage.get("output_tokens"),"estimated":actual is None,"estimated_cost_usd":estimate_cost_usd("gemini" if gemini else "other",usage.get("input_tokens"),usage.get("output_tokens")),"fallback_reason":fallback_reason})
+                gemini = hasattr(self.provider, "choose") or str(getattr(self.provider,"model","")).startswith("gemini-")
+                if self.call_log: self.call_log({"module":"fast","provider":"gemini" if gemini else "claude" if str(getattr(self.provider,"model","")).startswith("claude-") else "openai" if getattr(self.provider,"model",None) is None else "mock","model":usage.get("model",self.model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":usage.get("input_tokens"),"output_tokens":usage.get("output_tokens"),"estimated":actual is None,"estimated_cost_usd":estimate_cost_usd("gemini" if gemini else "other",usage.get("input_tokens"),usage.get("output_tokens"),model=self.model),"fallback_reason":fallback_reason})
                 raw=json.loads(response)
                 if candidates:
                     selected=next((candidate for candidate in candidates if candidate["id"]==raw.get("candidate_id")),None)
@@ -170,7 +170,7 @@ class FastLoop:
                 if not settled:self.budget.settle(reservation,None)
                 last_error=str(exc)
                 transient="provider_transient" in last_error or any(f"provider_http_{code}" in last_error for code in ("429","500","502","503","504"))
-                gemini = hasattr(self.provider, "choose") or getattr(self.provider,"model",None)=="gemini-2.5-flash-lite"
+                gemini = hasattr(self.provider, "choose") or str(getattr(self.provider,"model","")).startswith("gemini-")
                 if self.call_log and gemini:
                     self.call_log({"module":"fast","provider":"gemini","model":self.model,"elapsed_ms":int((time.monotonic()-started)*1000),
                         "input_tokens":None,"output_tokens":None,"estimated":True,"estimated_cost_usd":None,

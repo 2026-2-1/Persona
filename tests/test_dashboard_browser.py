@@ -12,6 +12,101 @@ from uxagent.monitor import Dashboard, make_handler
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_provider_model_and_key_guide_send_selected_model(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        connected=[]
+        def connect(route):
+            connected.append(route.request.post_data_json)
+            route.fulfill(json={'provider':'live','configured':True,'model':'gpt-4.1-mini'})
+        page.route('**/api/connection',connect)
+        page.goto(local_dashboard)
+        page.locator('#wizard-next').click()
+        page.locator('#wizard-next').click()
+        page.locator('#provider').select_option('live')
+        expect(page.locator('#model-select option')).to_have_count(2)
+        page.locator('#model-select').select_option('gpt-4.1-mini')
+        expect(page.locator('#key-help')).to_have_attribute('href','https://platform.openai.com/api-keys')
+        expect(page.locator('#key-steps li')).to_have_count(3)
+        page.locator('#api-key').fill('test-ui-credential')
+        page.locator('#connect-provider').click()
+        assert connected[0]['model']=='gpt-4.1-mini'
+        expect(page.locator('#api-key')).to_have_value('')
+        browser.close()
+
+
+def test_setup_guide_template_requires_apply_and_preserves_input(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        page.goto(local_dashboard)
+        expect(page.locator('#setup-presets button')).to_have_count(4)
+        original=page.locator('#target-url').input_value()
+        page.locator('#setup-presets button').first.click()
+        expect(page.locator('#target-url')).to_have_value(original)
+        page.locator('#guide-recommend').click()
+        expect(page.locator('#guide-result')).to_contain_text('예시 추천')
+        expect(page.locator('#guide-personas button')).to_have_count(3)
+        before=page.locator('#persona-background').input_value()
+        page.wait_for_timeout(1700)
+        expect(page.locator('#persona-background')).to_have_value(before)
+        page.locator('#guide-personas button').first.click()
+        expect(page.locator('#wizard-step-2')).to_be_visible()
+        assert page.locator('#persona-background').input_value()!=before
+        assert page.evaluate('localStorage.length+sessionStorage.length')==0
+        browser.close()
+
+
+def test_ai_guide_uses_verified_model_and_keeps_token_usage(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        baseline=page.request.get(local_dashboard+'/api/state').json()
+        page.route('**/api/state',lambda route:route.fulfill(json={**baseline,'providers':{**baseline['providers'],'live':True},'connection_models':{'live':'gpt-4.1-mini'}}))
+        submitted=[]
+        def answer(route):
+            submitted.append(route.request.post_data_json)
+            route.fulfill(json={'source':'ai','provider':'live','model':'gpt-4.1-mini','answer':'목표에 맞는 사용자 예시','personas':[],'task_suggestion':None,'usage':{'requests':1,'max_requests':5,'input_tokens':42,'output_tokens':12,'estimated_cost_usd':None}})
+        page.route('**/api/setup-guide',answer)
+        page.goto(local_dashboard)
+        page.locator('#guide-connect').click()
+        page.locator('#provider').select_option('live')
+        page.locator('#model-select').select_option('gpt-4.1-mini')
+        expect(page.locator('#provider-status')).to_contain_text('다음으로')
+        page.locator('#model-select').select_option('gpt-4o-mini')
+        expect(page.locator('#provider-status')).to_contain_text('선택한 모델로')
+        page.locator('#model-select').select_option('gpt-4.1-mini')
+        page.locator('#guide-recommend').click()
+        expect(page.locator('#guide-answer')).to_contain_text('AI 추천')
+        expect(page.locator('#guide-usage')).to_contain_text('42')
+        page.wait_for_timeout(1800)
+        expect(page.locator('#guide-usage')).to_contain_text('42')
+        assert submitted[0]['model']=='gpt-4.1-mini' and submitted[0]['provider']=='live'
+        assert 'api_key' not in submitted[0]
+        browser.close()
+
+
+def test_connection_stays_disabled_during_polling(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        pending=[]
+        page.route('**/api/connection',lambda route:pending.append(route))
+        page.goto(local_dashboard)
+        page.locator('#guide-connect').click()
+        page.locator('#provider').select_option('live')
+        page.locator('#api-key').fill('test-ui-credential')
+        page.locator('#connect-provider').click()
+        page.wait_for_timeout(1800)
+        expect(page.locator('#connect-provider')).to_be_disabled()
+        expect(page.locator('#provider')).to_be_disabled()
+        assert len(pending)==1
+        pending[0].fulfill(json={'provider':'live','configured':True,'model':'gpt-4o-mini'})
+        expect(page.locator('#api-key')).to_have_value('')
+        browser.close()
+
+
 def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboard, tmp_path):
     with sync_playwright() as p:
         browser=p.chromium.launch()
@@ -120,7 +215,7 @@ def test_scenario_wizard_has_registered_checks_and_no_key_or_generation(local_da
 @pytest.fixture
 def local_dashboard(tmp_path, monkeypatch):
     dashboard=Dashboard(tmp_path/"runs",tmp_path/"personas",ROOT/"configs/study.json")
-    monkeypatch.setattr(dashboard,"_verify_connection",lambda provider:None)
+    monkeypatch.setattr(dashboard,"_verify_connection",lambda provider,model=None:None)
     for i in range(14):
         run=dashboard.runs_dir/f"run-{i}"
         run.mkdir(parents=True)
@@ -282,4 +377,20 @@ def test_wizard_automatically_chains_only_successful_generation(local_dashboard,
             expect(page.locator('#notice')).to_have_text('사용자 생성 실패')
             expect(page.locator('#view-test')).to_be_visible()
         assert submitted==expected_jobs
+        browser.close()
+
+
+def test_guide_connect_survives_initial_state_load(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        pending=[]
+        page.route('**/api/state',lambda route:pending.append(route))
+        page.goto(local_dashboard)
+        page.locator('#guide-connect').click()
+        expect(page.locator('#wizard-step-3')).to_be_visible()
+        response=page.request.get(local_dashboard+'/api/state').json()
+        pending[0].fulfill(json=response)
+        expect(page.locator('#target-url')).to_have_value(response['study']['start_url'])
+        expect(page.locator('#wizard-step-3')).to_be_visible()
         browser.close()

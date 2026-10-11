@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import html
 import io
 import json
@@ -19,6 +20,48 @@ def redact(value):
             text = text.replace(json.dumps(secret)[1:-1], "[redacted]")
     text = re.sub(r"sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}", "[redacted]", text)
     return json.loads(text)
+
+
+def enrich_card_identity(card, detail):
+    """Identify factual card content independently of mutable human review state."""
+    enriched = dict(card)
+    run = detail.get("run") or {}
+    enriched.update(card_id=card["issue_id"], run_id=run.get("run_id") or card.get("run_id"),
+                    execution_mode=run.get("execution_mode") or "unknown",
+                    source_kind=run.get("source_kind") or "unknown")
+    review_fields = {"card_version", "review_status", "verdict", "note", "reviewer_id",
+                     "review_id", "created_at", "review_history", "latest_review", "review", "reviews"}
+    facts = {key: value for key, value in enriched.items() if key not in review_fields}
+    linked_steps = []
+    linked_observations = {}
+    for step in detail.get("steps", []):
+        if step.get("step_id") not in card.get("evidence_step_ids", []):
+            continue
+        evidence = {key: step.get(key) for key in ("step_id", "observation_id", "next_observation_id",
+                    "action", "result", "error", "verification", "scenario_step")}
+        if isinstance(evidence["result"], dict):
+            evidence["result"] = {key: value for key, value in evidence["result"].items()
+                                  if key != "elapsed_ms"}
+        linked_steps.append(evidence)
+        for observation_id in (step.get("observation_id"), step.get("next_observation_id")):
+            observation = (detail.get("observations") or {}).get(observation_id)
+            if not isinstance(observation, dict):
+                continue
+            observed = {key: value for key, value in observation.items() if key in (
+                "schema_version", "observation_id", "tab_id", "url", "title", "html",
+                "clickable_elements", "input_elements", "hoverable_elements", "select_elements",
+                "tabs", "error", "capture")}
+            if isinstance(observed.get("capture"), dict):
+                observed["capture"] = {key: value for key, value in observed["capture"].items()
+                                       if key != "screenshot_path"}
+            linked_observations[observation_id] = observed
+    version_facts = {"card": facts, "linked_steps": linked_steps}
+    if linked_observations:
+        version_facts["linked_observations"] = linked_observations
+    canonical = json.dumps(version_facts,
+                           ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    enriched["card_version"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return enriched
 
 
 def build_cards(detail):
@@ -67,7 +110,7 @@ def build_cards(detail):
         card["evidence"] = [{"step_id":step.get("step_id"), "observation_id":step.get("observation_id"),
             "next_observation_id":step.get("next_observation_id")} for step in steps
             if step.get("step_id") in card.get("evidence_step_ids",[])]
-    return redact(cards)
+    return [enrich_card_identity(card, detail) for card in redact(cards)]
 
 
 def export_report(detail, kind):

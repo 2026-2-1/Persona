@@ -41,3 +41,11 @@ scripted 실행의 실패 체크는 `classification=unmet_checkpoint`, 행동/�
 ## 설정 추천 계약
 
 `StudyConfig.provider_model`은 선택적 모델 override다. 명시적 선택은 model_catalog의 호환 목록으로 검증하며 legacy OpenAI config.model은 override가 없으면 유지한다. 선택 모델은 연결 검증·실행 snapshot·호출·summary에 전달한다. `/api/setup-guide/options`는 공식 발급 정보와 로컬 예시를 제공하고 `/api/setup-guide`는 provider/model/message/context/history를 받는다. 응답 source는 template 또는 ai이며 answer/personas/task_suggestion/usage를 포함한다. 추천에는 평가 정답·DOM selector를 넣지 않으며 서버/브라우저 메모리 외에 대화를 기록하지 않는다. Jev 언어 추천은 선택한 Gemini fallback으로 수행한다.
+
+## C/P05 구현 계약 (2026-10-11)
+
+`CandidateReviewInput`은 card_id(기존 issue_id), card_version(SHA256), reviewer_id(로컬 별칭), verdict, note를 받는다. 서버의 `CandidateReviewRecord`는 schema_version=1.0, UUID review_id, run_id, UTC created_at을 추가한다. 클라이언트는 실행 ID·시각을 요청 본문에 임의 지정할 수 없다.
+
+판정은 valid(유효 후보)/invalid(무효 후보)/deferred(보류)/tool_error(도구 오류)/environment_error(환경 오류)다. 후보 유효 판정은 독립 과업 성공이나 확정 UX 결함을 뜻하지 않는다. 상세 기준은 A 담당이 합의한다. 미검토는 저장할 판정 값이 아니라 needs_human_review 상태다.
+
+카드 식별은 run_id+card_id+card_version이다. 카드 관찰·가설·제안·근거 행동 내용이 바뀌면 새 버전이며 검토 이력·판정·시각은 버전에 포함하지 않는다. 이전 버전 기록은 보존하되 현재 카드에 자동 적용하지 않는다. 출처 metadata execution_mode/source_kind는 기존 실행값을 전달하고 과거 누락은 unknown이다. [가상 계약 예시](examples/c-review-contract.json)는 실제 API/사이트 검증 결과가 아니다.

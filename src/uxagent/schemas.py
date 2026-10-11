@@ -8,6 +8,57 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class CandidateReviewInput(StrictModel):
+    """Client review payload; execution identity and audit fields are server-owned."""
+
+    card_id: str = Field(strict=True, min_length=1, max_length=200)
+    card_version: str = Field(strict=True, pattern=r"^[a-f0-9]{64}$")
+    reviewer_id: str = Field(strict=True, min_length=1, max_length=200)
+    verdict: Literal["valid", "invalid", "deferred", "tool_error", "environment_error"]
+    note: str = Field(default="", strict=True, max_length=4000)
+
+    @field_validator("card_id")
+    @classmethod
+    def nonblank_card_identity(cls, value: str):
+        # Existing EvaluationCheck IDs allow Unicode and whitespace. IDs are
+        # opaque equality keys, never filesystem paths, and must not be trimmed.
+        if not value.strip():
+            raise ValueError("card_id must not be blank")
+        return value
+
+    @field_validator("reviewer_id", "note")
+    @classmethod
+    def normalize_review_text(cls, value: str, info):
+        value = value.strip()
+        if info.field_name == "reviewer_id" and not value:
+            raise ValueError("reviewer_id must not be blank")
+        return value
+
+
+class CandidateReviewRecord(CandidateReviewInput):
+    schema_version: Literal["1.0"] = "1.0"
+    review_id: str = Field(strict=True)
+    run_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    created_at: str = Field(strict=True)
+
+    @field_validator("review_id")
+    @classmethod
+    def valid_review_uuid(cls, value: str):
+        from uuid import UUID
+        if str(UUID(value)) != value:
+            raise ValueError("review_id must be a canonical UUID")
+        return value
+
+    @field_validator("created_at")
+    @classmethod
+    def utc_review_time(cls, value: str):
+        from datetime import datetime, timedelta
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+            raise ValueError("created_at must be an ISO UTC timestamp")
+        return value
+
+
 class Viewport(StrictModel):
     width: int = Field(default=1440, gt=0)
     height: int = Field(default=900, gt=0)

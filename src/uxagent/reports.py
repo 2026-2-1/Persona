@@ -117,15 +117,16 @@ def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
                    "cards":detail.get("cards",build_cards(detail)),
-                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "AI가 제안한 미검토 후보입니다. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
+                   "reviews":detail.get("reviews", []), "review_summary":detail.get("review_summary"),
+                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "실행 근거에서 도출한 후보입니다. 카드별 사람 검토 상태를 확인하세요. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
         return json.dumps(safe,ensure_ascii=False,indent=2)
     if kind == "csv":
         out=io.StringIO(newline="")
         writer=csv.writer(out)
-        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids"])
+        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"])
         for card in safe["cards"]:
-            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids")]
+            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version")]
             # Spreadsheet import must treat untrusted text as data, not a formula.
             writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values])
         return out.getvalue()
@@ -138,7 +139,9 @@ def export_report(detail, kind):
         lines.extend(["", f"## {card['issue_id']}: {card.get('title','')}", "",
             f"관찰: {card['observed_behavior']}", f"가설: {card['hypothesis']}",
             f"근거 단계: {card['evidence_step_ids']}", f"제안: {card['recommendation']}",
-            f"완료 조건: {card['acceptance']}", "상태: 사람 검토 전"])
+            f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",
+            f"판정: {card.get('verdict') or ''}", f"검토 메모: {card.get('note','')}",
+            f"검토자: {card.get('reviewer_id') or ''}", f"검토 이력: {json.dumps(card.get('review_history',[]),ensure_ascii=False)}"])
     text="\n".join(lines)+"\n"
     if kind == "md":
         return text

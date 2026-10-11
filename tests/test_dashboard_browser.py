@@ -394,3 +394,25 @@ def test_guide_connect_survives_initial_state_load(local_dashboard):
         expect(page.locator('#target-url')).to_have_value(response['study']['start_url'])
         expect(page.locator('#wizard-step-3')).to_be_visible()
         browser.close()
+
+
+def test_candidate_review_status_and_note_survive_polling(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        payload=page.request.get(local_dashboard+'/api/run/run-0').json()
+        payload['cards']=[{'issue_id':'feature-search','title':'검색 후보','review_status':'reviewed',
+                          'latest_review':{'verdict':'tool_error','reviewer_id':'reviewer-1','note':'도구 오류 확인'},
+                          'observed_behavior':'기록된 현상','hypothesis':'원인 가설','recommendation':'확인 제안',
+                          'acceptance':'재검증','evidence_step_ids':[1],'evidence':[]}]
+        page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        page.get_by_role('tab',name='개선 보드',exact=True).click()
+        expect(page.locator('#cards')).to_contain_text('도구 오류')
+        expect(page.locator('#cards')).to_contain_text('도구 오류 확인')
+        expect(page.locator('#cards')).not_to_contain_text('사람 검토 전')
+        page.wait_for_timeout(1700)
+        expect(page.locator('#cards')).to_contain_text('도구 오류 확인')
+        browser.close()

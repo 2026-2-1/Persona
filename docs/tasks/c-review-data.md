@@ -21,3 +21,25 @@
 ## 이번 범위 밖
 
 로그인·공개 다중 사용자 서비스·2인 독립 합의·고유 문제 중복 병합·환경 실험·실제 API 검증·검토 입력 폼은 별도 범위다. 한 검토자의 유효 판정은 확정 UX 결함이나 실제 사용자 증언을 뜻하지 않는다.
+
+## 로컬 API 확인 (D 연결 전)
+
+카드가 있는 완료 실행 ID를 사용한다. 아래는 로컬 테스트용 검토자 별칭과 메모이며 인증정보를 넣지 않는다.
+
+```powershell
+$taskRunId = '완료-실행-ID'
+$taskReviewUrl = "http://127.0.0.1:8765/api/reviews/$taskRunId"
+$taskDetail = Invoke-RestMethod $taskReviewUrl
+$taskCard = $taskDetail.cards[0]
+$taskReviewBody = @{
+    card_id = $taskCard.card_id
+    card_version = $taskCard.card_version
+    reviewer_id = 'reviewer-1'
+    verdict = 'deferred'
+    note = '원인 확인 후 재검토'
+} | ConvertTo-Json
+Invoke-RestMethod $taskReviewUrl -Method Post -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($taskReviewBody))
+Invoke-RestMethod $taskReviewUrl
+```
+
+201은 판정 저장, 404는 없는 실행/카드, 409는 실행 중/카드 버전 변경, 400은 입력 불일치, 500은 손상 이력 등 조회 불가다. 성공을 받지 못했을 때 저장됐다고 표시하지 않는다. 카드 버전 변경 시 재조회 후 실제 근거를 다시 검토한다. 이력은 해당 runs 하위 candidate_reviews.jsonl에만 저장되며 Git에서 제외된다.

@@ -49,3 +49,11 @@ scripted 실행의 실패 체크는 `classification=unmet_checkpoint`, 행동/�
 판정은 valid(유효 후보)/invalid(무효 후보)/deferred(보류)/tool_error(도구 오류)/environment_error(환경 오류)다. 후보 유효 판정은 독립 과업 성공이나 확정 UX 결함을 뜻하지 않는다. 상세 기준은 A 담당이 합의한다. 미검토는 저장할 판정 값이 아니라 needs_human_review 상태다.
 
 카드 식별은 run_id+card_id+card_version이다. 카드 관찰·가설·제안·근거 행동 내용이 바뀌면 새 버전이며 검토 이력·판정·시각은 버전에 포함하지 않는다. 이전 버전 기록은 보존하되 현재 카드에 자동 적용하지 않는다. 출처 metadata execution_mode/source_kind는 기존 실행값을 전달하고 과거 누락은 unknown이다. [가상 계약 예시](examples/c-review-contract.json)는 실제 API/사이트 검증 결과가 아니다.
+
+## C/P06 저장·조회 API
+
+`GET /api/reviews/<run_id>`는 `{run_id, reviews, cards, review_summary}`를 제공한다. `POST` 같은 경로에 CandidateReviewInput을 보내면 서버가 생성한 CandidateReviewRecord를 201로 반환한다. 실행 상세에도 reviews와 review_summary를 추가한다. 기존 출력/카드/verification 필드는 유지한다.
+
+카드의 review_history는 현재 card_version과 일치하는 판정만 포함한다. latest_review는 그중 마지막 저장 판정이며 미검토는 null이다. 과거 버전 판정은 전체 reviews에 남는다. 상태는 needs_human_review/reviewed/deferred이며 verdict와 과업 verification은 별도 필드다. review_summary의 reviewed는 보류 제외 판정 완료 건수, deferred는 보류 건수, unreviewed는 현재 버전 미검토 건수다.
+
+검토자 별칭은 인증된 사용자 신원이나 독립 2인 합의를 의미하지 않는다. 이전 판정을 덮어쓰지 않고 실행 하위 candidate_reviews.jsonl에 저장한다. 메모에는 키·인증 URL·개인정보를 넣지 않는다. 손상된 이력은 미검토로 조용히 초기화하지 않고 오류로 드러내며, 저장 전 백업·복구가 필요하다. 로컬 단일 서버 사용 범위이며 다중 프로세스 동시 쓰기는 지원하지 않는다.

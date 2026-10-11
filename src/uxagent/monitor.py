@@ -20,6 +20,7 @@ from .schemas import Persona, StudyConfig
 from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
+from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
 from .storage import write_json
 
 
@@ -75,6 +76,7 @@ class Dashboard:
         load_env_file(ROOT / ".env")
         self.job = None
         self.guide = SetupGuide()
+        self.review_store = ReviewStore(runs_dir)
         self.guide_busy = False
         self.connection_models = {}
         # start_job returns _job_state while holding this lock, so it must be reentrant.
@@ -202,6 +204,7 @@ class Dashboard:
         folder = self._run_folder(run_id)
         if folder is None:
             return None
+        self.review_store._path(folder)
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -224,8 +227,32 @@ class Dashboard:
             persona=detail["persona"]
             detail["persona"]={"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
-        detail["cards"] = build_cards(detail)
+        if not detail["run"].get("run_id"):
+            detail["run"]["run_id"] = folder.name
+        detail["reviews"] = self.review_store.read(folder, run_id)
+        detail["cards"], detail["review_summary"] = overlay_reviews(build_cards(detail), detail["reviews"])
         return redact(detail)
+
+    def reviews(self, run_id):
+        detail = self.run_detail(run_id)
+        if detail is None:
+            raise ReviewError("run_not_found", 404)
+        return {"run_id":run_id, **{k:detail[k] for k in ("reviews", "cards", "review_summary")}}
+
+    def append_review(self, run_id, payload):
+        folder = self._run_folder(run_id)
+        if folder is None:
+            raise ReviewError("run_not_found", 404)
+        # One per-path lock covers the fresh facts read, validation, and append.
+        path = self.review_store._path(folder)
+        with self.review_store._lock(path):
+            if any((folder / name).is_symlink() for name in
+                   ('run.json', 'summary.json', 'steps.jsonl', 'config.json')):
+                raise ReviewError('unsafe_review_path')
+            detail = self.run_detail(run_id)
+            if detail["run"].get("run_id") != run_id:
+                raise ReviewError("run_identity_conflict", 409)
+            return self.review_store.append(folder, run_id, payload, detail["cards"], detail["summary"] is not None)
 
     def experiments(self):
         if not self.runs_dir.is_dir(): return []
@@ -465,6 +492,8 @@ def make_handler(dashboard: Dashboard):
         def do_GET(self):
             try:
                 self._get()
+            except ReviewError as exc:
+                self._send(exc.status, {"error": str(exc)})
             except (OSError, ValueError, TypeError, KeyError) as exc:
                 self._send(500, {"error": f"상태를 읽지 못했습니다 ({type(exc).__name__}). 서버 설정을 확인하세요."})
 
@@ -476,6 +505,8 @@ def make_handler(dashboard: Dashboard):
                 return self._send(200, redact(dashboard.state()))
             if path == "/api/experiments":
                 return self._send(200, dashboard.experiments())
+            if path.startswith("/api/reviews/"):
+                return self._send(200, dashboard.reviews(unquote(path.removeprefix("/api/reviews/"))))
             if path.startswith("/api/export/"):
                 detail=dashboard.run_detail(unquote(path.removeprefix("/api/export/")))
                 if not detail: return self._send(404,{"error":"run_not_found"})
@@ -514,7 +545,7 @@ def make_handler(dashboard: Dashboard):
 
         def do_POST(self):
             path=urlsplit(self.path).path
-            if path not in {"/api/jobs","/api/connection","/api/jobs/stop","/api/setup-guide"}:
+            if path not in {"/api/jobs","/api/connection","/api/jobs/stop","/api/setup-guide"} and not path.startswith("/api/reviews/"):
                 return self._send(404, {"error": "not_found"})
             origin=self.headers.get("Origin")
             if origin and urlsplit(origin).netloc != self.headers.get("Host"):
@@ -526,6 +557,8 @@ def make_handler(dashboard: Dashboard):
                 payload = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(payload, dict):
                     raise ValueError("요청 형식이 올바르지 않습니다")
+                if path.startswith("/api/reviews/"):
+                    return self._send(201, dashboard.append_review(unquote(path.removeprefix("/api/reviews/")), payload))
                 if path=="/api/connection":
                     return self._send(200,dashboard.connect(payload.get("provider"),payload.get("api_key"),payload.get("fallback_key"),payload.get("model")))
                 if path=="/api/setup-guide":
@@ -536,7 +569,11 @@ def make_handler(dashboard: Dashboard):
                 job = dashboard.start_job(payload.get("kind"), payload.get("provider", "mock"), payload.get("start_url"), payload.get("task"),
                                           payload.get("persona_count"), payload.get("persona_background"),payload.get("repetitions",1),payload.get("evaluation_checks"),payload.get('scenario_case','flow'),payload.get('fixture_defect'),payload.get('model'))
                 return self._send(202, job)
+            except ReviewError as exc:
+                return self._send(exc.status, {"error": str(exc)})
             except (ValueError, OSError, RuntimeError) as exc:
+                if path.startswith("/api/reviews/"):
+                    return self._send(400, {"error":"invalid_review_input"})
                 return self._send(409 if isinstance(exc, RuntimeError) else 400, redact({"error": str(exc)}))
 
         def log_message(self, format, *args):

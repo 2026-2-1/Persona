@@ -65,3 +65,9 @@ scripted 실행의 실패 체크는 `classification=unmet_checkpoint`, 행동/�
 cost, llm_request_count, llm_tokens, input_tokens, output_tokens는 전체 대상의 값이 알려져 있을 때만 합계를 제공한다. 각 필드에 `_known_total`, `_known_sessions`, `_unknown_sessions`를 추가해 알려진 부분 합계와 누락을 보여준다. 알려진 값이 전혀 없으면 부분 합계도 null, 실제 알려진 0은 0이다. provider_usage는 같은 coverage 필드를 제공자별로 제공한다. 빈 usage와 비영 요청 수가 충돌하면 토큰을 0으로 추정하지 않는다.
 
 recording.complete/attempted와 rate는 전체 범위가 알려져 있을 때 제공한다. known_total/known_sessions/unknown_sessions와 known_rate는 확인된 범위만의 합계·비율이며 전체 기록 확보율로 바꿔 표시하지 않는다. 기존 실험 JSON은 조회 시 현재 집계를 계산하되 파일이나 예정 세션을 고치지 않는다. 예전 기록에 없는 측정값은 unknown이다.
+
+### 실제 호출 측정과 예산 계수 구분
+
+새 실행은 llm_tokens_complete/llm_tokens_measured_total/llm_tokens_known_calls/llm_tokens_unknown_calls와 cost_complete/cost_measured_total/provider_usage_complete를 저장한다. provider_usage는 요청·입력·출력·추정비용 각각 complete/measured_total과 토큰 known_calls/unknown_calls를 제공한다. 알려진 일부 입력만 있고 출력이 없으면 입력 측정값은 보존하되 전체 토큰은 미확인이다. 요청 수보다 호출 기록이 적으면 제공자별 전체 요청/사용량/비용을 확인됐다고 처리하지 않는다.
+
+기존 summary.llm_tokens 예산 계수와 provider의 기존 합산 필드는 호환 목적으로 유지한다. 제한 검사는 기존 BudgetManager를 사용하고 실제 집계는 completeness와 측정값을 우선한다. 따라서 group의 known_total은 완전한 세션 외에 확인된 호출의 부분 합계도 포함할 수 있고 known_sessions는 완전한 측정 세션 수다. 과거 completeness 없는 값은 제공된 수치로 호환 조회되며 정확한 호출 측정인지 사후 재구성할 수 없다는 제한을 가진다.

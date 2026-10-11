@@ -48,11 +48,12 @@ class ReviewStore:
             if not path.exists():
                 return []
             try:
-                text = path.read_text(encoding='utf-8')
+                with path.open(encoding='utf-8', newline='') as handle:
+                    text = handle.read()
                 if text and not text.endswith('\n'):
                     raise ValueError()
                 rows = []
-                for line in text.splitlines():
+                for line in text[:-1].split('\n') if text else []:
                     row = CandidateReviewRecord.model_validate(json.loads(line)).model_dump()
                     if row['run_id'] != run_id:
                         raise ValueError()

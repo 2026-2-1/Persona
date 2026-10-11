@@ -38,7 +38,7 @@ class CandidateReviewInput(StrictModel):
 class CandidateReviewRecord(CandidateReviewInput):
     schema_version: Literal["1.0"] = "1.0"
     review_id: str = Field(strict=True)
-    run_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+    run_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
     created_at: str = Field(strict=True)
 
     @field_validator("review_id")

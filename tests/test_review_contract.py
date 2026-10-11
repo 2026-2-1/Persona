@@ -127,3 +127,10 @@ def test_linked_observation_display_urls_do_not_change_version():
     source["observations"]["obs-1"]["screenshot_url"] = "/artifacts/moved/observations/obs-1.png"
     source["observations"]["obs-1"]["capture"]["screenshot_path"] = "moved/obs-1.png"
     assert reports.build_cards(source)[0]["card_version"] == before
+
+
+@pytest.mark.parametrize('run_id', ['_run','-run','.run'])
+def test_review_record_accepts_existing_dashboard_run_identifiers(run_id):
+    record=schemas.CandidateReviewRecord(**review_input(),run_id=run_id,
+        review_id='926f9f45-9f2c-430b-a6d1-f65ff5240548',created_at='2026-10-11T01:00:00Z')
+    assert record.run_id == run_id

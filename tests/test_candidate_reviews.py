@@ -144,3 +144,25 @@ def test_stored_escaped_environment_secrets_fail_closed(tmp_path,monkeypatch,sec
     monkeypatch.setenv('REVIEW_TEST_SECRET',secret)
     with pytest.raises(ReviewError,match='review_history_unavailable'):
         ReviewStore(tmp_path).read(run,'r1')
+
+@pytest.mark.parametrize('separator', ['\u2028', '\u2029', '\u0085'])
+def test_review_unicode_line_separators_survive_restart(tmp_path, separator):
+    run = tmp_path / 'r1'; run.mkdir()
+    card = {'card_id': 'x', 'card_version': 'a' * 64}
+    payload = dict(**card, reviewer_id='human' + separator + 'name', verdict='valid', note='before' + separator + 'after')
+    first = ReviewStore(tmp_path).append(run, 'r1', payload, [card], True)
+    assert ReviewStore(tmp_path).read(run, 'r1') == [first]
+    second = ReviewStore(tmp_path).append(run, 'r1', payload, [card], True)
+    assert ReviewStore(tmp_path).read(run, 'r1') == [first, second]
+
+@pytest.mark.parametrize('ending', ['\n', '\r\n'])
+def test_review_lf_or_crlf_delimiter_and_partial_fail_closed(tmp_path, ending):
+    run = tmp_path / 'r1'; run.mkdir()
+    card = {'card_id':'x', 'card_version':'a'*64}
+    row = ReviewStore(tmp_path).append(run, 'r1', dict(**card, reviewer_id='human', verdict='valid'), [card], True)
+    path = run / 'candidate_reviews.jsonl'
+    path.write_bytes((json.dumps(row, ensure_ascii=False) + ending).encode('utf-8'))
+    assert ReviewStore(tmp_path).read(run, 'r1') == [row]
+    path.write_bytes(json.dumps(row).encode('utf-8'))
+    with pytest.raises(ReviewError, match='review_history_unavailable'):
+        ReviewStore(tmp_path).read(run, 'r1')

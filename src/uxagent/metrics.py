@@ -24,6 +24,26 @@ def _coverage(values, name):
             name + '_unknown_sessions': len(values) - len(known)}
 
 
+def _usage_value(row, key):
+    if not isinstance(row, dict):
+        return None
+    if row.get(key + '_complete') is False:
+        return None
+    if row.get(key + '_complete') is True:
+        return row.get(key + '_measured_total')
+    return row.get(key)
+
+
+def _measured_coverage(rows, key):
+    result = _coverage([_usage_value(row, key) for row in rows], key)
+    subtotals = [row.get(key + '_measured_total') if key + '_measured_total' in row
+                 else _usage_value(row, key) for row in rows if isinstance(row, dict)]
+    valid = _number if key in ('cost', 'estimated_cost_usd') else _count
+    known = [v for v in subtotals if valid(v)]
+    result[key + '_known_total'] = sum(known) if known else None
+    return result
+
+
 def aggregate_sessions(sessions):
     groups = {}
     for condition in ('general', 'persona'):
@@ -48,7 +68,7 @@ def aggregate_sessions(sessions):
                          for status in sorted({(s.get('status') or 'unknown') for s in rows})},
         }
         for name in ('cost', 'llm_request_count', 'llm_tokens'):
-            group.update(_coverage([s.get(name) for s in rows], name))
+            group.update(_measured_coverage(rows, name) if name in ('llm_tokens', 'cost') else _coverage([_usage_value(s, name) for s in rows], name))
         # A present mapping enumerates the providers used; a missing mapping cannot
         # establish zero usage. An empty mapping with nonzero requests is incomplete.
         usages = [s.get('provider_usage') if isinstance(s.get('provider_usage'), dict)
@@ -58,16 +78,23 @@ def aggregate_sessions(sessions):
         for provider in providers:
             entry = {}
             for key in ('requests', 'input_tokens', 'output_tokens', 'estimated_cost_usd'):
-                values = [None if usage is None else 0 if provider not in usage
-                          else usage[provider].get(key) if isinstance(usage[provider], dict) else None for usage in usages]
-                entry.update(_coverage(values, key))
+                provider_rows = [
+                    usage[provider] if usage is not None and provider in usage
+                    else {key: 0} if usage is not None and row.get('provider_usage_complete') is not False else {}
+                    for row, usage in zip(rows, usages)]
+                entry.update(_measured_coverage(provider_rows, key))
             group['provider_usage'][provider] = entry
         for key in ('input_tokens', 'output_tokens'):
             values = []
             for usage in usages:
-                parts = [entry.get(key) if isinstance(entry, dict) else None for entry in usage.values()] if usage is not None else None
+                parts = [_usage_value(entry, key) for entry in usage.values()] if usage is not None else None
                 values.append(sum(parts) if parts is not None and all(_count(v) for v in parts) else None)
             group.update(_coverage(values, key))
+            subtotals = [entry.get(key + '_measured_total') if key + '_measured_total' in entry else _usage_value(entry, key)
+                         for usage in usages if usage is not None for entry in usage.values() if isinstance(entry, dict)]
+            known = [v for v in subtotals if _count(v)]
+            if known:
+                group[key + '_known_total'] = sum(known)
         recordings = []
         for row in rows:
             metrics = row.get('metrics')

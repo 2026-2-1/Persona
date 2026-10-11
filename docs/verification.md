@@ -115,3 +115,12 @@
 - 무료 비교 `20261011T110414-9c0c68e4`: 일반/페르소나 각각 성공1/예정1, 요청6, 기록6/6·rate1. 비용은null/unknown1로 유지한다. 실제 LLM 성능 비교나 사람 행동 재현 증거가 아니다.
 - doctor Python3.13.5/Playwright1.55.0/Chromium, study_errors없음. Mock 통합 `20261011T110505-f74829ea`: verified_success, 검색·필터·상세pass, 행동6/기록6.
 - P08 작업 리뷰 지적1건 수정 후 해당 범위 blocker없음. 전체검사와 최종통합리뷰는 아래에 추가한다.
+
+## C 최종 통합 검사
+
+- 최종 코드 전체 pytest: **257 passed in 225.28s**. 수정 전236개 통과만으로 완료 처리하지 않고 새 실패 재현을 추가했다.
+- Unicode JSONL과 실제 usage 누락 보완의 집중/통합 검사121 passed (211.83s), 안전 실행 ID 계약/저장51 passed. 통합 코드 리뷰의 두 지적과 추가 ID 호환 보완 후 Important/Critical blocker없음.
+- 최종 CLI Mock `20261011T112434-c256adcb`: success, 검색·필터·상세pass, 6행동/기록6, 실제 측정토큰0/complete=true. 비용complete=false로 유지한다. 외부 유료 API 호출0.
+- doctor / node --check / repo 검사 / diff 검사 통과. 1365×768 개선 보드에서 최신 판정·테스트 메모를 확인하고 가로 넘침없음. 기존 입력폼은 D 후속 범위다.
+- 메모의 Unicode 구분자, 환경 비밀값 이스케이프, 동시저장/손상/경로, 비용·토큰·기록의 부분값, 실제 실행기→비교 저장→조회 경로를 검사했다.
+- CI와 prototype 병합의 최종 상태는 관련 PR 기록에서 확인한다. 사람 독립 판정·실제 LLM 성능·실제 사이트 전체 평가는 이번 검사에 포함하지 않는다.

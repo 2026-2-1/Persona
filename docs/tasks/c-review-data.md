@@ -16,7 +16,8 @@
 - [x] P05: 기존 issue_id를 보존한 카드 ID/버전, strict 검토 모델, 출처/결과 예시.
 - [x] P06: append-only 검토, 재시작/동시 요청/경로·버전 검증, 조회·네 출력·기존 상태 표시 일치.
 - [x] P08: 성공2/예정5, scripted 배제, 비용/토큰/기록 누락과 성공 중앙값 검증.
-- [ ] 전체 회귀·repo·doctor·mock·독립 리뷰·CI와 prototype 병합.
+- [x] 로컬 전체 회귀·repo·doctor·mock·독립 코드 리뷰.
+- CI·prototype 병합 상태는 이슈 #27/#28/#29에 연결된 PR에서 확인한다.
 
 ## 이번 범위 밖
 

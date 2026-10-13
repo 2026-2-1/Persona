@@ -63,7 +63,7 @@ def test_review_form_saves_real_api_and_survives_reload(review_dashboard, verdic
         browser.close()
 
 
-@pytest.mark.parametrize('status,error', [(400,'invalid_review_input'), (404,'card_not_found'), (409,'card_version_mismatch'), (500,'review_history_unavailable')])
+@pytest.mark.parametrize('status,error', [(400,'invalid_review_input'), (404,'card_not_found'), (409,'card_version_conflict'), (500,'review_history_unavailable')])
 def test_review_form_failure_keeps_input_and_does_not_claim_saved(review_dashboard, status, error):
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -103,4 +103,48 @@ def test_review_form_pending_disables_duplicate_save_and_validates_alias(review_
         pending[0].fulfill(status=500, json={'error':'review_history_unavailable'})
         expect(form.get_by_role('button', name='판정 저장', exact=True)).to_be_enabled()
         expect(form.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        browser.close()
+
+
+def test_changed_evidence_requires_reload_before_new_review(review_dashboard, tmp_path):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        old = page.request.get(review_dashboard + '/api/run/review-run').json()
+        page.route('**/api/run/review-run', lambda route: route.fulfill(json=old))
+        form = open_form(page, review_dashboard)
+        fill_form(form)
+        summary_path = tmp_path / 'runs' / 'review-run' / 'summary.json'
+        summary = json.loads(summary_path.read_text())
+        summary['evaluator']['feature_checks'][0]['reason'] = '변경된 근거'
+        summary_path.write_text(json.dumps(summary))
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(form.get_by_role('status')).to_contain_text('근거가 변경')
+        expect(form.get_by_role('button', name='판정 저장', exact=True)).to_be_disabled()
+        page.unroute('**/api/run/review-run')
+        form.get_by_role('button', name='근거 다시 확인').click()
+        expect(page.locator('#view-history')).to_be_visible()
+        page.locator('#tab-board').click()
+        expect(form.get_by_label('검토 메모')).to_have_value('')
+        fill_form(form, 'deferred')
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(form.get_by_role('status')).to_contain_text('저장했습니다')
+        result = page.request.get(review_dashboard + '/api/reviews/review-run').json()
+        assert len(result['reviews']) == 1
+        assert result['reviews'][0]['card_version'] != old['cards'][0]['card_version']
+        browser.close()
+
+
+def test_review_form_small_screen_and_empty_verdict(review_dashboard, tmp_path):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={'width':390, 'height':844})
+        form = open_form(page, review_dashboard)
+        form.get_by_label('검토자 별칭').fill('test-reviewer')
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        assert page.request.get(review_dashboard + '/api/reviews/review-run').json()['reviews'] == []
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        page.screenshot(path=str(tmp_path / 'review-mobile.png'), full_page=True)
+        page.set_viewport_size({'width':1365, 'height':900})
+        page.screenshot(path=str(tmp_path / 'review-desktop.png'), full_page=True)
         browser.close()

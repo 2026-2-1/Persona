@@ -7,7 +7,7 @@ const verdict = value => ({success:'성공 확인',failure:'실패 확인',runni
 const reasons = {verified_success:'과업 성공',agent_finished:'AI 종료 선언',agent_gave_up:'AI 중단',browser_error:'브라우저 오류',model_error:'모델 오류',max_steps:'단계 한도',run_timeout:'시간 초과',budget_exceeded:'호출 한도',stuck:'반복 감지',interrupted:'중단',cancelled:'취소',scenario_completed:'점검 완료',scenario_failed:'확인 조건 실패',scenario_unverified:'근거 부족',scenario_action_error:'조작 실패'};
 let state = null, detail = null, experiments = [], selectedRun = null, selectedStep = null, initialized = false, refreshing = false, posting = false, currentView = 'test', pendingJobId = null, wizardStep = 1, flowBusy = false, flowCancelled = false, guideBusy=false, connecting=false, guideOptions=null, guideHistory=[], guideCards=[], guideTask=null, guideLast=null, modelChoices={};
 function notify(text, error = false) { $('notice').hidden=!text; $('notice').textContent = text || ''; $('notice').classList.toggle('error',error); }
-async function api(path,options={}) { const controller = new AbortController(); const timer=setTimeout(()=>controller.abort(),['/api/connection','/api/setup-guide'].includes(path)?90000:15000); try { const response=await fetch(path,{...options,cache:'no-store',signal:controller.signal}); const body=await response.json(); if(!response.ok) throw new Error(body.error || `요청 실패 (${response.status})`); return body; } finally { clearTimeout(timer); } }
+async function api(path,options={}) { const controller = new AbortController(); const timer=setTimeout(()=>controller.abort(),['/api/connection','/api/setup-guide'].includes(path)?90000:15000); try { const response=await fetch(path,{...options,cache:'no-store',signal:controller.signal}); const body=await response.json(); if(!response.ok) { const error=new Error(body.error || `요청 실패 (${response.status})`); error.status=response.status; throw error; } return body; } finally { clearTimeout(timer); } }
 function post(path,body) { return api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
 function isDemoUrl(text) { try {const u=new URL(text);return ['localhost','127.0.0.1'].includes(u.hostname)&&u.pathname.endsWith('shop.html');}catch{return false;} }
 function navigate(view) { currentView=view; document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;}); ['test','compare','board','history'].forEach(v=>$('view-'+v).hidden=v!==view); const copy={test:['과업 테스트','사이트와 목표를 입력하고 테스트를 시작하세요.'],compare:['AI 비교','일반 AI와 페르소나 AI의 결과를 비교하세요.'],board:['개선 보드','문제를 확인하고 수정할 작업을 정리하세요.'],history:['실행 기록','화면과 행동을 단계별로 확인하세요.']}[view];$('page-title').textContent=copy[0];$('page-description').textContent=copy[1];$('stats').hidden=true; }
@@ -31,7 +31,129 @@ function renderFeatureChecks(features) {
 function renderDetail() {const run=state.runs.find(r=>r.run_id===selectedRun);const summary=detail?.summary||{}, m=detail?.metrics||{},rows=detail?.steps||[];$('screen-title').textContent=run?`${run.provider==='scenario'?'시나리오':run.persona_id||'일반 AI'} 실행 기록`:'실행을 선택하세요';$('run-status').textContent=run?`독립 판정: ${verdict(run.verification)} · 종료 상태: ${run.active?'진행 중':reasons[run.termination_reason]||run.termination_reason||'종료'}`:'독립 판정과 종료 상태를 함께 확인합니다.';const cost=m.estimated_cost_usd??m.cost_usd??summary.cost;$('run-metrics').innerHTML=`<div class="metric-grid">${metric('행동 시도',m.action_attempts??summary.action_attempts??run?.action_attempts)}${metric('실행 시간',summary.elapsed_ms==null?'미확인':`${(summary.elapsed_ms/1000).toFixed(1)}초`)}${metric('추정 API 비용',cost==null?'미확인':`$${Number(cost).toFixed(5)}`)}${metric('기록 확보율',m.recording?.rate==null?'미확인':`${(m.recording.rate*100).toFixed(1)}%`)}${metric('복구 사건',m.recovery?.episodes?.length??'미확인')}${metric('오류 후 재개율',m.recovery?.rate==null?'오류 없음':`${(m.recovery.rate*100).toFixed(1)}%`)}</div>`;$('steps').innerHTML=rows.length?rows.map((s,i)=>{const a=s.action||{},result=s.result||{};return `<button class="step ${selectedStep===i?'selected':''}" data-step="${i}"><strong>${i+1}. ${esc(a.type||'모델 판단')} ${esc(a.target_id||a.url||'')}</strong><small>${esc(s.scenario_step||s.decision?.rationale_summary||s.decision?.finish?.summary||result.error?.message||'판단 설명 없음')}</small><small>${esc(a.type?(result.ok?'행동 실행됨':result.error?.code||'결과 미확인'):'실행 행동 없음')}</small></button>`;}).join(''):empty('기록된 행동이 없습니다.');const row=selectedStep==null?null:rows[selectedStep],obsId=row?(row.next_observation_id||row.observation_id):run?.latest_observation_id,obs=detail?.observations?.[obsId],src=obs?.screenshot_url;const wrap=$('shot-wrap');if(wrap.dataset.shot!==(src||'')){wrap.dataset.shot=src||'';wrap.innerHTML=src?`<img src="${esc(src)}" alt="테스트 화면">`:empty('이 실행에는 저장된 관찰 화면이 없습니다.');if(src)wrap.querySelector('img').onerror=()=>{wrap.innerHTML=empty('관찰 화면 파일을 읽지 못했습니다.');wrap.dataset.shot='';};}else if(!src){wrap.innerHTML=empty('이 실행에는 저장된 관찰 화면이 없습니다.');}const url=obs?.url||run?.latest_url||'';$('screen-url').textContent=url;$('screen-url').href=/^https?:\/\//.test(url)?url:'#';$('shot-caption').textContent=obs?`${selectedStep==null?'최근 관찰':`행동 ${selectedStep+1} 이후`} · ${obsId}`:'저장된 관찰 없음';const features=summary.evaluator?.feature_checks||[];renderFeatureChecks(features);const p=detail?.persona;$('profile').innerHTML=p?`<h2>${detail?.run?.execution_mode==='scripted'?'검증 방식':'페르소나 맥락'}</h2><p class="help">${esc(p.background||(summary.execution_mode==='scripted'?'사전 정의한 동작과 코드 평가':'일반 AI 조건'))}</p><p class="help">숙련도: ${esc(p.digital_familiarity??'해당 없음')}<br>목표: ${esc(p.intent||'기록 없음')}</p>`:'<h2>페르소나 맥락</h2>'+empty('실행을 선택하세요.');const calls=detail?.calls||[];$('call-count').textContent=`${calls.length}회`;$('call-list').innerHTML=calls.length?`<div class="table-wrap"><table><thead><tr><th>제공자 / 모델</th><th>토큰 입력 / 출력</th><th>시간</th><th>추정 비용</th></tr></thead><tbody>${calls.map(c=>`<tr><td>${esc(c.provider)} / ${esc(c.model)}${c.error?`<p class="error">${esc(c.error)}</p>`:''}${c.fallback_reason?`<p class="muted">fallback: ${esc(c.fallback_reason)}</p>`:''}</td><td>${esc(c.input_tokens??'미확인')} / ${esc(c.output_tokens??'미확인')}</td><td>${esc(c.elapsed_ms??'미확인')} ms</td><td>${c.estimated_cost_usd==null?'미확인':'$'+Number(c.estimated_cost_usd).toFixed(5)}</td></tr>`).join('')}</tbody></table></div>`:empty('모델 호출 기록이 없습니다.');$('exports').innerHTML=selectedRun?['json','csv','md','html'].map(f=>`<a class="btn" href="/api/export/${encodeURIComponent(selectedRun)}?format=${f}" download>${f.toUpperCase()} 다운로드</a>`).join(''):empty('실행을 선택하면 내보낼 수 있습니다.');renderCards(); }
 function evidenceButtons(card){return (card.evidence_step_ids||[]).map(id=>{const i=(detail?.steps||[]).findIndex(s=>s.step_id===id);return i<0?esc(id):`<button class="btn soft" data-evidence-step="${i}">행동 ${i+1} 근거 보기</button>`;}).join(' ');}
 function cardReviewLabel(c){const v=c.latest_review?.verdict;return ({valid:'유효 후보',invalid:'무효 후보',deferred:'판단 보류',tool_error:'도구 오류',environment_error:'환경 오류'}[v]||(c.review_status==='deferred'?'판단 보류':c.review_status==='reviewed'?'검토 완료':'사람 검토 전'));}
-function renderCards(){const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 확인할 테스트를 선택하세요.';const category=c=>({system_error_candidate:'도구 오류 확인',unmet_checkpoint:'완료 조건 미충족'}[c.classification]||'사용성 후보');$('cards').innerHTML=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><div><p class="issue-category">${esc(category(c))}</p><h3>${esc(c.title||c.issue_id)}</h3></div><span class="badge">${esc(cardReviewLabel(c))}</span></div><dl class="issue-facts">${[['관찰',c.observed_behavior],['가능한 원인',c.hypothesis],['수정 제안',c.recommendation],['완료 조건',c.acceptance]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)||'<span class="muted">연결할 행동 기록 없음</span>'}</div>${c.latest_review?`<p class="help">검토: ${esc(c.latest_review.reviewer_id)} · ${esc(c.latest_review.note||'메모 없음')}</p>`:''}<details class="raw-evidence"><summary>원자료</summary><pre>${esc(valueText(c.evidence))}</pre></details></article>`).join(''):empty('이 실행에서 발견한 개선 후보가 없습니다.');}
+// Drafts live only in this page and are scoped to the exact evidence version.
+const reviewForms = new Map();
+const reviewVerdicts = {valid:'유효 후보', invalid:'무효 후보', deferred:'판단 보류', tool_error:'도구 오류', environment_error:'환경 오류'};
+function reviewKey(runId, card) { return JSON.stringify([runId, card.card_id, card.card_version]); }
+function reviewForm(runId, card) {
+  const key = reviewKey(runId, card);
+  if (reviewForms.has(key)) return reviewForms.get(key);
+  const form = document.createElement('form');
+  form.className = 'review-form';
+  form.setAttribute('aria-label', '사람 판정 입력');
+  form.innerHTML = `<h4>사람 검토</h4>
+    <p class="help">후보에 대한 검토입니다. 과업 성공 판정은 바뀌지 않습니다.</p>
+    <div class="form-grid"><label>검토자 별칭<input name="reviewer_id" required maxlength="200" autocomplete="off" placeholder="검토자 이름 또는 별칭"></label>
+    <label>판정<select name="verdict" aria-label="판정" required><option value="">선택하세요</option>${Object.entries(reviewVerdicts).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select></label>
+    <label class="full">검토 메모<textarea name="note" maxlength="4000" placeholder="판단 근거를 적으세요. 키·개인정보는 입력하지 마세요."></textarea></label></div>
+    <div class="actions gap-top"><button class="btn primary" type="submit">판정 저장</button><button class="btn soft" type="button" data-review-reload hidden>근거 다시 확인</button></div>
+    <p class="help review-message" role="status" aria-live="polite"></p>`;
+  const entry = {form, pending:false, blocked:false, runId, card};
+  reviewForms.set(key, entry);
+  const message = (text, error=false) => {
+    const node = form.querySelector('.review-message');
+    node.textContent = text;
+    node.classList.toggle('error', error);
+  };
+  entry.message = message;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (entry.pending || entry.blocked) return;
+    const current = selectedRun === runId && detail?.cards?.find(c=>c.card_id===card.card_id && c.card_version===card.card_version);
+    if (!current || !detail?.summary) {
+      entry.blocked = true;
+      message('실행 상태나 근거가 변경됐습니다. 근거를 다시 확인하세요.', true);
+      updateReviewForm(entry);
+      return;
+    }
+    const reviewer = form.elements.reviewer_id.value.trim();
+    if (!reviewer) { message('검토자 별칭을 입력하세요.', true); form.elements.reviewer_id.focus(); return; }
+    const payload = {card_id:card.card_id, card_version:card.card_version, reviewer_id:reviewer,
+      verdict:form.elements.verdict.value, note:form.elements.note.value};
+    if (!Object.hasOwn(reviewVerdicts, payload.verdict) || !form.reportValidity()) return;
+    entry.pending = true;
+    message('판정을 저장하고 있습니다.');
+    updateReviewForm(entry);
+    try {
+      const record = await post('/api/reviews/'+encodeURIComponent(runId), payload);
+      message('판정을 저장했습니다.');
+      // Use the server-confirmed record, never an optimistic success verdict.
+      if (selectedRun===runId) {
+        const target = detail?.cards?.find(c=>c.card_id===card.card_id && c.card_version===card.card_version);
+        if (target) {
+          target.latest_review = record;
+          target.review_status = record.verdict==='deferred'?'deferred':'reviewed';
+          renderCards();
+        }
+      }
+    } catch (error) {
+      entry.blocked = error.status===409 || error.status===404;
+      const messages = {
+        400:'입력 내용을 확인하세요. 별칭·판정·메모 형식 또는 민감정보 때문에 저장하지 못했습니다.',
+        404:'실행 또는 후보를 찾지 못했습니다. 근거를 다시 확인하세요.',
+        409:'실행 중이거나 카드 근거가 변경됐습니다. 근거를 다시 확인한 뒤 판정하세요.',
+        500:'검토 이력을 읽거나 저장하지 못했습니다. 서버 상태를 확인하세요.'
+      };
+      message(messages[error.status] || '저장 여부를 확인하지 못했습니다. 중복 저장 전에 최신 판정과 서버 상태를 확인하세요.', true);
+    } finally {
+      entry.pending = false;
+      updateReviewForm(entry);
+    }
+  });
+  form.querySelector('[data-review-reload]').addEventListener('click', async () => {
+    if (entry.pending || selectedRun!==runId) return;
+    entry.pending = true;
+    updateReviewForm(entry);
+    try {
+      const fresh = await api('/api/run/'+encodeURIComponent(runId));
+      if (selectedRun!==runId) return;
+      detail = fresh;
+      entry.blocked = false;
+      message('최신 근거를 확인하고 다시 판정하세요.');
+      selectedStep = null;
+      $('follow-live').checked = false;
+      navigate('history');
+      renderDetail();
+    } catch (_) { message('근거를 불러오지 못했습니다. 입력을 유지합니다. 다시 시도하세요.', true); }
+    finally { entry.pending = false; updateReviewForm(entry); }
+  });
+  return entry;
+}
+function updateReviewForm(entry) {
+  const active = selectedRun===entry.runId && !detail?.summary;
+  entry.form.querySelectorAll('input,select,textarea').forEach(node=>node.disabled=entry.pending);
+  const submit = entry.form.querySelector('[type=submit]');
+  submit.disabled = entry.pending || entry.blocked || active;
+  submit.textContent = entry.pending?'저장 중…':'판정 저장';
+  const reload = entry.form.querySelector('[data-review-reload]');
+  reload.hidden = !entry.blocked;
+  reload.disabled = entry.pending;
+  if (active && !entry.pending) entry.message('실행이 끝난 뒤 검토를 저장할 수 있습니다.');
+}
+function mountReviewForms(cards, html) {
+  const container = $('cards');
+  const signature = JSON.stringify([selectedRun, cards.map(c=>[c.card_id,c.card_version]), html]);
+  // Unchanged polling must not replace the user's in-progress form.
+  const focused = document.activeElement;
+  const selection = focused?.tagName==='TEXTAREA' ? [focused.selectionStart, focused.selectionEnd] : null;
+  if (container.reviewSignature!==signature) {
+    container.innerHTML = html;
+    container.reviewSignature = signature;
+  }
+  cards.forEach((card,index)=>{
+    if (!selectedRun || !card.card_id || !card.card_version) return;
+    const entry = reviewForm(selectedRun,card);
+    const article = container.children[index];
+    if (entry.form.parentNode!==article) article.append(entry.form);
+    updateReviewForm(entry);
+  });
+  if (focused?.isConnected && focused.closest('.review-form') && document.activeElement!==focused) {
+    focused.focus({preventScroll:true});
+    if (selection) focused.setSelectionRange(...selection);
+  }
+}
+
+function renderCards(){const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 확인할 테스트를 선택하세요.';const category=c=>({system_error_candidate:'도구 오류 확인',unmet_checkpoint:'완료 조건 미충족'}[c.classification]||'사용성 후보');const html=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><div><p class="issue-category">${esc(category(c))}</p><h3>${esc(c.title||c.issue_id)}</h3></div><span class="badge">${esc(cardReviewLabel(c))}</span></div><dl class="issue-facts">${[['관찰',c.observed_behavior],['가능한 원인',c.hypothesis],['수정 제안',c.recommendation],['완료 조건',c.acceptance]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)||'<span class="muted">연결할 행동 기록 없음</span>'}</div>${c.latest_review?`<p class="help">검토: ${esc(c.latest_review.reviewer_id)} · ${esc(c.latest_review.note||'메모 없음')}</p>`:''}<details class="raw-evidence"><summary>원자료</summary><pre>${esc(valueText(c.evidence))}</pre></details></article>`).join(''):empty('이 실행에서 발견한 개선 후보가 없습니다.');mountReviewForms(cards,html);}
 function pairedSessions(sessions) { const pairs=new Map();for(const s of sessions){const key=`${s.pair_persona_id||s.persona_id||'세션'}:${s.repetition||1}`;if(!pairs.has(key))pairs.set(key,{});pairs.get(key)[s.condition]=s;} const cell=s=>s?`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled'}><span>${esc(verdict(s.verification))}</span> <small>${esc({running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행'}[s.status]||s.status)}</small></button>`:'미등록';return `<div class="table-wrap gap-top"><table><thead><tr><th>대응 세션 / 반복</th><th>일반 AI</th><th>페르소나 AI</th></tr></thead><tbody>${[...pairs].map(([key,p])=>`<tr><td>${esc(key)}</td><td>${cell(p.general)}</td><td>${cell(p.persona)}</td></tr>`).join('')}</tbody></table></div>`;}
 function renderExperiments(){
  const rate=g=>g.rate==null?'미확인':`${(g.rate*100).toFixed(1)}%`;

@@ -65,7 +65,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 ## 개발 진입점
 
-- 협업: [브랜치·커밋](docs/collaboration.md)
+- 협업: [브랜치·커밋](docs/collaboration.md), [PR·리뷰](docs/pull-requests.md)
 
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)

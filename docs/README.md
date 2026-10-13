@@ -5,6 +5,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | 문서 | 목적 |
 |---|---|
 | [브랜치·커밋](collaboration.md) | prototype 통합과 실험 브랜치 운영 |
+| [PR·리뷰](pull-requests.md) | 작성 규칙과 작성자 외 승인 1명 |
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [현재 상태](current-state.md) | 구현됨·미구현·기존 제한 |

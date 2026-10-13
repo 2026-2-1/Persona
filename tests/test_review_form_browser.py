@@ -180,7 +180,7 @@ def test_drafts_survive_polling_and_round_trip_between_runs(review_dashboard, tm
         fill_form(first, 'deferred')
         second.get_by_label('검토 메모').fill('두 번째 카드 초안')
         note = first.get_by_label('검토 메모')
-        note.focus() if hasattr(note, 'focus') else note.click()
+        note.focus()
         note.press('Home')
         note.press('Shift+ArrowRight')
         selection = note.evaluate('(e)=>[e.selectionStart,e.selectionEnd]')
@@ -258,4 +258,58 @@ def test_delayed_save_stays_with_original_run_and_retry(review_dashboard, tmp_pa
         expect(form.get_by_role('status')).to_contain_text('저장했습니다')
         assert len(page.request.get(review_dashboard+'/api/reviews/review-run').json()['reviews']) == 1
         assert page.request.get(review_dashboard+'/api/reviews/other-run').json()['reviews'] == []
+        browser.close()
+
+
+@pytest.mark.parametrize('field', ['검토자 별칭', '검토 메모'])
+def test_poll_rerender_preserves_focused_selection(review_dashboard, field):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        form = open_form(page, review_dashboard)
+        fill_form(form)
+        control = form.get_by_label(field)
+        control.focus()
+        control.press('Home')
+        control.press('Shift+ArrowRight')
+        control.press('Shift+ArrowRight')
+        selection = control.evaluate('(e)=>[e.selectionStart,e.selectionEnd]')
+        card = page.request.get(review_dashboard+'/api/reviews/review-run').json()['cards'][0]
+        response = page.request.post(review_dashboard+'/api/reviews/review-run', data={
+            'card_id':card['card_id'],'card_version':card['card_version'],
+            'reviewer_id':'another-test-reviewer','verdict':'deferred','note':'외부 저장으로 카드 갱신'})
+        assert response.status == 201
+        expect(page.locator('#cards .badge')).to_have_text('판단 보류')
+        expect(control).to_be_focused()
+        assert control.evaluate('(e)=>[e.selectionStart,e.selectionEnd]') == selection
+        expect(form.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        expect(form.get_by_label('판정', exact=True)).to_have_value('valid')
+        browser.close()
+
+
+def test_round_trip_ignores_inflight_detail_from_previous_selection(review_dashboard, tmp_path):
+    add_review_run(tmp_path, 'review-run')
+    add_review_run(tmp_path, 'other-run')
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        open_form(page, review_dashboard)
+        select_review_run(page, 'review-run')
+        fill_form(page.locator('.review-form').first)
+        old = page.request.get(review_dashboard+'/api/run/review-run').json()
+        held = []
+        page.route('**/api/run/review-run', lambda route: held.append(route))
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            pass
+        page.locator('#tab-history').click()
+        page.locator('#run-select').select_option('other-run')
+        page.locator('#run-select').select_option('review-run')
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            held[0].fulfill(json=old)
+        # No stale form may be mounted until the newly selected run is fetched.
+        expect(page.locator('.review-form')).to_have_count(0)
+        held[1].continue_()
+        page.unroute('**/api/run/review-run')
+        page.locator('#tab-board').click()
+        expect(page.locator('.review-form').first.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
         browser.close()

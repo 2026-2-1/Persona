@@ -62,7 +62,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
     if not isinstance(run_id,str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
         raise ValueError("run_id_override must be a safe identifier")
-    is_fixture=urlsplit(config.start_url).path.endswith("shop.html") and urlsplit(config.start_url).hostname in ("localhost","127.0.0.1")
+    is_fixture=urlsplit(config.start_url).path.endswith(("shop.html","decathlon.html")) and urlsplit(config.start_url).hostname in ("localhost","127.0.0.1")
     server=FixtureServer(urlsplit(config.start_url).port or (443 if urlsplit(config.start_url).scheme=="https" else 80)) if is_fixture else None
     server_started=server.start() if server else False
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
@@ -106,7 +106,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 pre_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=observation
                 executor.publish(registry)
-                evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None))
+                evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations)
                 verification=evaluation["verification"]
                 if verification=="success":termination="verified_success";break
                 try:
@@ -159,7 +159,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     raise
                 post_observed_at=datetime.now(timezone.utc).isoformat()
                 executor.publish(next_registry)
-                post_eval=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None));verification=post_eval["verification"];evaluation=post_eval
+                post_eval=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations);verification=post_eval["verification"];evaluation=post_eval
                 fingerprint_state=next_obs.model_dump(exclude={"observation_id","capture","error","tabs"})
                 fingerprint=hashlib.sha256(json.dumps(fingerprint_state,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                 action_key=json.dumps({k:getattr(decision.action,k) for k in ("type","target_id","text","option_value","url","target_tab_id") if getattr(decision.action,k) is not None},sort_keys=True,ensure_ascii=False)

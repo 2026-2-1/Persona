@@ -206,7 +206,7 @@ class MockProvider:
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         obs = payload["observation"]
         memories = payload.get("memories", [])
-        action_types = [m.get("action_type") for m in memories]
+        action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
         inputs = obs.get("input_elements", [])
         clicks = obs.get("clickable_elements", [])
         selects = obs.get("select_elements", [])

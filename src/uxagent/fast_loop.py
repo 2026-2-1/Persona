@@ -12,7 +12,7 @@ class FastLoop:
         self.provider, self.budget, self.model, self.temperature, self.max_output_tokens = provider,budget,model,temperature,max_output_tokens
         self.call_log=call_log
 
-    async def decide(self, persona, task, observation, memories, previous_error=None, remaining_steps=0, persona_mode="persona"):
+    async def decide(self, persona, task, observation, memories, previous_error=None, remaining_steps=0, persona_mode="persona", *, recent_actions=None):
         if persona_mode not in {"general", "persona"}:
             raise ValueError("persona_mode must be general or persona")
         persona_context = persona.model_dump() if persona_mode == "persona" else {"constraints":persona.constraints,"intent":persona.intent}
@@ -21,7 +21,7 @@ class FastLoop:
                 # A classifier cannot invent a search query. Let the generative provider
                 # supply a bounded input action rather than typing the whole task.
                 return await self._fallback_decide(persona, task, observation, memories, previous_error,
-                    remaining_steps, "input_text_required", persona_context=persona_context)
+                    remaining_steps, "input_text_required", persona_context=persona_context, recent_actions=recent_actions)
             candidates = self._candidates(observation, task)
             fallback_reason = None
             if not candidates:
@@ -34,7 +34,7 @@ class FastLoop:
                 try:
                     choice, confidence, probabilities, usage = await self.provider.choose(
                         {"task": task, "persona": persona_context, "observation": observation.model_dump(),
-                         "recent_memory": memories[-4:], "previous_error": previous_error}, candidates)
+                         "recent_memory": memories[:4], "recent_actions": (recent_actions or [])[-4:], "previous_error": previous_error}, candidates)
                     input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
                     actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
                     self.budget.settle(reservation, actual); settled = True
@@ -52,7 +52,7 @@ class FastLoop:
                                 "choice":choice,"confidence":confidence,"probabilities":probabilities,"fallback_reason":None})
                         if (selected.get("action") or {}).get("type") == "type":
                             return await self._fallback_decide(persona, task, observation, memories, previous_error,
-                                remaining_steps, "input_text_required", persona_context=persona_context)
+                                remaining_steps, "input_text_required", persona_context=persona_context, recent_actions=recent_actions)
                         return self._decision(selected, observation, confidence, probabilities)
                     if self.call_log:
                         self.call_log({"module":"fast", "provider":"typesafe", "model":usage.get("model", self.provider.model),
@@ -71,9 +71,9 @@ class FastLoop:
                             "output_tokens":None, "estimated":True, "estimated_cost_usd":None,
                             "error":str(exc).split(":",1)[0], "fallback_reason":fallback_reason})
             result = await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps,
-                                                fallback_reason, candidates or None, persona_context)
+                                                fallback_reason, candidates or None, persona_context, recent_actions)
             return result
-        return await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps, None, persona_context=persona_context)
+        return await self._fallback_decide(persona, task, observation, memories, previous_error, remaining_steps, None, persona_context=persona_context, recent_actions=recent_actions)
 
     @staticmethod
     def _decision(candidate, observation, confidence, probabilities, source="Jev"):
@@ -116,9 +116,9 @@ class FastLoop:
                                "action":None, "finish":{"claim":claim, "summary":description}})
         return candidates
 
-    async def _fallback_decide(self, persona, task, observation, memories, previous_error, remaining_steps, fallback_reason, candidates=None, persona_context=None):
+    async def _fallback_decide(self, persona, task, observation, memories, previous_error, remaining_steps, fallback_reason, candidates=None, persona_context=None, recent_actions=None):
         payload={"persona":persona.model_dump() if persona_context is None else persona_context,"task":task,"observation":observation.model_dump(),
-                 "memories":memories[-6:],"previous_error":previous_error,"remaining_steps":remaining_steps}
+                 "memories":memories[:6],"recent_actions":(recent_actions or [])[-6:],"previous_error":previous_error,"remaining_steps":remaining_steps}
         if fallback_reason:
             payload["fallback_reason"] = fallback_reason
             if candidates:
@@ -155,7 +155,7 @@ class FastLoop:
                     if selected is None: raise ValueError("fallback candidate_id is not in the supplied candidate list")
                     if (selected.get("action") or {}).get("type") == "type":
                         return await self._fallback_decide(persona,task,observation,memories,previous_error,
-                            remaining_steps,"input_text_required",persona_context=persona_context)
+                            remaining_steps,"input_text_required",persona_context=persona_context,recent_actions=recent_actions)
                     return self._decision(selected,observation,0.0,{},source="Gemini fallback")
                 if raw.get("action") is not None: raw["action"]=Action.model_validate(raw["action"])
                 raw["decision_id"]="d-"+uuid.uuid4().hex[:10]

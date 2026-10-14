@@ -119,16 +119,17 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 except Exception as exc:
                     memories=list(memory.retrieve(config.task,config.memory_limit))
                     previous_error={"code":"embedding_error","message":str(exc)[:300]}
-                # Mock model uses the action history deterministically; the live prompt sees only bounded logged context.
+                # Keep scored memories and recent actions separate so history cannot displace top-ranked memories.
+                memories=memories[:(4 if hasattr(provider,"choose") else 6)]
                 history_tail=step_history[-config.recent_step_count:] if config.recent_step_count else []
-                memories.extend({"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail)
+                recent_actions=[{"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail]
                 step_id=step_count+1
                 try:
                     decision_started=time.monotonic()
                     remaining=run_deadline-time.monotonic()
                     if remaining<=0:termination="run_timeout";break
                     async with asyncio.timeout(remaining):
-                        decision=await fast.decide(persona,config.task,observation,memories,previous_error,config.max_steps-step_count,persona_mode=persona_mode)
+                        decision=await fast.decide(persona,config.task,observation,memories,previous_error,config.max_steps-step_count,persona_mode=persona_mode,recent_actions=recent_actions)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
                 except BudgetExceeded:
                     termination="budget_exceeded";break

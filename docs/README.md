@@ -26,3 +26,4 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 최상위 `AGENTS.md`는 자동 발견을 위해, `README.md`는 저장소 진입점을 위해 유지한다. 그 밖의 기획·기술·검증 Markdown은 docs에 모은다.
 
 - [D-01 사람 판정 입력·저장](tasks/d-review-form.md): #32 구현과 #33~#36 후속 범위.
+- [D-04 비교표 측정 범위·누락](tasks/d-comparison-coverage.md): #35의 표시 계약과 가상 데이터 검증.

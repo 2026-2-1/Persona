@@ -15,14 +15,19 @@ class SlowLoop:
     """Run reflection and plan review serially without blocking Fast Loop."""
 
     def __init__(self, provider, budget, model, temperature, output_tokens, memory,
-                 task_writer=None, stage_writer=None, call_log=None):
+                 task_writer=None, stage_writer=None, call_log=None, *, defer_adoption=False):
         self.provider, self.budget, self.model = provider, budget, model
         self.temperature, self.output_tokens = temperature, output_tokens
         self.memory, self.task_writer, self.stage_writer = memory, task_writer, stage_writer
         self.call_log = call_log
+        self.defer_adoption = defer_adoption
         self.pending = deque()
+        self.completed_results = deque()
         self.worker: asyncio.Task | None = None
         self.status = "idle"
+        self.event_counts = {key: 0 for key in
+                             ("scheduled", "started", "completed", "adopted", "discarded",
+                              "failed", "skipped", "cancelled")}
 
     def schedule_reflection(self, persona, task, observation_id=None, *, error=None, wonder=False):
         return self._schedule("reflection", persona, task, observation_id=observation_id,
@@ -40,8 +45,9 @@ class SlowLoop:
                   plan=None, plan_id=None, plan_version=None):
         task_id = f"slow-{kind}-{uuid.uuid4().hex}"
         snapshot_seq = max((entry.seq for entry in self.memory.entries), default=0)
+        persona_data = persona.model_dump() if hasattr(persona, "model_dump") else dict(persona)
         item = {
-            "task_id": task_id, "kind": kind, "persona": persona.model_dump(), "task": task,
+            "task_id": task_id, "kind": kind, "persona": persona_data, "task": task,
             "observation_id": observation_id, "error": error, "wonder": wonder,
             "plan": plan, "plan_id": plan_id, "plan_version": plan_version,
         }
@@ -54,6 +60,7 @@ class SlowLoop:
 
     def _event(self, item, status, *, snapshot_seq, source_memory_ids=None,
                output_record_ids=None, reason_code=None):
+        self.event_counts[status] = self.event_counts.get(status, 0) + 1
         if self.task_writer is None:
             return
         event = BrainTaskEvent(
@@ -80,26 +87,36 @@ class SlowLoop:
                         source_memory_ids=source_memory_ids)
             try:
                 if item["kind"] == "reflection":
-                    output_ids = await self._reflect(item, selected, snapshot_seq)
+                    outputs = await self._reflect(item, selected, snapshot_seq)
                 else:
-                    output_ids = await self._review_plan(item, selected, snapshot_seq)
+                    outputs = await self._review_plan(item, selected, snapshot_seq)
+                output_ids = [output["record"].record_id for output in outputs]
+                if not self.defer_adoption:
+                    for output in outputs:
+                        self._append_output(output, snapshot_seq)
                 self._event(item, "completed", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, output_record_ids=output_ids)
-                self.status = "completed"
+                if self.defer_adoption:
+                    self.completed_results.append({
+                        **item, "run_id": self.memory.run_id, "snapshot_seq": snapshot_seq,
+                        "source_memory_ids": source_memory_ids, "output_record_ids": output_ids,
+                        "outputs": outputs,
+                    })
+                self._refresh_status()
             except asyncio.CancelledError:
                 self._event(item, "cancelled", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, reason_code="run_finished")
-                self.status = "cancelled"
+                self._refresh_status()
                 raise
             except BudgetExceeded:
                 self._event(item, "skipped", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, reason_code="budget_exceeded")
-                self.status = "partially_skipped"
+                self._refresh_status()
             except Exception as exc:
                 reason = f"{item['kind']}_timeout" if isinstance(exc, TimeoutError) else f"{item['kind']}_call_failed"
                 self._event(item, "failed", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, reason_code=reason)
-                self.status = "partially_failed"
+                self._refresh_status()
                 if self.call_log:
                     self.call_log({"module": "slow", "stage": item["kind"],
                                    "model": self.model, "task_id": item["task_id"],
@@ -159,18 +176,16 @@ class SlowLoop:
                                        snapshot_seq)
             source_steps = sorted({step for entry in snapshot if entry.memory_id in sources
                                    for step in entry.source_step_ids})
-            self.memory.append("reflection", insight["summary"].strip(), source_step_ids=source_steps,
-                               source_observation_ids=[item["observation_id"]] if item["observation_id"] else [],
-                               content_status="generated", based_on_seq=snapshot_seq,
-                               source_memory_ids=sources, source_stage_record_id=record.record_id)
-            output_ids.append(record.record_id)
+            output_ids.append({"record": record, "kind": "reflection", "text": insight["summary"].strip(),
+                               "source_step_ids": source_steps,
+                               "source_observation_ids": [item["observation_id"]] if item["observation_id"] else [],
+                               "source_memory_ids": sources})
         if item["wonder"] and isinstance(parsed.get("next_focus"), str) and parsed["next_focus"].strip():
             record = self._write_stage(item, "wonder", parsed["next_focus"].strip(), [], snapshot_seq)
-            self.memory.append("wonder", parsed["next_focus"].strip(),
-                               source_observation_ids=[item["observation_id"]] if item["observation_id"] else [],
-                               content_status="generated", based_on_seq=snapshot_seq,
-                               source_stage_record_id=record.record_id)
-            output_ids.append(record.record_id)
+            output_ids.append({"record": record, "kind": "wonder", "text": parsed["next_focus"].strip(),
+                               "source_step_ids": [],
+                               "source_observation_ids": [item["observation_id"]] if item["observation_id"] else [],
+                               "source_memory_ids": []})
         return output_ids
 
     async def _review_plan(self, item, snapshot, snapshot_seq):
@@ -195,11 +210,10 @@ class SlowLoop:
         sources = [entry.memory_id for entry in snapshot]
         record = self._write_stage(item, "plan_review", text, sources, snapshot_seq)
         source_steps = sorted({step for entry in snapshot for step in entry.source_step_ids})
-        self.memory.append("reflection", text, source_step_ids=source_steps,
-                           source_observation_ids=[item["observation_id"]], content_status="generated",
-                           based_on_seq=snapshot_seq, source_memory_ids=sources,
-                           source_stage_record_id=record.record_id)
-        return [record.record_id]
+        return [{"record": record, "kind": "reflection", "text": text,
+                 "source_step_ids": source_steps,
+                 "source_observation_ids": [item["observation_id"]],
+                 "source_memory_ids": sources}]
 
     def _write_stage(self, item, stage, text, source_memory_ids, snapshot_seq):
         record = BrainStageRecord(
@@ -213,6 +227,14 @@ class SlowLoop:
             self.stage_writer.write(record.model_dump())
         return record
 
+    def _append_output(self, output, snapshot_seq):
+        self.memory.append(
+            output["kind"], output["text"], output["source_step_ids"],
+            output["source_observation_ids"], "generated", snapshot_seq,
+            source_memory_ids=output["source_memory_ids"],
+            source_stage_record_id=output["record"].record_id,
+        )
+
     async def close(self):
         if self.worker and not self.worker.done():
             self.worker.cancel()
@@ -224,4 +246,38 @@ class SlowLoop:
             item = self.pending.popleft()
             snapshot_seq = max((entry.seq for entry in self.memory.entries), default=0)
             self._event(item, "cancelled", snapshot_seq=snapshot_seq, reason_code="run_finished")
-            self.status = "cancelled"
+        self._refresh_status()
+
+    def pop_completed(self):
+        results = list(self.completed_results)
+        self.completed_results.clear()
+        return results
+
+    def record_consumption(self, result, *, adopted, reason_code=None):
+        self._event(result, "adopted" if adopted else "discarded",
+                    snapshot_seq=result["snapshot_seq"],
+                    source_memory_ids=result["source_memory_ids"],
+                    output_record_ids=result["output_record_ids"],
+                    reason_code=None if adopted else reason_code or "not_adopted")
+        self._refresh_status()
+
+    def _refresh_status(self):
+        counts = self.event_counts
+        scheduled = counts["scheduled"]
+        terminal = sum(counts[key] for key in ("completed", "failed", "skipped", "cancelled"))
+        if not scheduled:
+            self.status = "idle"
+        elif terminal < scheduled:
+            self.status = "running" if counts["started"] > terminal else "scheduled"
+        elif counts["failed"]:
+            self.status = "partially_failed"
+        elif counts["skipped"]:
+            self.status = "partially_skipped"
+        elif counts["cancelled"]:
+            self.status = "partially_cancelled" if counts["completed"] else "cancelled"
+        else:
+            self.status = "completed"
+
+    def summary(self):
+        return {"status": self.status, "events": dict(self.event_counts),
+                "pending": len(self.pending), "active": int(self.worker is not None and not self.worker.done())}

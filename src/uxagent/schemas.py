@@ -58,7 +58,7 @@ class StudyConfig(StrictModel):
     max_observation_text: int = Field(default=12000, gt=0)
     max_observation_elements: int = Field(default=100, gt=0)
     screenshot_input: Literal[False] = False
-    enable_slow_loop: bool = False
+    enable_slow_loop: bool = Field(default=True, description="Legacy field; Slow Loop is always enabled.")
     enable_wonder: bool = False
     reflection_every_actions: int = Field(default=5, gt=0)
     memory_limit: int = Field(default=8, gt=0)
@@ -76,6 +76,12 @@ class StudyConfig(StrictModel):
         if len({check.id for check in checks}) != len(checks):
             raise ValueError('evaluation check IDs must be unique')
         return checks
+
+    @field_validator("enable_slow_loop", mode="before")
+    @classmethod
+    def slow_loop_is_required(cls, _value):
+        # Keep accepting older study files while making the #43 behavior explicit.
+        return True
 
     @field_validator("start_url")
     @classmethod
@@ -227,6 +233,7 @@ class BrainStageRecord(StrictModel):
 
     schema_version: Literal["1.0"] = "1.0"
     record_id: str = Field(min_length=1)
+    task_id: str | None = Field(default=None, min_length=1)
     run_id: str = Field(min_length=1)
     stage: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
     observation_id: str | None = Field(default=None, min_length=1)
@@ -267,8 +274,8 @@ class BrainTaskEvent(StrictModel):
     event_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    kind: Literal["importance", "reflection", "plan_review", "wonder"]
-    status: Literal["scheduled", "started", "skipped", "completed", "failed", "cancelled"]
+    kind: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    status: Literal["scheduled", "started", "skipped", "completed", "adopted", "discarded", "failed", "cancelled"]
     snapshot_seq: int = Field(ge=0)
     observation_id: str | None = Field(default=None, min_length=1)
     plan_id: str | None = Field(default=None, min_length=1)
@@ -284,13 +291,13 @@ class BrainTaskEvent(StrictModel):
             raise ValueError("plan_id and plan_version must be provided together")
         if self.kind == "plan_review" and (self.plan_id is None or self.observation_id is None):
             raise ValueError("plan_review requires plan and observation references")
-        if self.status in ("failed", "cancelled", "skipped"):
+        if self.status in ("failed", "cancelled", "skipped", "discarded"):
             if self.reason_code is None:
                 raise ValueError(f"{self.status} requires reason_code")
         elif self.reason_code is not None:
             raise ValueError(f"{self.status} must not have reason_code")
-        if self.status != "completed" and self.output_record_ids:
-            raise ValueError("only completed tasks may reference output records")
+        if self.status not in ("completed", "adopted", "discarded") and self.output_record_ids:
+            raise ValueError("only completed or consumed tasks may reference output records")
         if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
             raise ValueError("recorded_at must include a time zone")
         return self

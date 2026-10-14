@@ -114,3 +114,11 @@
 - 해결: perception 저장 뒤 reflection, plan 저장 뒤 plan_review를 비동기 순차 worker에 예약한다. 대기열은 제한하지 않는다. 각 작업 시작 시 메모리를 깊은 복사하고 task/stage 로그에 상태·snapshot 순번·출처·모델을 기록한다. 중요도는 5로 고정하고 LLM 갱신을 사용하지 않는다.
 - 함께 확인할 회귀: 두 작업이 빠른 단계 실행을 막지 않음, snapshot 이후 텍스트/점수 변경이 입력에 소급되지 않음, provider 실패/예산 소진/종료 취소 기록, 오래된 계획 검토가 현재 plan과 행동 요소 ID를 바꾸지 않음.
 - 실제 검증: mock provider 기반 full pytest 204개 통과. snapshot 변경, timeout/실패 이벤트, 두 단계 runner 예약을 포함한다. 실제 유료 API는 호출하지 않았다. 자세한 검사는 [검증 기록](verification.md)에 남겼다.
+
+## 2026-10-15 #43 Brain 두 루프 조율
+
+- 증상: Slow가 생성한 결과를 공유 메모리에 바로 추가해 늦게 끝난 plan review가 이후 관찰의 판단 입력에 섞일 수 있고, 실제 AI 실행의 Fast/Slow 활성 상태와 실행 종료 시 미완료 상태가 구분되지 않았다.
+- 원인: `runner.py`가 Fast와 optional Slow를 직접 호출했고, Slow 생성 완료와 Brain의 채택 경계가 분리되어 있지 않았다.
+- 해결: 실행별 `Brain`이 각 Fast stage 앞에서 완료 결과를 꺼내 provenance를 검사한다. Reflection은 다음 stage 메모리로, plan review는 동일 observation/plan/version decision에만 채택한다. stale 결과는 폐기 이력으로 남긴다. Fast 제안은 기존 ActionExecutor 최신 관찰/origin 검증을 유지한다. Slow는 항상 실행별 단일 worker로 동작하고, 대기열은 무제한이며 종료 때 active/pending을 취소한다.
+- 함께 확인할 회귀: 지연 결과가 현재 프롬프트를 바꾸지 않음, stale plan review 폐기, exact plan/observation만 decision context에 채택, general condition의 persona 배경/선호 차단, 두 실행의 memory 격리, 종료 시 active·queued 취소 기록.
+- 실제 검증 결과는 [검증 기록](verification.md)에 남긴다. 기본 요청/토큰 한도는 무제한이며 유료 API는 호출하지 않는다.

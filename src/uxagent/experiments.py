@@ -17,8 +17,6 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
     if repetitions not in (1, 2, 3):
         raise ValueError('repetitions must be between 1 and 3')
     config, _, _ = load_study(study_path)
-    if config.enable_slow_loop:
-        raise ValueError('comparison requires slow loop disabled to keep the general condition persona-free')
     personas = [Persona.model_validate_json(line) for line in Path(personas_path).read_text(encoding='utf-8').splitlines() if line.strip()]
     if not personas:
         raise ValueError('comparison requires at least one persona')
@@ -38,7 +36,7 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
         session["run_dir"] = str((directory / "runs" / session["run_id"]).resolve())
     random.Random(seed).shuffle(sessions)
     result = {'schema_version': '1.0', 'experiment_id': experiment_id, 'study_id': config.study_id, 'started_at': datetime.now(timezone.utc).isoformat(),
-              'settings': {'provider': provider_name, 'repetitions': repetitions, 'seed': seed, 'study': config.model_dump(), 'personas': [p.model_dump() for p in personas], 'prompt_version': 'fast-2', 'recovery_window_actions': 3},
+              'settings': {'provider': provider_name, 'repetitions': repetitions, 'seed': seed, 'study': config.model_dump(), 'personas': [p.model_dump() for p in personas], 'prompt_version': 'brain-3', 'recovery_window_actions': 3},
               'sessions': sessions, 'system_errors': 0}
     def save():
         result['groups'] = aggregate_sessions(sessions)

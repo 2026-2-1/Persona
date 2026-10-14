@@ -104,3 +104,5 @@ D-04 작업 브랜치는 비교표에 예정 분모·실행 상태·중앙값 �
 팀 공유: [D 진행 현황과 프로토타입 회의 안건](docs/meetings/2026-10-14-d-progress-and-decisions.md)에서 구현/통합 상태, D-05, 추가 수정 후보와 결정할 사항을 확인할 수 있습니다.
 
 D-05 작업 브랜치에서 후보 근거 확인·판정 저장·새로고침·네 형식 내보내기 일치를 검증했습니다. [재현 절차와 남은 팀 검증](docs/tasks/d-review-export-verification.md)을 참고하세요.
+
+D 후속: [조회 실패·출처·복구 표시](docs/tasks/d-dashboard-hardening.md)를 보완했습니다. 메모리 정책 연구는 [실험 설계](docs/research/2026-10-15-memory-policy-experiment.md)를 참고하세요.

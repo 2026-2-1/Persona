@@ -41,6 +41,9 @@ async def test_fast_loop_prompt_states_decision_field_types():
     assert "perception, plan, rationale_summary are short plain strings" in system
     assert 'finish is null or {"claim": "completed" or "give_up", "summary": string}' in system
     assert "never false" in system
+    # Second live run omitted observation_id and used value instead of option_value (run 20261014T154056-7b12da8f).
+    assert "copy observation_id and tab_id from the current observation" in system
+    assert "select: target_id, option_value" in system
 
 
 @pytest.mark.asyncio

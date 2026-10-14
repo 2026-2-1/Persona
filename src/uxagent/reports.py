@@ -137,6 +137,7 @@ def export_report(detail, kind):
         lines.extend(["", "문제 후보가 없습니다. 사이트에 문제가 없다는 뜻은 아닙니다."])
     for card in safe["cards"]:
         lines.extend(["", f"## {card['issue_id']}: {card.get('title','')}", "",
+            f"카드 ID: {card.get('card_id', card['issue_id'])}", f"근거 버전: {card.get('card_version') or '미기록'}",
             f"관찰: {card['observed_behavior']}", f"가설: {card['hypothesis']}",
             f"근거 단계: {card['evidence_step_ids']}", f"제안: {card['recommendation']}",
             f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",

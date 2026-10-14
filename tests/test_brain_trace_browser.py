@@ -47,7 +47,7 @@ def test_stage_opens_exact_source_observation(trace_dashboard,brain_folder):
     (obs/'obs-source.png').write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aFOkAAAAASUVORK5CYII='))
     path=brain_folder/'brain_stages.jsonl'
     stage=json.loads(path.read_text().splitlines()[0]);stage['observation_id']='obs-source'
-    path.write_text(json.dumps(stage)+'\n')
+    path.write_text(''.join(json.dumps({**stage,'record_id':'earlier-'+str(i)})+'\n' for i in range(30))+json.dumps(stage)+'\n')
     with sync_playwright() as p:
         browser=p.chromium.launch();page=browser.new_page()
         page.goto(trace_dashboard);page.locator('#tab-history').click()
@@ -55,6 +55,7 @@ def test_stage_opens_exact_source_observation(trace_dashboard,brain_folder):
         page.locator('[data-brain-key="stage:stage1"] summary').click()
         page.get_by_role('button',name='관찰 obs-source 보기',exact=True).click()
         expect(page.locator('#shot-caption')).to_have_text('선택 관찰 · obs-source')
+        expect(page.locator('#shot-caption')).to_be_in_viewport()
         expect(page.locator('#shot-wrap img')).to_have_attribute('src','/artifacts/brain-demo/observations/obs-source.png')
         page.get_by_role('button',name='최근 화면',exact=True).click()
         expect(page.locator('#shot-caption')).to_have_text('최근 관찰 · obs-source')

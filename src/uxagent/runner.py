@@ -95,6 +95,14 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             recorded_at=datetime.now(timezone.utc))
         brain_stage_writer.write(record.model_dump())
         return record
+    def with_boundary_memories(retrieved, adopted, limit):
+        selected=[];seen=set()
+        for entry in [*reversed(adopted),*retrieved]:
+            memory_id=entry.get("memory_id")
+            if memory_id in seen:continue
+            selected.append(entry);seen.add(memory_id)
+            if len(selected)>=limit:break
+        return selected
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
@@ -127,7 +135,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 step_id=step_count+1
                 observation_memory=memory.append("observation",observation.html[:600],
                     [step_id],[observation.observation_id])
-                brain.begin_stage("perception",observation.observation_id)
+                perception_boundary=brain.begin_stage("perception",observation.observation_id)
                 try:
                     if config.embedding_model:
                         memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
@@ -139,7 +147,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     memories=list(memory.retrieve(config.task,config.memory_limit))
                     previous_error={"code":"embedding_error","message":str(exc)[:300]}
                 # Keep scored memories and recent actions separate so history cannot displace top-ranked memories.
-                memories=memories[:(4 if hasattr(provider,"choose") else 6)]
+                memories=with_boundary_memories(memories,perception_boundary,
+                    4 if hasattr(provider,"choose") else 6)
                 history_tail=step_history[-config.recent_step_count:] if config.recent_step_count else []
                 recent_actions=[{"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail]
                 try:
@@ -158,12 +167,13 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                             source_stage_record_id=perception_record.record_id)
                         brain.schedule_reflection(config.task,observation.observation_id,
                                                   error=previous_error,wonder=config.enable_wonder)
-                        brain.begin_stage("plan",observation.observation_id)
+                        plan_boundary=brain.begin_stage("plan",observation.observation_id)
                         if config.embedding_model:
                             plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
                         else:
                             plan_memories=list(memory.retrieve(config.task,config.memory_limit))
-                        plan_memories=plan_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        plan_memories=with_boundary_memories(plan_memories,plan_boundary,
+                            4 if hasattr(provider,"choose") else 6)
                         plan=await brain.plan(config.task,observation,plan_memories,perception,
                             previous_error,recent_actions,config.max_steps-step_count)
                         plan_sources=[m["memory_id"] for m in plan_memories if "memory_id" in m]
@@ -176,18 +186,14 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                             source_stage_record_id=plan_record.record_id)
                         brain.schedule_plan_review(config.task,plan,observation.observation_id,
                                                    plan_record.plan_id,plan_record.plan_version)
-                        review_memories=brain.begin_stage("decision",observation.observation_id,
+                        decision_boundary=brain.begin_stage("decision",observation.observation_id,
                             plan_id=plan_record.plan_id,plan_version=plan_record.plan_version)
                         if config.embedding_model:
                             decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
                         else:
                             decision_memories=list(memory.retrieve(config.task,config.memory_limit))
-                        decision_memories=decision_memories[:(4 if hasattr(provider,"choose") else 6)]
-                        existing_ids={m.get("memory_id") for m in decision_memories}
-                        for review_memory in review_memories:
-                            if review_memory.get("memory_id") not in existing_ids:
-                                decision_memories.insert(0,review_memory)
-                        decision_memories=decision_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        decision_memories=with_boundary_memories(decision_memories,decision_boundary,
+                            4 if hasattr(provider,"choose") else 6)
                         decision=await brain.decide_action(config.task,observation,
                             decision_memories,perception,plan,previous_error,
                             config.max_steps-step_count,recent_actions=recent_actions)

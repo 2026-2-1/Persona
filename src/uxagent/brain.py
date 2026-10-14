@@ -129,7 +129,7 @@ class Brain:
         }
 
     def _consume_completed(self, stage, observation_id, plan_id, plan_version):
-        accepted_reviews = []
+        adopted_memories = []
         for result in self.slow.pop_completed():
             valid = self._valid_result(result)
             if result["kind"] == "plan_review":
@@ -140,8 +140,7 @@ class Brain:
                 for output in result["outputs"]:
                     if output["kind"] in {"reflection", "wonder"}:
                         entry = self._append_output(output, result["snapshot_seq"])
-                        if result["kind"] == "plan_review":
-                            accepted_reviews.append(entry.model_dump())
+                        adopted_memories.append(entry.model_dump())
                         adopted_outputs.append(output)
                 adopted = bool(adopted_outputs)
                 reason = None if adopted else "no_usable_output"
@@ -152,7 +151,7 @@ class Brain:
                 self.adoption_counts[result["kind"]] = self.adoption_counts.get(result["kind"], 0) + 1
             else:
                 self.adoption_counts["discarded"] += 1
-        return accepted_reviews
+        return adopted_memories
 
     def _valid_result(self, result):
         current_seq = max((entry.seq for entry in self.memory.entries), default=0)

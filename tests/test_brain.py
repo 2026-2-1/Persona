@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
@@ -7,6 +8,7 @@ from uxagent.brain import Brain
 from uxagent.fast_loop import FastLoop
 from uxagent.llm import BudgetManager
 from uxagent.memory import MemoryStore
+from uxagent.runner import run_study
 from uxagent.schemas import Persona
 from uxagent.slow_loop import SlowLoop
 
@@ -67,13 +69,59 @@ async def test_reflection_is_adopted_only_at_a_fast_stage_boundary():
     await brain.slow.worker
 
     assert len(brain.memory.entries) == 1
-    brain.begin_stage("plan", "obs-1")
+    boundary_memories = brain.begin_stage("plan", "obs-1")
 
     assert len(brain.memory.entries) == 2
     generated = brain.memory.entries[-1]
+    assert [entry["memory_id"] for entry in boundary_memories] == [generated.memory_id]
     assert generated.source_memory_ids == [source.memory_id]
     assert generated.source_stage_record_id
     assert any(event["status"] == "adopted" for event in events.records)
+
+
+@pytest.mark.asyncio
+async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(monkeypatch, tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
+    config["persona_file"] = str(root / "configs/persona.json")
+    config["max_steps"] = 1
+    study_path = tmp_path / "study.json"
+    study_path.write_text(json.dumps(config), encoding="utf-8")
+
+    original_plan = FastLoop.plan
+    original_decide = FastLoop.decide_action
+    original_retrieve = MemoryStore.retrieve
+    original_schedule = SlowLoop.schedule_reflection
+    decision_memories = []
+    reflection_workers = []
+
+    def capture_reflection_worker(self, *args, **kwargs):
+        task_id = original_schedule(self, *args, **kwargs)
+        reflection_workers.append(self.worker)
+        return task_id
+
+    async def plan_after_reflection(self, *args, **kwargs):
+        await reflection_workers[-1]
+        return await original_plan(self, *args, **kwargs)
+
+    async def capture_decision(self, persona, task, observation, memories, *args, **kwargs):
+        decision_memories.extend(memories)
+        return await original_decide(self, persona, task, observation, memories,
+                                     *args, **kwargs)
+
+    def retrieve_without_reflection(self, *args, **kwargs):
+        return [entry for entry in original_retrieve(self, *args, **kwargs)
+                if entry["kind"] != "reflection"]
+
+    monkeypatch.setattr(FastLoop, "plan", plan_after_reflection)
+    monkeypatch.setattr(FastLoop, "decide_action", capture_decision)
+    monkeypatch.setattr(MemoryStore, "retrieve", retrieve_without_reflection)
+    monkeypatch.setattr(SlowLoop, "schedule_reflection", capture_reflection_worker)
+
+    _, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
+
+    assert summary["brain"]["adoption"]["reflection"] >= 1
+    assert any(entry["kind"] == "reflection" for entry in decision_memories)
 
 
 @pytest.mark.asyncio

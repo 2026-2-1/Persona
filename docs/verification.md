@@ -203,3 +203,5 @@
 - D 하드닝 CI [38602694973](https://github.com/2026-2-1/Persona/actions/runs/38602694973): Ubuntu 3.11/Windows 3.13 모두 success.
 
 추가 실제 시연에서 긴 Brain 목록의 출처 버튼이 이미지만 바꾸고 근거를 화면 밖에 남기는 문제를 발견했다. 30개 선행 기록을 넣어 viewport 검사 실패를 재현하고, 선택한 관찰 설명으로 이동하도록 수정했다. 출처/데스크톱 집중 4개를 통과했다.
+
+원본 기억의 source_observation_ids/source_step_ids/source_stage_record_id도 표시한다. 단일 단계의 observation_id만 읽어 관찰 출처를 미기록으로 보이던 경우를 브라우저 실패로 재현하고 수정했다. 최종 소비 전체 310개 검사를 다시 통과했다.

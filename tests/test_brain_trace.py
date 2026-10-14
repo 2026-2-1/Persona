@@ -16,7 +16,7 @@ def brain_folder(tmp_path):
     folder=tmp_path/'runs'/'brain-demo';folder.mkdir(parents=True)
     (folder/'run.json').write_text(json.dumps({'run_id':'brain-demo','execution_mode':'ai','source_kind':'synthetic_fixture'}))
     (folder/'summary.json').write_text(json.dumps({'verification':'unknown'}))
-    write_rows(folder,'memory.jsonl',[{'schema_version':'2.0','run_id':'brain-demo','memory_id':'m1','seq':1,'kind':'observation','text':'원본 관찰','importance':None}])
+    write_rows(folder,'memory.jsonl',[{'schema_version':'2.0','run_id':'brain-demo','memory_id':'m1','seq':1,'kind':'observation','text':'원본 관찰','importance':None,'source_observation_ids':['obs-memory-source'],'source_step_ids':[6],'source_stage_record_id':'stage1'}])
     write_rows(folder,'brain_stages.jsonl',[{'schema_version':'1.0','run_id':'brain-demo','record_id':'stage1','stage':'reflection',
         'text':'<script>AI 가상 성찰</script>','source_memory_ids':['m1'],'snapshot_seq':1,'content_status':'generated'}])
     write_rows(folder,'brain_tasks.jsonl',[{'schema_version':'1.0','run_id':'brain-demo','event_id':'e'+str(i),'task_id':'t'+status,

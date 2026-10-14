@@ -138,9 +138,6 @@ class SlowLoop:
             actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
             self.budget.settle(reservation, actual)
             settled = True
-            parsed = json.loads(result)
-            if not isinstance(parsed, dict):
-                raise ValueError("Slow Loop response must be a JSON object")
             actual_model = usage.get("model", self.model)
             if self.call_log:
                 self.call_log({"module": "slow", "stage": stage, "model": actual_model,
@@ -148,6 +145,9 @@ class SlowLoop:
                                "elapsed_ms": int((time.monotonic() - started) * 1000),
                                "input_tokens": input_tokens, "output_tokens": output_tokens,
                                "estimated": actual is None})
+            parsed = json.loads(result)
+            if not isinstance(parsed, dict):
+                raise ValueError("Slow Loop response must be a JSON object")
             return parsed
         except BaseException:
             if not settled:

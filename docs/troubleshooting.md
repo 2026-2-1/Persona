@@ -107,6 +107,22 @@
 - 함께 확인할 회귀: 단계 JSON 오류 복구, 요청 한도 소진, Jev 선택과 생성 fallback, 최신 observation/tab 참조, finish 선언과 독립 evaluator 분리.
 - 실제 검증: 전체 199개 pytest 통과. 실제 기록은 [검증 기록](verification.md)에 있다.
 
+### 리뷰 수정: 형식 복구 요청의 사용량 누락
+
+- 증상: 모델이 형식이 틀린 JSON을 반환한 뒤 복구 요청으로 성공하면, 예산의 요청 수는 2회인데 호출 로그에는 성공한 1회만 남았다.
+- 원인: Fast 단계의 호출 로그를 응답 JSON 검사 뒤에 기록했다.
+- 해결: 응답의 토큰 사용량을 정산한 직후 호출 로그를 기록하고 형식 검사를 진행한다.
+- 함께 확인할 회귀: 형식 복구, 단계별 로그, 요청 예산, 기존 mock runner.
+- 실제 검증: 잘못된 첫 응답으로 실패 재현 후 `tests/test_fast_stages.py` 3개 통과. 전체 검사 결과는 verification.md를 따른다.
+
+### 리뷰 수정: Jev 입력값 fallback의 종료 선언 오류
+
+- 증상: Jev가 입력 후보를 선택한 뒤 생성 모델이 `give_up`을 선언하면 모델 오류로 끝났다.
+- 원인: 입력값 fallback이 `action`이 항상 있다고 가정하고 null을 Action으로 검사했다.
+- 해결: 생성된 decision의 action 또는 finish를 각각 조건에 맞게 해석한다.
+- 함께 확인할 회귀: 빈 입력/기존 입력의 생성 fallback, Jev 직접 종료 후보, 최신 observation ID 검사.
+- 실제 검증: null action과 give_up으로 실패 재현 후 Fast·Jev 관련 검사 9개 통과.
+
 ## 2026-10-15 #42 Slow 성찰·계획 검토
 
 - 증상: Slow가 행동 뒤 주기적으로 성찰 하나만 예약하고, 실행 중 작업이 있으면 다음 요청을 거절했다. perception·plan 단계와 Slow 입력/출력도 연결되지 않았다.
@@ -114,6 +130,14 @@
 - 해결: perception 저장 뒤 reflection, plan 저장 뒤 plan_review를 비동기 순차 worker에 예약한다. 대기열은 제한하지 않는다. 각 작업 시작 시 메모리를 깊은 복사하고 task/stage 로그에 상태·snapshot 순번·출처·모델을 기록한다. 중요도는 5로 고정하고 LLM 갱신을 사용하지 않는다.
 - 함께 확인할 회귀: 두 작업이 빠른 단계 실행을 막지 않음, snapshot 이후 텍스트/점수 변경이 입력에 소급되지 않음, provider 실패/예산 소진/종료 취소 기록, 오래된 계획 검토가 현재 plan과 행동 요소 ID를 바꾸지 않음.
 - 실제 검증: mock provider 기반 full pytest 204개 통과. snapshot 변경, timeout/실패 이벤트, 두 단계 runner 예약을 포함한다. 실제 유료 API는 호출하지 않았다. 자세한 검사는 [검증 기록](verification.md)에 남겼다.
+
+### 리뷰 수정: 잘못된 Slow 응답의 사용량 누락
+
+- 증상: Slow 모델이 잘못된 JSON을 반환하면 예산은 1회 소진되지만 호출 로그에는 오류 사건만 남고 토큰 사용량이 빠졌다.
+- 원인: JSON 파싱 뒤에 호출 로그를 기록했다.
+- 해결: 모델 응답과 사용량을 받은 직후 기록하고, 이후 파싱 오류는 기존 실패 사건으로 남긴다.
+- 함께 확인할 회귀: Fast 형식 복구 로그, Slow 실패 상태, 모델 요청 예산, mock runner.
+- 실제 검증: 잘못된 JSON으로 실패 재현 후 Slow/Fast 관련 검사 4개 통과. 전체 검사 결과는 verification.md를 따른다.
 
 ## 2026-10-15 #43 Brain 두 루프 조율
 

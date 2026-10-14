@@ -96,6 +96,7 @@ class StudyConfig(StrictModel):
     evaluation_checks: list[EvaluationCheck] = Field(default_factory=list, max_length=50)
     viewport: Viewport = Field(default_factory=Viewport)
     observation_policy: Literal["viewport"] = "viewport"
+    source_kind: Literal["unknown", "synthetic_fixture", "live_configured"] = "unknown"
     explicit_scroll: bool = False
     max_steps: int = Field(default=30, gt=0)
     run_timeout_seconds: float = Field(default=300, gt=0)

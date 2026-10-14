@@ -124,3 +124,7 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
 - Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
 - mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
+
+### #41 PR 코드 리뷰 보완
+
+형식이 틀린 첫 응답과 복구된 두 번째 응답을 fake provider로 재현했다. 수정 전에는 예산 요청 2회에 비해 Fast 호출 로그가 1건이었고, 수정 후 두 응답의 사용량을 각각 기록한다. `tests/test_fast_stages.py`: 3 passed, 전체 pytest: 200 passed (81.18s). 유료 API 호출 없음.

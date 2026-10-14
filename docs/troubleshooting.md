@@ -106,3 +106,11 @@
 - 해결: perception → 저장 → 기억 검색 → plan → 저장 → 기억 검색 → decision 순서로 호출한다. 단계별 입력 기억·생성 결과·관찰/계획 참조를 `brain_stages.jsonl`에 기록하고 기존 step 기록의 perception/plan 필드는 유지한다.
 - 함께 확인할 회귀: 단계 JSON 오류 복구, 요청 한도 소진, Jev 선택과 생성 fallback, 최신 observation/tab 참조, finish 선언과 독립 evaluator 분리.
 - 실제 검증: 전체 199개 pytest 통과. 실제 기록은 [검증 기록](verification.md)에 있다.
+
+### 리뷰 수정: 형식 복구 요청의 사용량 누락
+
+- 증상: 모델이 형식이 틀린 JSON을 반환한 뒤 복구 요청으로 성공하면, 예산의 요청 수는 2회인데 호출 로그에는 성공한 1회만 남았다.
+- 원인: Fast 단계의 호출 로그를 응답 JSON 검사 뒤에 기록했다.
+- 해결: 응답의 토큰 사용량을 정산한 직후 호출 로그를 기록하고 형식 검사를 진행한다.
+- 함께 확인할 회귀: 형식 복구, 단계별 로그, 요청 예산, 기존 mock runner.
+- 실제 검증: 잘못된 첫 응답으로 실패 재현 후 `tests/test_fast_stages.py` 3개 통과. 전체 검사 결과는 verification.md를 따른다.

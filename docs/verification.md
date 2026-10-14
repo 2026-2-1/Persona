@@ -116,3 +116,11 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 추천은 source template/ai를 구분하고 사용자가 적용해야 사용자 설명을 바꾼다. 키·인증 URL·Unicode 이스케이프 응답 우회와 요청/토큰 한도를 재현 검사한다.
 
 최종 화면 확인에서 초기 상태 로딩과 도우미 이동의 경합을 발견해 실패 테스트로 재현 후 수정했다. 브라우저 회귀 17 passed (249.58s). 모델 발급 안내 간격도 줄였다. 앞선 커밋의 Windows/Ubuntu CI는 모두 통과했다.
+
+## 2026-10-15 Fast 단계별 생성 (#41)
+
+- Fast의 perception·plan·decision을 별도 생성 요청으로 수행하고 단계별 입력 기억 ID, observation ID, plan ID, 생성 결과를 `brain_stages.jsonl`에 기록한다. perception·plan 생성 결과는 다음 단계 전에 메모리에 저장한다.
+- Jev의 후보 선택과 생성 fallback, 완료 선언과 독립 평가 구분을 유지했다. Slow 작업 예약과 Brain 신규 조율은 포함하지 않았다.
+- 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
+- mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.

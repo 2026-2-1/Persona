@@ -179,11 +179,60 @@ function reviewHistory(card) {
   return `<details class="review-history" data-history-key="${esc(reviewKey(selectedRun,card))}"><summary>사람 검토 이력 (${current.length+previous.length}건)</summary><p class="help">저장 순서의 최신 항목부터 표시합니다. 별칭은 인증 신원이나 독립 2인 합의를 뜻하지 않습니다. AI 계획 검토와 독립 과업 판정은 별개입니다.</p><h4>현재 버전 검토 (${current.length}건)</h4>${current.length?`<ol>${records(current)}</ol>`:'<p class="help">현재 버전의 저장된 검토가 없습니다.</p>'}<h4>이전 버전 검토 (${previous.length}건)</h4><p class="help">이전 판정은 현재 근거에 자동 적용하지 않습니다.</p>${previous.length?`<ol>${records(previous)}</ol>`:'<p class="help">이전 버전의 저장된 검토가 없습니다.</p>'}</details>`;
 }
 function renderCards(){renderProvenance();const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 확인할 테스트를 선택하세요.';const category=c=>({system_error_candidate:'도구 오류 확인',unmet_checkpoint:'완료 조건 미충족'}[c.classification]||'사용성 후보');const html=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><div><p class="issue-category">${esc(category(c))}</p><h3>${esc(c.title||c.issue_id)}</h3></div><span class="badge">${esc(cardReviewLabel(c))}</span></div><dl class="issue-facts">${[['관찰',c.observed_behavior],['가능한 원인',c.hypothesis],['수정 제안',c.recommendation],['완료 조건',c.acceptance]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)||'<span class="muted">연결할 행동 기록 없음</span>'}</div>${c.latest_review?`<p class="help">검토: ${esc(c.latest_review.reviewer_id)} · ${esc(c.latest_review.note||'메모 없음')}</p>`:''}${reviewHistory(c)}<details class="raw-evidence"><summary>원자료</summary><pre>${esc(valueText(c.evidence))}</pre></details></article>`).join(''):empty('이 실행에서 발견한 개선 후보가 없습니다.');mountReviewForms(cards,html);}
-function pairedSessions(sessions) { const pairs=new Map();for(const s of sessions){const key=`${s.pair_persona_id||s.persona_id||'세션'}:${s.repetition||1}`;if(!pairs.has(key))pairs.set(key,{});pairs.get(key)[s.condition]=s;} const cell=s=>s?`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled'}><span>${esc(verdict(s.verification))}</span> <small>${esc({running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행'}[s.status]||s.status)}</small></button>`:'미등록';return `<div class="table-wrap gap-top"><table><thead><tr><th>대응 세션 / 반복</th><th>일반 AI</th><th>페르소나 AI</th></tr></thead><tbody>${[...pairs].map(([key,p])=>`<tr><td>${esc(key)}</td><td>${cell(p.general)}</td><td>${cell(p.persona)}</td></tr>`).join('')}</tbody></table></div>`;}
+function pairedSessions(sessions) { const pairs=new Map();for(const s of sessions){const key=`${s.pair_persona_id||s.persona_id||'세션'}:${s.repetition||1}`;if(!pairs.has(key))pairs.set(key,{});pairs.get(key)[s.condition]=s;} const cell=s=>s?`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled title="연결할 실행 기록이 없습니다"'}><span>${esc(verdict(s.verification))}</span> <small>${esc({running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행'}[s.status]||s.status)}</small></button>`:'미등록';return `<div class="table-wrap gap-top"><table><thead><tr><th>대응 세션 / 반복</th><th>일반 AI</th><th>페르소나 AI</th></tr></thead><tbody>${[...pairs].map(([key,p])=>`<tr><td>${esc(key)}</td><td>${cell(p.general)}</td><td>${cell(p.persona)}</td></tr>`).join('')}</tbody></table></div>`;}
+const sessionStatusLabels = {running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행',unknown:'미확인'};
+const measuredNumber = value => typeof value==='number' && Number.isFinite(value) && value>=0;
+const countText = value => measuredNumber(value) ? String(value) : '미확인';
+const measurementText = (value, money=false) => measuredNumber(value) ? (money?'$'+value.toFixed(5):String(value)) : '미확인';
+const percentText = value => measuredNumber(value) ? `${(value*100).toFixed(1)}%` : '미확인';
+function coverageText(known, unknown, requested) {
+  return `완전 측정 ${countText(known)} / 예정 ${countText(requested)}회 · 누락 포함 ${countText(unknown)}회`;
+}
+function usageMeasurement(group, key, requested, money=false) {
+  return `<div data-measure="${key}"><strong>전체: ${measurementText(group[key],money)}</strong><p>${measuredNumber(group[key])?'측정 합계':'측정 부분값'}: ${measurementText(group[key+'_known_total'],money)}</p><p class="help">${coverageText(group[key+'_known_sessions'],group[key+'_unknown_sessions'],requested)}</p></div>`;
+}
+function recordingMeasurement(recording={}, requested) {
+  return `<div data-measure="recording"><strong>전체: ${recording.attempted===0?'대상 행동 없음':percentText(recording.rate)}</strong><p>전체 근거: ${countText(recording.complete)} / ${countText(recording.attempted)}행동</p><p>측정 범위: ${countText(recording.complete_known_total)} / ${countText(recording.attempted_known_total)}행동 · ${recording.attempted_known_total===0?'대상 행동 없음':percentText(recording.known_rate)}</p><p class="help">${coverageText(recording.known_sessions,recording.unknown_sessions,requested)}</p></div>`;
+}
+function comparisonMetadata(e) {
+  const settings=e.settings||{}, study=settings.study||{};
+  const models=[...new Set((e.sessions||[]).map(s=>s.model).filter(Boolean))];
+  const fields = [
+    ['실험 ID',e.experiment_id],['제공자',settings.provider],
+    ['모델 설정',settings.model||study.provider_model||study.model],['실행에 기록된 모델',models.length?models.join(', '):null],
+    ['과업',study.task],['대상 URL',study.start_url],['반복 수',settings.repetitions],
+    ['화면 크기',study.viewport?`${study.viewport.width??'미기록'} × ${study.viewport.height??'미기록'}`:null],
+    ['관찰 정책',study.observation_policy],['환경 식별자',settings.environment_id||study.environment_id],
+    ['사이트 버전',settings.site_version||study.site_version],['프롬프트 버전',settings.prompt_version]
+  ];
+  return `<div class="comparison-metadata">${fields.map(([label,value])=>`<p>${label}: ${esc(value??'미기록')}</p>`).join('')}</div>`;
+}
+function comparisonBody(e) {
+  const groups=e.groups||{}, conditions=['general','persona'], label=k=>k==='general'?'일반 AI':'페르소나 AI';
+  const median=(g,key,population,unit='')=>`<strong>${measurementText(g[key])}${measuredNumber(g[key])?unit:''}</strong><p class="help">계산 대상 ${countText(g[population])} / 성공 ${countText(g.success)}회</p>`;
+  return `<p class="help">${esc(providerName(e.settings?.provider||'제공자 미기록'))}${e.settings?.provider==='mock'?' — 동작 확인용 데모 (실제 AI 성능 근거 아님)':''}</p>
+    <div class="table-wrap gap-top"><table class="comparison-results"><caption>과업 결과와 실행 상태</caption><thead><tr><th>조건</th><th>성공 / 예정</th><th>성공률</th><th>과업 결과</th><th>실행 상태</th><th>행동 중앙값</th><th>시간 중앙값</th></tr></thead><tbody>${conditions.map(k=>{
+      const g=groups[k]||{};
+      const statuses=Object.entries(g.statuses||{}).map(([status,n])=>`${esc(sessionStatusLabels[status]||status)} ${esc(n)}`).join(' · ')||'기록 없음';
+      return `<tr><th scope="row">${label(k)}</th><td>${countText(g.success)} / ${countText(g.requested)}</td><td>${g.requested===0?'예정 세션 없음':percentText(g.rate)}</td><td>성공 ${countText(g.success)} · 실패 ${countText(g.failure)} · 미확인 ${countText(g.unknown)}</td><td>${statuses}</td><td>${median(g,'median_actions','median_actions_sessions','회')}</td><td>${median(g,'median_ms','median_ms_sessions',' ms')}</td></tr>`;
+    }).join('')}</tbody></table></div><p class="help">성공률 분모는 예정 세션입니다. 취소·미실행도 제외하지 않습니다. 중앙값은 성공한 실행 중 측정 가능한 값만 사용하며 대응쌍 변화량이 아닙니다.</p>
+    <div class="table-wrap gap-top"><table class="comparison-coverage"><caption>측정 범위와 누락</caption><thead><tr><th>조건</th><th>추정 API 비용</th><th>토큰 합계</th><th>기록 확보율</th></tr></thead><tbody>${conditions.map(k=>{
+      const g=groups[k]||{};
+      return `<tr data-condition="${k}"><th scope="row">${label(k)}</th><td>${usageMeasurement(g,'cost',g.requested,true)}</td><td>${usageMeasurement(g,'llm_tokens',g.requested)}</td><td>${recordingMeasurement(g.recording,g.requested)}</td></tr>`;
+    }).join('')}</tbody></table></div><p class="help">미확인은 0이 아닙니다. 측정 부분값은 누락이 있는 세션에서 확인된 일부 호출도 포함하며 전체값으로 해석하지 않습니다. 기록 확보율은 확인된 행동 근거의 비율이며 과업 성공률과 다릅니다.</p>
+    <details class="comparison-details" data-comparison-key="${esc(JSON.stringify([e.experiment_id,'details']))}"><summary>실험 조건과 측정 상세</summary>${comparisonMetadata(e)}${conditions.map(k=>{
+      const g=groups[k]||{};
+      return `<section data-condition="${k}"><h3>${label(k)} 사용량</h3><div class="comparison-measurements">${[['llm_request_count','요청 수'],['input_tokens','입력 토큰'],['output_tokens','출력 토큰']].map(([key,name])=>`<section><h4>${name}</h4>${usageMeasurement(g,key,g.requested)}</section>`).join('')}</div>${Object.entries(g.provider_usage||{}).map(([provider,usage])=>`<h4>${esc(providerName(provider))} 제공자별 사용량</h4><div class="comparison-measurements">${[['requests','요청 수'],['input_tokens','입력 토큰'],['output_tokens','출력 토큰'],['estimated_cost_usd','추정 비용']].map(([key,name])=>`<section><h4>${name}</h4>${usageMeasurement(usage,key,g.requested,key==='estimated_cost_usd')}</section>`).join('')}</div>`).join('')||'<p class="help">제공자별 측정 내역 없음</p>'}</section>`;
+    }).join('')}</details>${pairedSessions((e.sessions||[]).filter(s=>s.execution_mode!=='scripted'&&s.provider!=='scenario'))}<p class="help">개별 결과를 누르면 실행 근거를 볼 수 있습니다. 기록이 없는 세션은 선택할 수 없습니다.</p>`;
+}
 function renderExperiments(){
- const rate=g=>g.rate==null?'미확인':`${(g.rate*100).toFixed(1)}%`;
- const body=e=>`<p class="help">${esc(providerName(e.settings?.provider||''))}${e.settings?.provider==='mock'?' — 동작 확인용 데모':''}</p><div class="table-wrap gap-top"><table><thead><tr><th>조건</th><th>성공 / 전체</th><th>성공률</th><th title="성공한 실행의 중앙값">행동 수</th><th title="성공한 실행의 중앙값">소요 시간</th><th>비용</th></tr></thead><tbody>${['general','persona'].map(k=>{const g=e.groups?.[k]||{};return `<tr><td>${k==='general'?'일반 AI':'페르소나 AI'}</td><td>${esc(g.success??'미확인')} / ${esc(g.requested??'미확인')}</td><td>${esc(rate(g))}</td><td>${esc(g.median_actions??'미확인')}</td><td>${g.median_ms==null?'미확인':`${(g.median_ms/1000).toFixed(1)}초`}</td><td>${g.cost==null?'미확인':esc(typeof g.cost==='number'?'$'+g.cost.toFixed(5):valueText(g.cost))}</td></tr>`;}).join('')}</tbody></table></div>${pairedSessions(e.sessions||[])}<p class="help">결과를 누르면 실행 기록을 볼 수 있습니다.</p><details><summary>실험 정보</summary><p class="help">${esc(e.experiment_id)}</p><p>행동 수와 소요 시간은 성공한 실행의 중앙값입니다.</p></details>`;
- $('experiments').innerHTML=experiments.length?experiments.map((e,i)=>i?`<details class="card"><summary>이전 비교 ${esc(e.started_at?new Date(e.started_at).toLocaleString('ko-KR'):e.experiment_id)}</summary>${body(e)}</details>`:`<article class="card"><h2>최근 비교</h2>${body(e)}</article>`).join(''):empty('비교 기록이 없습니다. 새 비교 시작을 눌러 진행하세요.');
+  const container=$('experiments');
+  const signature=JSON.stringify([experiments,(state?.runs||[]).map(r=>r.run_id)]);
+  if(container.comparisonSignature===signature)return;
+  const expanded=new Set([...container.querySelectorAll('[data-comparison-key][open]')].map(node=>node.dataset.comparisonKey));
+  container.innerHTML=experiments.length?experiments.map((e,i)=>i?`<details class="card" data-comparison-key="${esc(JSON.stringify([e.experiment_id,'experiment']))}"><summary>이전 비교 ${esc(e.started_at?new Date(e.started_at).toLocaleString('ko-KR'):e.experiment_id)}</summary>${comparisonBody(e)}</details>`:`<article class="card"><h2>최근 비교</h2>${comparisonBody(e)}</article>`).join(''):empty('비교 기록이 없습니다. 새 비교 시작을 눌러 진행하세요.');
+  container.querySelectorAll('[data-comparison-key]').forEach(node=>node.open=expanded.has(node.dataset.comparisonKey));
+  container.comparisonSignature=signature;
 }
 async function refresh() {
   if (refreshing) { refreshQueued = true; return; }

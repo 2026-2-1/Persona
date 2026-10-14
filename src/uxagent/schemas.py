@@ -51,8 +51,8 @@ class StudyConfig(StrictModel):
     run_timeout_seconds: float = Field(default=300, gt=0)
     action_timeout_ms: int = Field(default=5000, gt=0)
     settle_timeout_ms: int = Field(default=3000, gt=0)
-    max_llm_requests: int = Field(default=40, gt=0)
-    max_total_tokens: int = Field(default=50000, gt=0)
+    max_llm_requests: int | None = Field(default=None, gt=0)
+    max_total_tokens: int | None = Field(default=None, gt=0)
     recent_step_count: int = Field(default=6, ge=0)
     repeated_state_action_limit: int = Field(default=3, gt=0)
     max_observation_text: int = Field(default=12000, gt=0)
@@ -62,7 +62,7 @@ class StudyConfig(StrictModel):
     enable_wonder: bool = False
     reflection_every_actions: int = Field(default=5, gt=0)
     memory_limit: int = Field(default=8, gt=0)
-    max_active_memories: int | None = Field(default=None, gt=0)
+    max_active_memories: int = Field(default=64, ge=10, le=64)
     embedding_model: str | None = None
     model: str = "gpt-4o-mini"
     provider_model: str | None = None
@@ -76,13 +76,6 @@ class StudyConfig(StrictModel):
         if len({check.id for check in checks}) != len(checks):
             raise ValueError('evaluation check IDs must be unique')
         return checks
-
-    @field_validator("max_active_memories")
-    @classmethod
-    def active_memory_cap_not_available_yet(cls, value):
-        if value is not None:
-            raise ValueError("max_active_memories is not supported until the active memory cap is implemented")
-        return value
 
     @field_validator("start_url")
     @classmethod
@@ -235,7 +228,7 @@ class BrainStageRecord(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     record_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    stage: Literal["perception", "plan", "decision", "reflection", "plan_review", "wonder"]
+    stage: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
     observation_id: str | None = Field(default=None, min_length=1)
     plan_id: str | None = Field(default=None, min_length=1)
     plan_version: int | None = Field(default=None, ge=1)

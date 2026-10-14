@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import math, time, uuid
 from datetime import datetime, timezone
-from .schemas import MemoryEntry
+from .schemas import MemoryChangeEvent, MemoryEntry
 
 
 class MemoryStore:
-    def __init__(self, run_id, writer=None, clock=time.monotonic):
+    def __init__(self, run_id, writer=None, clock=time.monotonic, *, max_active_memories=64, change_writer=None):
+        if not 10 <= max_active_memories <= 64:
+            raise ValueError("max_active_memories must be between 10 and 64")
         self.run_id, self.writer, self.clock = run_id, writer, clock
+        self.max_active_memories, self.change_writer = max_active_memories, change_writer
         self.entries: list[MemoryEntry] = []
         self.started = clock()
         self._next_seq = 1
@@ -25,11 +28,68 @@ class MemoryStore:
         self._next_seq += 1
         self.entries.append(entry)
         if self.writer: self.writer.write(entry.model_dump())
+        self._enforce_active_limit()
         return entry
+
+    def _enforce_active_limit(self):
+        while len(self.entries) > self.max_active_memories:
+            protected_ids = {entry.memory_id for entry in self.entries[-10:]}
+            eligible = [entry for entry in self.entries if entry.memory_id not in protected_ids]
+
+            def retention_key(entry):
+                if entry.importance is None:
+                    return (False, 0.0, entry.seq)
+                maximum = 5 if entry.schema_version == "1.0" else 10
+                return (True, entry.importance / maximum, entry.seq)
+
+            ranked = sorted(eligible, key=retention_key)
+            victim = ranked[0]
+            # Keep the recorded score consistent with importance-first ordering.
+            oldest_seq, newest_seq = eligible[0].seq, eligible[-1].seq
+            recency = (victim.seq - oldest_seq) / max(1, newest_seq - oldest_seq)
+            if victim.importance is None:
+                retention_score = (0.05 * recency) / 2.05
+            else:
+                maximum = 5 if victim.schema_version == "1.0" else 10
+                retention_score = (1 + victim.importance / maximum + 0.05 * recency) / 2.05
+            event = MemoryChangeEvent(
+                event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
+                memory_id=victim.memory_id, memory_seq=victim.seq, change="evicted",
+                importance_before=victim.importance if victim.schema_version == "2.0" else None,
+                retention_score=retention_score,
+                reason_code="active_capacity_importance_then_recency",
+                recorded_at=datetime.now(timezone.utc),
+            )
+            if self.change_writer: self.change_writer.write(event.model_dump())
+            self.entries.remove(victim)
+            self.embedding_cache.pop(victim.memory_id, None)
+
+    def update_importance(self, memory_id: str, importance: int, source_stage_record_id: str):
+        if isinstance(importance, bool) or not isinstance(importance, int) or not 1 <= importance <= 10:
+            raise ValueError("importance must be an integer from 1 to 10")
+        for index, entry in enumerate(self.entries):
+            if entry.memory_id != memory_id:
+                continue
+            if entry.schema_version != "2.0":
+                raise ValueError("legacy memory importance cannot be updated on the 1..10 scale")
+            updated = MemoryEntry.model_validate({**entry.model_dump(), "importance": importance})
+            event = MemoryChangeEvent(
+                event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
+                memory_id=memory_id, memory_seq=entry.seq, change="importance_scored",
+                importance_before=entry.importance, importance_after=importance,
+                source_stage_record_id=source_stage_record_id,
+                recorded_at=datetime.now(timezone.utc),
+            )
+            if self.change_writer: self.change_writer.write(event.model_dump())
+            # Replace the value so already captured Slow snapshots keep their old score.
+            self.entries[index] = updated
+            return updated
+        raise KeyError(f"memory {memory_id} is not active")
 
     def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms
-        weights=(.2,.3,.5) if mode=="fast" else (.3,.5,.2)
+        # Equal I/Q/R weights are the temporary #40 baseline; module tuning is #54.
+        weights=(1/3,1/3,1/3)
         qtokens=set(query.lower().split())
         scored=[]
         for e in self.entries:
@@ -75,7 +135,9 @@ class MemoryStore:
                 offset=0
                 if query_key not in self.embedding_cache:
                     self.embedding_cache[query_key]=vectors[0];offset=1
-                for entry,vector in zip(missing,vectors[offset:]):self.embedding_cache[entry.memory_id]=vector
+                active_ids={entry.memory_id for entry in self.entries}
+                for entry,vector in zip(missing,vectors[offset:]):
+                    if entry.memory_id in active_ids:self.embedding_cache[entry.memory_id]=vector
                 if call_log:call_log({"module":"embedding","model":usage.get("model",model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":actual,"estimated":actual is None,"cached_embeddings":len(missing)})
             except BaseException as exc:
                 if not settled:budget.settle(reservation,None)

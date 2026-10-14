@@ -178,13 +178,14 @@ def test_memory_change_events_record_score_and_eviction_without_deleting_history
         MemoryChangeEvent(**base, change="evicted", reason_code="capacity")
 
 
-def test_active_memory_limit_is_reserved_until_it_can_be_enforced():
+def test_active_memory_limit_accepts_configured_range():
     base = {
         "study_id": "study-1", "start_url": "https://example.test",
         "task": "상품 찾기", "allowed_origins": ["https://example.test"],
     }
-    assert StudyConfig.model_validate(base).max_active_memories is None
-    with pytest.raises(ValidationError, match="not supported until the active memory cap is implemented"):
-        StudyConfig.model_validate({**base, "max_active_memories": 12})
+    assert StudyConfig.model_validate(base).max_active_memories == 64
+    assert StudyConfig.model_validate({**base, "max_active_memories": 12}).max_active_memories == 12
     with pytest.raises(ValidationError):
-        StudyConfig.model_validate({**base, "max_active_memories": 0})
+        StudyConfig.model_validate({**base, "max_active_memories": 9})
+    with pytest.raises(ValidationError):
+        StudyConfig.model_validate({**base, "max_active_memories": 65})

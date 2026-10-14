@@ -30,6 +30,7 @@ def test_brain_states_and_evicted_sources_match_downloads(trace_dashboard,tmp_pa
         expect(page.locator('#brain-content script')).to_have_count(0)
         page.locator('[data-brain-key="memory:m1"] summary').click()
         expect(page.locator('#brain-content')).to_contain_text('원본 관찰')
+        expect(page.locator('[data-brain-key="memory:m1"]')).to_contain_text('obs-memory-source')
         expect(page.locator('#brain-content')).to_contain_text('활성 목록에서 제거됨')
         expect(page.locator('#brain-content')).to_contain_text('9 / 1–10')
         reports=download_reports(page,tmp_path)

@@ -345,5 +345,6 @@ document.addEventListener('click',event=>{
   const button=event.target.closest('[data-brain-observation]');
   if(button&&detail?.observations?.[button.dataset.brainObservation]){
     selectedObservation=button.dataset.brainObservation;selectedStep=null;$('follow-live').checked=false;renderDetail();
+    $('shot-caption').scrollIntoView({block:'center'});
   }
 });

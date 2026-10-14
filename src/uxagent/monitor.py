@@ -22,6 +22,7 @@ from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
 from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
 from .storage import write_json
+from .brain_trace import load_brain_trace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -229,6 +230,7 @@ class Dashboard:
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
         if not detail["run"].get("run_id"):
             detail["run"]["run_id"] = folder.name
+        detail["brain"] = load_brain_trace(folder, run_id)
         detail["reviews"] = self.review_store.read(folder, run_id)
         detail["cards"], detail["review_summary"] = overlay_reviews(build_cards(detail), detail["reviews"])
         return redact(detail)

@@ -118,17 +118,26 @@ def export_report(detail, kind):
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
                    "cards":detail.get("cards",build_cards(detail)),
                    "reviews":detail.get("reviews", []), "review_summary":detail.get("review_summary"),
+                   "brain":detail.get("brain", {}),
                    "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "실행 근거에서 도출한 후보입니다. 카드별 사람 검토 상태를 확인하세요. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
         return json.dumps(safe,ensure_ascii=False,indent=2)
     if kind == "csv":
         out=io.StringIO(newline="")
         writer=csv.writer(out)
-        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"])
+        fields=["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"]
+        brain=safe["brain"]
+        include_brain=bool(brain.get("available"))
+        writer.writerow(fields + (["record_type","record_id","brain_record"] if include_brain else []))
         for card in safe["cards"]:
             values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version")]
             # Spreadsheet import must treat untrusted text as data, not a formula.
-            writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values])
+            writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values] + (["candidate","",""] if include_brain else []))
+        if include_brain:
+            for group,record_type in (("stages","brain_stage"),("task_events","brain_task_event"),("memories","memory"),("memory_changes","memory_change"),("warnings","brain_warning")):
+                for record in brain.get(group,[]):
+                    row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,"record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or "", "brain_record":json.dumps(record,ensure_ascii=False)}
+                    writer.writerow(["'"+str(row.get(k,"")) if str(row.get(k,"")).lstrip().startswith(("=","+","-","@")) else str(row.get(k,"")) for k in fields+["record_type","record_id","brain_record"]])
         return out.getvalue()
     lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
@@ -143,6 +152,8 @@ def export_report(detail, kind):
             f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",
             f"판정: {card.get('verdict') or ''}", f"검토 메모: {card.get('note','')}",
             f"검토자: {card.get('reviewer_id') or ''}", f"검토 이력: {json.dumps(card.get('review_history',[]),ensure_ascii=False)}"])
+    if safe["brain"].get("available"):
+        lines.extend(["", "## AI 생성·비동기 기록", "", "AI 생성물은 실행된 행동·독립 평가·사람 검토와 별개입니다. 작업 상태는 마지막 저장 사건이며 결과 반영을 보장하지 않습니다.", json.dumps(safe["brain"],ensure_ascii=False,indent=2)])
     text="\n".join(lines)+"\n"
     if kind == "md":
         return text

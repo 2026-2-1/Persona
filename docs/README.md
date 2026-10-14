@@ -7,6 +7,8 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [현재 상태](current-state.md) | 구현됨·미구현·기존 제한 |
+| [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md) | 현재 코드·논문·사용자 요구 대조; #39 기록 스키마 정의, 두 루프 실행은 구현 전 |
+| [구버전 run 기록 호환 계획](plans/2026-10-14-brain-legacy-run-compatibility.md) | #39 구버전 로그를 새 기록과 함께 읽기 위한 원칙·검증 항목; 구현 전 |
 | [점검 상태 표시 계획](plans/2026-10-11-check-status.md) | 상태 체크리스트·근거 펼침 유지 |
 | [한 화면 배치 계획](plans/2026-10-11-compact-dashboard.md) | 중복 제목 제거·좌우 배치·화면 검사 |
 | [API 없는 과업 점검](offline-scenarios.md) | 합성 네 과업·재현 결함·공개 사이트 부분 검증 |

@@ -2,6 +2,8 @@
 
 `cli.py` 또는 `monitor.py` → `runner.run_study` → BrowserSession → observe → FastLoop → ActionExecutor → 새 observe와 evaluate → JSON/JSONL/PNG.
 
+2026-10-14 변경 논의: [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md)은 위 현재 구조와 신규 Brain 조율·단계별 생성·필수 비동기 Slow Loop를 대조한다. #39에서 단계 결과·비동기 작업·메모리 변경 사건의 기록 스키마를 정의했으며 `brain.py`와 해당 실행 동작은 아직 구현되지 않았다.
+
 | 영역 | 파일 | 책임·회귀 영향 |
 |---|---|---|
 | 계약 | schemas.py | 설정·관찰·행동·결정·메모리; 모든 소비 모듈 확인 |

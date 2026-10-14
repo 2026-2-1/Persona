@@ -87,7 +87,7 @@ def test_memory_retrieval_includes_unknown_importance_by_recency():
     store=MemoryStore("r",clock=lambda:now[0])
     store.append("observation","검정 가방 가격 확인",importance=None)
     now[0]+=1
-    store.append("action","검색 실행",importance=0)
+    store.append("action","검색 실행",importance=1)
     results=store.retrieve("검정 가방",limit=1)
     assert results[0]["text"]=="검정 가방 가격 확인"
     assert "retrieval_score" in results[0]
@@ -127,7 +127,10 @@ async def test_fast_loop_repairs_invalid_json_once():
 
 @pytest.mark.asyncio
 async def test_slow_loop_uses_snapshot_and_appends_generated_memory():
-    store=MemoryStore("r");source=store.append("observation","필터와 검색 결과를 확인",source_step_ids=[2])
+    store=MemoryStore("r")
+    removed=store.append("observation","이전 화면")
+    source=store.append("observation","필터와 검색 결과를 확인",source_step_ids=[2])
+    store.entries.remove(removed)
     budget=BudgetManager(5,10000);provider=MockProvider();persona=Persona.model_validate_json((ROOT/"configs/persona.json").read_text())
     slow=SlowLoop(provider,budget,"mock-v1",0.2,1000,store)
     assert slow.schedule(persona,"상품을 찾는다") is True
@@ -137,6 +140,7 @@ async def test_slow_loop_uses_snapshot_and_appends_generated_memory():
     reflection=store.entries[-1]
     assert reflection.kind=="reflection" and reflection.content_status=="generated"
     assert reflection.based_on_seq==source.seq and reflection.source_step_ids==[2]
+    assert reflection.source_memory_ids==[source.memory_id]
     assert budget.requests==1
 
 

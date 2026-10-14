@@ -10,14 +10,19 @@ class MemoryStore:
         self.run_id, self.writer, self.clock = run_id, writer, clock
         self.entries: list[MemoryEntry] = []
         self.started = clock()
+        self._next_seq = 1
         self.embedding_cache: dict[str, list[float]] = {}
 
     def append(self, kind, text, source_step_ids=None, source_observation_ids=None,
-               content_status="observed", based_on_seq=0, importance=None):
-        entry=MemoryEntry(memory_id="m-"+uuid.uuid4().hex[:10],seq=len(self.entries)+1,run_id=self.run_id,
+               content_status="observed", based_on_seq=0, importance=None, *,
+               source_memory_ids=None, source_stage_record_id=None):
+        seq=self._next_seq
+        entry=MemoryEntry(schema_version="2.0",memory_id=f"m-{seq}-{uuid.uuid4().hex[:10]}",seq=seq,run_id=self.run_id,
             kind=kind,text=text,source_step_ids=source_step_ids or [],source_observation_ids=source_observation_ids or [],
+            source_memory_ids=source_memory_ids or [],source_stage_record_id=source_stage_record_id,
             created_at=datetime.now(timezone.utc).isoformat(),created_monotonic_ms=int((self.clock()-self.started)*1000),
             based_on_seq=based_on_seq,importance=importance,content_status=content_status)
+        self._next_seq += 1
         self.entries.append(entry)
         if self.writer: self.writer.write(entry.model_dump())
         return entry
@@ -37,7 +42,8 @@ class MemoryStore:
             if vector and query_vector:
                 a=query_vector; denom=math.sqrt(sum(x*x for x in a)*sum(x*x for x in vector))
                 relevance=(sum(x*y for x,y in zip(a,vector))/denom+1)/2 if denom else 0
-            components=[(weights[0],e.importance/5 if e.importance is not None else None),
+            importance_max=5 if e.schema_version=="1.0" else 10
+            components=[(weights[0],e.importance/importance_max if e.importance is not None else None),
                         (weights[1],relevance),(weights[2],recency)]
             used=[(w,v) for w,v in components if v is not None]
             score=sum(w*v for w,v in used)/sum(w for w,_ in used) if used else recency

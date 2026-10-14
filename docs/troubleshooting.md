@@ -169,3 +169,7 @@
 - 원인: push 분기 목록에 codex/**가 없고 두 PR의 base도 pull_request 대상인 prototype/main이 아니었다.
 - 해결: push 대상에 codex/**를 추가한다. 기존 검사·권한·승인 조건은 유지한다. D-03에 반영한 뒤 D-04로 병합해 각각 push 이벤트 검사를 확인한다.
 - 검증: repo/staged/diff 검사와 실제 GitHub Actions의 Ubuntu/Windows 결과를 확인한다. 실행 결과는 PR의 해당 커밋 검사에서 확인한다.
+
+## D-05: 문서 내보내기의 현재 근거 버전 누락
+
+증상: 검토 후 근거가 변경된 카드의 Markdown/HTML에서 현재 버전을 식별할 수 없었다. 원인: 버전을 검토 이력에만 표시했다. 해결: 각 카드에 현재 카드 ID·근거 버전을 항상 출력한다. 회귀: 이전 판정 비적용, 유효/보류 저장·새로고침·네 형식 다운로드, CSV/HTML 문자 보존을 브라우저로 확인했다. [검증 기록](tasks/d-review-export-verification.md).

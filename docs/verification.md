@@ -100,3 +100,12 @@
 - 추천은 source template/ai를 구분하고 사용자가 적용해야 사용자 설명을 바꾼다. 키·인증 URL·Unicode 이스케이프 응답 우회와 요청/토큰 한도를 재현 검사한다.
 
 최종 화면 확인에서 초기 상태 로딩과 도우미 이동의 경합을 발견해 실패 테스트로 재현 후 수정했다. 브라우저 회귀 17 passed (249.58s). 모델 발급 안내 간격도 줄였다. 앞선 커밋의 Windows/Ubuntu CI는 모두 통과했다.
+
+## 2026-10-15 실제 OpenAI 연결 / #57
+
+- 증상: 실제 `gpt-4o-mini`로 합성 shop.html 과업을 실행하면 첫 결정에서 `model_error`로 종료됐다. 첫 실행은 `perception` 객체·`finish: false`, 프롬프트 1차 수정 후에는 `observation_id` 누락·`value` 필드 사용으로 `AgentDecision`/`Action` 검증에 실패했다.
+- 원인: Fast Loop 시스템 프롬프트가 필드 이름만 나열하고 필드 형식과 행동별 허용 필드를 명시하지 않았다. mock·fake HTTP 테스트에서는 드러나지 않았다.
+- 해결: 문자열 필드, action/finish 중 하나만 객체, finish 구조, 행동별 허용 필드를 프롬프트에 명시했다. 프로젝트 모델 목록의 OpenAI 단가(gpt-4o-mini 0.15/0.60, gpt-4.1-mini 0.40/1.60 USD per 1M, 표준 요금)를 추가했다. 공식 요금표 변경 시 갱신이 필요하다.
+- 실제 실행(유료 API, 키는 로컬 `.env`): 수정 전 `20261014T153403-c958d7b5` model_error, 1차 수정 후 `20261014T154056-7b12da8f` model_error($0.00063), 최종 `20261014T154123-dda0d05a` verified_success 3행동·3요청·5,617토큰·$0.00102·10.8초, `20261014T154144-e76d8432` verified_success 2단계·2요청·3,556토큰·$0.00065·6.3초. 원자료 runs는 커밋하지 않는다.
+- 전체 pytest 188 passed, 재현 테스트 3 passed, doctor 정상, mock verified_success, repository check PASS.
+- 남은 범위: 데카트론 페이지의 AI 실행·판정 연결(P04), 실제 데카트론 검색 제출(#19), Claude/Gemini 경로의 같은 프롬프트 실측은 미검증이다. 반복 실행 수가 적어 형식 오류 재발률은 확인하지 않았다.

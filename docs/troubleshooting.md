@@ -122,3 +122,11 @@
 - 해결: perception 저장 뒤 reflection, plan 저장 뒤 plan_review를 비동기 순차 worker에 예약한다. 대기열은 제한하지 않는다. 각 작업 시작 시 메모리를 깊은 복사하고 task/stage 로그에 상태·snapshot 순번·출처·모델을 기록한다. 중요도는 5로 고정하고 LLM 갱신을 사용하지 않는다.
 - 함께 확인할 회귀: 두 작업이 빠른 단계 실행을 막지 않음, snapshot 이후 텍스트/점수 변경이 입력에 소급되지 않음, provider 실패/예산 소진/종료 취소 기록, 오래된 계획 검토가 현재 plan과 행동 요소 ID를 바꾸지 않음.
 - 실제 검증: mock provider 기반 full pytest 204개 통과. snapshot 변경, timeout/실패 이벤트, 두 단계 runner 예약을 포함한다. 실제 유료 API는 호출하지 않았다. 자세한 검사는 [검증 기록](verification.md)에 남겼다.
+
+### 리뷰 수정: 잘못된 Slow 응답의 사용량 누락
+
+- 증상: Slow 모델이 잘못된 JSON을 반환하면 예산은 1회 소진되지만 호출 로그에는 오류 사건만 남고 토큰 사용량이 빠졌다.
+- 원인: JSON 파싱 뒤에 호출 로그를 기록했다.
+- 해결: 모델 응답과 사용량을 받은 직후 기록하고, 이후 파싱 오류는 기존 실패 사건으로 남긴다.
+- 함께 확인할 회귀: Fast 형식 복구 로그, Slow 실패 상태, 모델 요청 예산, mock runner.
+- 실제 검증: 잘못된 JSON으로 실패 재현 후 Slow/Fast 관련 검사 4개 통과. 전체 검사 결과는 verification.md를 따른다.

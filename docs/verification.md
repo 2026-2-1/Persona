@@ -135,3 +135,7 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - `python3 -m compileall -q src tests/test_slow_loop.py tests/test_core.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
 - 신규 메모리 중요도는 5로 고정되며 점수 산정 API/작업은 실행되지 않는다. Slow 결과는 기존 계획을 바꾸지 않고 기록·메모리 후보만 추가한다.
 - 네트워크 기반 유료 LLM 호출은 하지 않았다. 브라우저 통합 검사는 로컬 fixture와 mock provider를 사용했다.
+
+### #42 PR 코드 리뷰 보완
+
+Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입력·출력 토큰을 별도 호출 로그에 기록한다. 수정 전에는 예산 요청 1회에 사용량 로그 0건이었다. fake provider 기반 Slow/Fast 관련 검사 4개 통과. 유료 API 호출 없음.

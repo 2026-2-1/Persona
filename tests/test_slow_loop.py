@@ -150,6 +150,33 @@ async def test_plan_review_timeout_is_recorded_as_failure():
 
 
 @pytest.mark.asyncio
+async def test_slow_loop_logs_usage_when_provider_returns_invalid_json():
+    class InvalidProvider:
+        model = "fake-slow-v1"
+
+        async def complete(self, messages, model, temperature, max_tokens):
+            return "not JSON", {"model": self.model, "input_tokens": 12,
+                                "output_tokens": 5}
+
+    store = MemoryStore("run-invalid-json")
+    store.append("observation", "검색 화면", source_observation_ids=["obs-invalid"])
+    persona = Persona.model_validate({"persona_id": "p1", "background": "사용자",
+                                      "digital_familiarity": "보통", "preferences": ["검색"],
+                                      "constraints": {}, "intent": "검색"})
+    budget = BudgetManager(10, 10000)
+    calls = []
+    slow = SlowLoop(InvalidProvider(), budget, "fake", 0.2, 100,
+                    store, RecordingWriter(), RecordingWriter(), calls.append)
+
+    slow.schedule_reflection(persona, "검색", "obs-invalid")
+    await slow.worker
+
+    assert budget.requests == 1
+    assert slow.status == "partially_failed"
+    assert [call["input_tokens"] for call in calls if "input_tokens" in call] == [12]
+
+
+@pytest.mark.asyncio
 async def test_runner_schedules_reflection_after_perception_and_review_after_plan(tmp_path):
     from pathlib import Path
 

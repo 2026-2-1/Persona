@@ -125,6 +125,10 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
 - mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
 
+### #41 PR 코드 리뷰 보완
+
+형식이 틀린 첫 응답과 복구된 두 번째 응답을 fake provider로 재현했다. 수정 전에는 예산 요청 2회에 비해 Fast 호출 로그가 1건이었고, 수정 후 두 응답의 사용량을 각각 기록한다. `tests/test_fast_stages.py`: 3 passed, 전체 pytest: 200 passed (81.18s). 유료 API 호출 없음.
+
 ## 2026-10-15 Slow 성찰·계획 검토 (#42)
 
 - 전체 pytest: **204 passed in 80.86s**. Slow 전용 테스트는 대기열 무제한 예약, 비동기 호출, 성찰/계획 검토 기록, 고정 snapshot, provider 실패·timeout 기록과 mock runner 연결을 확인했다.

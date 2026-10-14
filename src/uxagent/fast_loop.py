@@ -98,10 +98,6 @@ class FastLoop:
                 actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
                 self.budget.settle(reservation, actual)
                 settled = True
-                result = json.loads(response)
-                if not isinstance(result, dict):
-                    raise ValueError("stage response must be a JSON object")
-                self._validate_stage_output(stage, result)
                 if self.call_log:
                     self.call_log({"module": "fast", "stage": stage,
                         "provider": self._provider_name(), "model": usage.get("model", self.model),
@@ -111,6 +107,10 @@ class FastLoop:
                         "fallback_reason": payload.get("fallback_reason"),
                         "estimated_cost_usd": estimate_cost_usd(self._provider_name(), input_tokens,
                                                                  output_tokens, model=self.model)})
+                result = json.loads(response)
+                if not isinstance(result, dict):
+                    raise ValueError("stage response must be a JSON object")
+                self._validate_stage_output(stage, result)
                 return result
             except (BudgetExceeded, asyncio.CancelledError):
                 if not settled:

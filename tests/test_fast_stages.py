@@ -57,6 +57,31 @@ async def test_fast_loop_generates_perception_plan_and_decision_as_separate_call
 
 
 @pytest.mark.asyncio
+async def test_fast_stage_logs_usage_for_invalid_response_before_repair():
+    class RepairProvider:
+        model = "mock-v1"
+
+        def __init__(self):
+            self.responses = iter(['{"wrong": "shape"}', '{"perception": "검색 화면입니다."}'])
+
+        async def complete(self, messages, model, temperature, max_tokens):
+            return next(self.responses), {"model": self.model, "input_tokens": 3,
+                                          "output_tokens": 2}
+
+    persona = Persona.model_validate_json((ROOT / "configs/persona.json").read_text())
+    observation = Observation(observation_id="obs-current", tab_id="tab-current",
+                              url="https://shop.test", title="Shop", html="검색")
+    budget = BudgetManager(5, 10000)
+    calls = []
+    fast = FastLoop(RepairProvider(), budget, "mock-v1", .2, 100, calls.append)
+
+    assert await fast.perceive(persona, "가방 찾기", observation, []) == "검색 화면입니다."
+    assert budget.requests == 2
+    assert [call["stage"] for call in calls] == ["perception", "perception"]
+    assert sum(call["input_tokens"] for call in calls) == 6
+
+
+@pytest.mark.asyncio
 async def test_runner_records_fast_stages_and_saves_them_before_next_stage(tmp_path):
     run_dir, summary = await run_study(ROOT / "configs/study.json", "mock", None, False, tmp_path)
     stages = [json.loads(line) for line in (run_dir / "brain_stages.jsonl").read_text().splitlines()]

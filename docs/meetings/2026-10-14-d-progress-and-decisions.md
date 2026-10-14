@@ -43,15 +43,15 @@
 | [C #30](https://github.com/2026-2-1/Persona/pull/30) | Open, 리뷰 필요 | prototype | Ubuntu·Windows 성공 |
 | [D-01 #37](https://github.com/2026-2-1/Persona/pull/37) | Draft, 미병합 | feat/27-c-review-data | Ubuntu·Windows 성공 |
 | [D-02 #38](https://github.com/2026-2-1/Persona/pull/38) | Draft, 미병합 | feat/32-candidate-review | Ubuntu·Windows 성공 |
-| [D-03 #49](https://github.com/2026-2-1/Persona/pull/49) | Draft, 미병합 | feat/33-review-draft-retention | 결과 표시 없음 |
-| [D-04 #50](https://github.com/2026-2-1/Persona/pull/50) | Draft, 미병합 | codex/34-review-history-provenance | 결과 표시 없음 |
+| [D-03 #49](https://github.com/2026-2-1/Persona/pull/49) | Draft, 미병합 | feat/33-review-draft-retention | Ubuntu·Windows 성공 (2c42f67) |
+| [D-04 #50](https://github.com/2026-2-1/Persona/pull/50) | Draft, 미병합 | codex/34-review-history-provenance | Ubuntu·Windows 성공 (f618818) |
 | [Brain #48](https://github.com/2026-2-1/Persona/pull/48) | Open, 리뷰 필요 | prototype | Ubuntu·Windows 성공 |
 
 D 기능의 의존 순서는 **#30 → #37 → #38 → #49 → #50**이다. 선행 기능 브랜치를 대상으로 둔 것은 D 변경만 검토하기 위한 것이며, 그 브랜치에 직접 병합하는 절차가 아니다.
 
 통합 시에는 선행 PR을 prototype에 반영한 다음, 다음 PR의 base를 prototype으로 변경하고 차이를 다시 확인한다. 선행 변경이 중복 표시되거나 충돌하면 별도 통합 커밋으로 정리한다. Git 이력 방식에 따라 재정리가 필요할 수 있으므로 base 변경만으로 항상 해결된다고 가정하지 않는다. 각 단계에서 최신 CI와 작성자 외 1명 승인을 확인한다. PR 작성자가 리뷰어를 선택한다.
 
-**CI 실행 조건을 먼저 점검해야 한다.** 현재 [워크플로](../../.github/workflows/prototype-ci.yml)의 push 대상은 prototype·feat/**·fix/**·chore/**이며, PR 대상은 prototype·main이다. codex/** 브랜치와 선행 기능 브랜치를 대상으로 하는 #49/#50 조합은 자동 실행 조건에 포함되지 않는다. 결과 없음은 통과나 실행 대기를 뜻하지 않는다. codex/** 지원 또는 브랜치 명명 통일을 별도 수정으로 결정하고, 필요하면 workflow_dispatch로 해당 브랜치를 검증한다. 이번 문서 작업에서 CI 설정은 변경하지 않는다.
+**CI 자동 실행 조건 수정 반영:** 2026-10-14 D-03과 D-04 브랜치에 codex/** push 지원을 추가했다. 기존 push 대상과 prototype/main PR 검사는 유지한다. 선행 기능 브랜치 대상 PR도 head 브랜치 push로 검사된다. [워크플로](../../.github/workflows/prototype-ci.yml)의 변경은 prototype에 통합되기 전이므로 다른 미반영 브랜치에도 자동 적용된 것으로 보지 않는다. 실제 자동 실행 결과: [D-03 검사](https://github.com/2026-2-1/Persona/actions/runs/38571360128)는 Ubuntu·Windows 각각 281개, [D-04 검사](https://github.com/2026-2-1/Persona/actions/runs/38571422499)는 각각 286개 테스트를 통과했다. 두 실행 모두 환경 검사와 Mock 실행도 성공했다.
 
 Brain #48은 기록 스키마와 메모리 호환 기반이다. 단계별 Brain 기록의 실제 생성과 대시보드 연결 전체가 구현된 것은 아니다. D 코드와 합친 상태의 호환 검증은 D-05에 포함할지 결정한다.
 
@@ -86,7 +86,7 @@ Brain #48은 기록 스키마와 메모리 호환 기반이다. 단계별 Brain 
 
 | 우선순위 | 확인된 문제와 근거 | 제안하는 완료 조건 | 연결할 작업 |
 |---|---|---|---|
-| 통합 전 필수 | codex/**와 현재 stacked PR 조합에 원격 CI가 자동 실행되지 않음 | 실제 작업 브랜치에서 Ubuntu·Windows 결과를 확인하고 통합 후 필수 검사를 유지 | 협업 설정 [#31](https://github.com/2026-2-1/Persona/pull/31), D-05 |
+| 수정 반영 후 통합 필요 | codex/** CI 자동 실행 조건을 D-03/D-04에 반영함 | 각 브랜치의 원격 결과와 prototype 통합 후 필수 검사를 확인 | 협업 설정 [#31](https://github.com/2026-2-1/Persona/pull/31), D-05 |
 | 높음 | `app.js`의 일부 상세/비교 조회 실패가 무시되고 이전 결과를 유지한 채 연결됨으로 표시될 수 있음 | 마지막 성공 갱신 시각·갱신 실패 표시, 오래된 결과임을 안내, 재시도 후 정상 복원 | [#7](https://github.com/2026-2-1/Persona/issues/7) 아래 작은 수정 이슈 |
 | 높음 | `runner.py`의 새 AI run.json에 execution_mode/source_kind를 쓰지 않아 새 실행도 출처 미확인이 될 수 있음 | 실행 시 신뢰할 수 있는 설정에서 출처를 기록하고 UI·내보내기 일치 확인. 과거 누락은 미확인 유지 | [#27](https://github.com/2026-2-1/Persona/issues/27)·[#44](https://github.com/2026-2-1/Persona/issues/44) |
 | 보통 | 단일 실행 화면은 recovery.rate가 null이면 오류 없음으로 표시함. 복구 평가 대상 없음·측정 누락과 의미가 다름 | 오류 없음/복구 대상 없음/미확인을 원본 필드에 따라 구분하고 사례별 검증 | #7·D-05 |
@@ -98,7 +98,7 @@ D-04는 비교표 범위만 수정했다. 추가 후보 중 CI 외 항목의 구
 | 안건 | 제안 또는 선택지 | 회의에서 남길 결정 |
 |---|---|---|
 | 10/18 시연 범위 | 기존 실행→근거→사람 판정→이력→비교→내보내기를 최소 시연으로 고정 | 필수/선택 기능, 제외 범위 |
-| PR 리뷰와 통합 | C→D 순서, PR별 작성자가 팀원 1명 지정, CI 실행 조건 우선 해결 | 각 PR 리뷰어·통합 담당·확인 기한 |
+| PR 리뷰와 통합 | C→D 순서, PR별 작성자가 팀원 1명 지정, CI 수정의 prototype 반영 확인 | 각 PR 리뷰어·통합 담당·확인 기한 |
 | D-05 협업 | D가 UI 흐름 검증, C가 API/출력 일치, B가 실행/근거 재현, A가 후보 판정 의미 확인 | 테스트 표본 제공자·재현 담당·환경 |
 | Brain 병행 개발 | #48은 계약 기반, #39~#46의 실제 기록 준비 후 [#47](https://github.com/2026-2-1/Persona/issues/47) UI 연결 | 18일 포함 범위, 샘플 JSON 제공 시점, 필드·상태 계약 |
 | 판정 기준 | 유효/무효/보류/도구 오류/환경 오류 예시를 합의 | 각 판정의 기준·애매한 사례 처리 |
@@ -128,7 +128,7 @@ AI의 `plan_review`는 사람 후보 검토와 분리한다. 관찰 사실·AI �
 | 결정 항목 | 결정 내용 | 담당 | 기한 | 연결 Issue/PR |
 |---|---|---|---|---|
 | 시연 필수 범위 | 미정 | 미정 | 미정 | #36 |
-| CI 실행 조건 | 미정 | 미정 | 미정 | #31 또는 새 이슈 |
+| CI 실행 조건 | D-03/D-04에 codex/** 지원 반영, prototype 통합 담당·기한은 미정 | 미정 | 미정 | #49/#50 |
 | PR 리뷰·통합 순서 | 미정 | 미정 | 미정 | #30/#37/#38/#49/#50 |
 | D-05 재현 표본·담당 | 미정 | 미정 | 미정 | #36 |
 | Brain 연동 범위·계약 | 미정 | 미정 | 미정 | #44/#47/#48 |

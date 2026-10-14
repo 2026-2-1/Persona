@@ -163,3 +163,12 @@
 - 실제 로컬 화면은 기존 실행과 분리한 `/tmp/persona-d04-preview/runs`의 가상 표본을 8766 포트로 제공했다. 비용 전체 미확인·부분 $0.125, 토큰 부분120, 기록 전체 미확인·측정3/4=75%, 실제0원과 기록 대상행동 없음, 모델/환경 누락, 존재하는 실행 이동과 없는 실행 버튼 비활성을 확인했다. 가상 성능 수치이며 유료 모델/실제 사람/실제 사이트 결과가 아니다.
 - doctor: Python 3.13.13 / Playwright 1.55.0 Chromium, study_errors=[]. Mock 20261014T124427-00482481: 6행동, verification=success, verified_success.
 - repo/staged/diff 검사 통과. 선행 PR들의 prototype 통합 및 원격 CI/팀원 리뷰는 별도로 확인해야 한다. 회의록 정리는 이번 기능 문서와 별도 후속이다.
+
+## codex 자동 CI와 D-03 D-04 원격 검사 (2026-10-14)
+
+- push 대상에 codex/**를 추가했다. 수동 실행 없이 push 이벤트로 자동 시작됐으며 기존 권한과 검사 항목은 유지했다.
+- D-03 #49의 2c42f67: [실행 38571360128](https://github.com/2026-2-1/Persona/actions/runs/38571360128). Ubuntu/Python3.11 281 passed (155.33초), Windows/Python3.13 281 passed (198.71초).
+- D-04 #50의 f618818: [실행 38571422499](https://github.com/2026-2-1/Persona/actions/runs/38571422499). Ubuntu/Python3.11 286 passed (163.32초), Windows/Python3.13 286 passed (202.53초).
+- 두 PR의 현재 head에 두 성공 check가 연결됨을 확인했다. 각 환경 repo 검사, doctor study_errors=[], Mock verification=success.
+- D-04에 D-03 CI 변경을 병합하며 트러블슈팅 문서의 추가 문단 충돌을 해결했다. 양쪽 기록을 모두 보존했고 실행 코드 변경은 없다.
+- prototype 병합과 팀원 승인은 별도다. 다른 브랜치도 이 워크플로 변경을 포함해야 codex push 검사가 실행된다.

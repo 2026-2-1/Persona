@@ -117,3 +117,11 @@
 - 재현 테스트 5 passed(정답 상품 success, 블루·프로·신발 failure, 과업 문구 정답 비노출). 전체 pytest 193 passed, doctor study_errors 없음, mock verified_success, repository check PASS.
 - 실제 OpenAI `gpt-4o-mini`: `20261014T160558-bd30eb0c`, `20261014T160602-7c9b4930` 모두 verified_success, 1행동(러닝 가방 블랙 상세 보기)·1요청·약 1,580토큰·$0.0003. 원자료 runs는 커밋하지 않는다.
 - 한계: 합성 페이지 첫 화면에 상품 4개의 이름·가격·색상이 모두 보여 AI가 검색·필터 없이 정답 상세를 바로 연다. 검색·필터 과정을 보려면 시작 화면 또는 과업 설계 변경이 필요하다(P01, A 확인). 판정 시점(#44)과 실제 사이트 프로필(P03, #19)은 범위 밖이다.
+
+## 2026-10-15 실제 데카트론 검색 결과 AI 실행 / #61
+
+- 증상: AI 실행 설정은 실제 사이트 판정 기준(`decathlon_live_profile.json`)을 넘길 수 없었다. 실제 사이트 상세 판정 `detail_basic`은 상품명 정확 일치만 지원해, AI가 조건에 맞는 다른 러닝화를 골라도 failure가 된다.
+- 해결: `StudyConfig.evaluation_profile_file`(설정 파일 기준 상대 경로)을 추가해 runner가 판정기에 전달한다. `detail_basic`이 `product_name_contains` 키워드도 받는다. 기존 `product_name` 정확 일치는 그대로다. `configs/study-decathlon-live.json`은 `search?query=러닝화`에서 시작해 상세 상품명에 "러닝화" 포함·80,000원 이하를 확인한다.
+- 재현 테스트: 설정한 판정 기준 전달, 키워드 판정(다른 러닝화 success, 신발·가격 초과 failure), 실제 사이트 설정의 정답 비고정. 전체 pytest 196 passed(실제 데카트론 접속 검사 포함), doctor study_errors 없음, mock verified_success, repository check PASS.
+- 실제 OpenAI `gpt-4o-mini`, 실제 데카트론(2026-10-15 01시대 KST): `20261014T161435-7efb40e4`, `20261014T161449-62cebf7c` 모두 verified_success. 1행동(검색 결과의 79,900원 남성 러닝화 킵코어 클릭)·1요청·약 6,530토큰·$0.00105. 판정 근거는 상세의 상품명·가격(부분 확인)이며 색상·사이즈·재고·픽업은 확인하지 않았다. 원자료 runs는 커밋하지 않는다.
+- 한계: 결과 카드에 가격이 보여 AI가 가격 필터 없이 바로 상세를 열었다. 홈페이지 검색 제출은 시작 범위 밖(unknown)이다. 실제 사이트 가격·상품·DOM은 바뀔 수 있어 시연 직전 재확인이 필요하다.

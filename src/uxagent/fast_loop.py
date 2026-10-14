@@ -216,8 +216,8 @@ class FastLoop:
         if fallback_reason == "input_text_required":
             payload["fallback_reason"] = fallback_reason
             generated = await self._generate("decision", _ACTION_PROMPT, payload)
-            action = Action.model_validate(generated["action"])
-            if action.observation_id != observation.observation_id or action.tab_id != observation.tab_id:
+            action = Action.model_validate(generated["action"]) if generated.get("action") is not None else None
+            if action is not None and (action.observation_id != observation.observation_id or action.tab_id != observation.tab_id):
                 raise ValueError("decision action must reference the current observation and tab")
             finish = Finish.model_validate(generated["finish"]) if generated.get("finish") is not None else None
             return AgentDecision.model_validate({"decision_id": "d-" + uuid.uuid4().hex[:10],
@@ -236,8 +236,8 @@ class FastLoop:
                 payload.pop("action_candidates", None)
                 payload["fallback_reason"] = "input_text_required"
                 generated = await self._generate("decision", _ACTION_PROMPT, payload)
-                action = Action.model_validate(generated["action"])
-                if action.observation_id != observation.observation_id or action.tab_id != observation.tab_id:
+                action = Action.model_validate(generated["action"]) if generated.get("action") is not None else None
+                if action is not None and (action.observation_id != observation.observation_id or action.tab_id != observation.tab_id):
                     raise ValueError("decision action must reference the current observation and tab")
                 finish = Finish.model_validate(generated["finish"]) if generated.get("finish") is not None else None
                 return AgentDecision.model_validate({"decision_id": "d-" + uuid.uuid4().hex[:10],

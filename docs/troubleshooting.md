@@ -114,3 +114,11 @@
 - 해결: 응답의 토큰 사용량을 정산한 직후 호출 로그를 기록하고 형식 검사를 진행한다.
 - 함께 확인할 회귀: 형식 복구, 단계별 로그, 요청 예산, 기존 mock runner.
 - 실제 검증: 잘못된 첫 응답으로 실패 재현 후 `tests/test_fast_stages.py` 3개 통과. 전체 검사 결과는 verification.md를 따른다.
+
+### 리뷰 수정: Jev 입력값 fallback의 종료 선언 오류
+
+- 증상: Jev가 입력 후보를 선택한 뒤 생성 모델이 `give_up`을 선언하면 모델 오류로 끝났다.
+- 원인: 입력값 fallback이 `action`이 항상 있다고 가정하고 null을 Action으로 검사했다.
+- 해결: 생성된 decision의 action 또는 finish를 각각 조건에 맞게 해석한다.
+- 함께 확인할 회귀: 빈 입력/기존 입력의 생성 fallback, Jev 직접 종료 후보, 최신 observation ID 검사.
+- 실제 검증: null action과 give_up으로 실패 재현 후 Fast·Jev 관련 검사 9개 통과.

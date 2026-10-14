@@ -82,6 +82,37 @@ async def test_fast_stage_logs_usage_for_invalid_response_before_repair():
 
 
 @pytest.mark.asyncio
+async def test_jev_input_fallback_accepts_finish_claim():
+    class TypeCandidateProvider:
+        model = "jev-latest"
+
+        async def choose(self, payload, candidates):
+            selected = next(candidate for candidate in candidates if candidate["id"].startswith("type:"))
+            return selected["id"], .9, {selected["id"]: .9}, {
+                "model": self.model, "input_tokens": 3, "output_tokens": 2,
+            }
+
+        async def complete(self, messages, model, temperature, max_tokens):
+            return json.dumps({"rationale_summary": "진행할 수 없습니다.", "action": None,
+                               "finish": {"claim": "give_up", "summary": "진행할 수 없습니다."}}), {
+                "model": "gemini-2.5-flash-lite", "input_tokens": 3, "output_tokens": 2,
+            }
+
+    persona = Persona.model_validate_json((ROOT / "configs/persona.json").read_text())
+    observation = Observation(observation_id="obs-current", tab_id="tab-current",
+                              url="https://shop.test", title="Shop", html="검색",
+                              input_elements=[ElementInfo(id="search", role="textbox",
+                                                          name="상품 검색", value="기존 검색어")])
+    fast = FastLoop(TypeCandidateProvider(), BudgetManager(3, 10000),
+                    "gemini-2.5-flash-lite", .2, 100)
+
+    decision = await fast.decide_action(persona, "가방 찾기", observation, [],
+                                        "검색창이 보입니다.", "검색어를 다시 입력합니다.")
+    assert decision.action is None
+    assert decision.finish.claim == "give_up"
+
+
+@pytest.mark.asyncio
 async def test_runner_records_fast_stages_and_saves_them_before_next_stage(tmp_path):
     run_dir, summary = await run_study(ROOT / "configs/study.json", "mock", None, False, tmp_path)
     stages = [json.loads(line) for line in (run_dir / "brain_stages.jsonl").read_text().splitlines()]

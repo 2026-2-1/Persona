@@ -38,3 +38,5 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 - [메모리 정책 실험 설계](research/2026-10-15-memory-policy-experiment.md): 최신 PR 근거·비교 조건·고정 변수·예산·한계.
 
 - [D Brain 기록 화면·출력](tasks/d-brain-trace-viewer.md): #47의 읽기 계약·구버전·상태·출처·CSV 행 구분.
+
+- [2026-10-15 아침 인수인계](handoffs/2026-10-15-morning.md): 완료 결과·검증·재현·선행 PR·팀 논의.

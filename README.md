@@ -109,3 +109,5 @@ D-05 작업 브랜치에서 후보 근거 확인·판정 저장·새로고침·�
 D 후속: [조회 실패·출처·복구 표시](docs/tasks/d-dashboard-hardening.md)를 보완했습니다. 메모리 정책 연구는 [실험 설계](docs/research/2026-10-15-memory-policy-experiment.md)를 참고하세요.
 
 [D Brain 기록 연결](docs/tasks/d-brain-trace-viewer.md): 단계별 AI 생성 결과·비동기 마지막 상태·제거된 기억 원본을 화면과 네 형식 보고서에서 확인합니다.
+
+2026-10-15 [아침 공유·재현·리뷰 순서](docs/handoffs/2026-10-15-morning.md)에 D 보완과 A+D 격리 통합의 실제 결과 및 남은 범위를 정리했습니다.

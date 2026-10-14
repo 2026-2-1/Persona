@@ -224,3 +224,11 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 첫 전체 검사에서 데스크톱 기본 화면의 세로 넘침 1건 발생: Brain과 비용의 접힌 패널을 같은 카드로 묶은 후 데스크톱 두 크기/390px/정확한 관찰 연결 및 전체 검사를 다시 통과했다.
 - 소비 가상 표본: append 상태·원본 제거 이력·손상/교차 실행/심볼릭 링크·비밀값 제거·네 형식 대조. 생성 실행기와의 실제 Mock 통합은 별도 격리 체크아웃 검증으로 기록한다.
 - D 하드닝 CI [38602694973](https://github.com/2026-2-1/Persona/actions/runs/38602694973): Ubuntu 3.11/Windows 3.13 모두 success.
+
+## 2026-10-15 A+D 격리 통합 (#69)
+
+- D 소비 d79a9b8 + A Fast 2c5f72a를 별도 checkout/preview에서 통합. 실행 출처와 Brain writer, C 실측 usage completeness를 함께 보존했다.
+- 전체 pytest **324 passed** (macOS Python 3.13.13), doctor 정상, repo 검사 PASS. 테스트한 src/tests 트리와 최종 통합 merge 트리의 diff=0을 확인했다.
+- 기존 C 사용량 기대값을 3 Fast+4 중요도 요청에 맞춰 보완하고 fast-stages-1 버전 기록을 실패 재현 후 구분했다.
+- 실제 무료 Mock `20261014T171511-3d562d94`: 6 actions/42 interface requests/verified_success, 42 stage records/72 task events/24 latest tasks/24 original memories/warnings 0. 브라우저의 계획→정확한 관찰 연결 및 네 형식 다운로드 대조 통과.
+- B live PR과 Slow 전체 조율, 팀원 재현·prototype 통합은 미포함. [아침 인수인계](handoffs/2026-10-15-morning.md).

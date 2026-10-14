@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -102,8 +103,8 @@ class StudyConfig(StrictModel):
     run_timeout_seconds: float = Field(default=300, gt=0)
     action_timeout_ms: int = Field(default=5000, gt=0)
     settle_timeout_ms: int = Field(default=3000, gt=0)
-    max_llm_requests: int = Field(default=40, gt=0)
-    max_total_tokens: int = Field(default=50000, gt=0)
+    max_llm_requests: int | None = Field(default=None, gt=0)
+    max_total_tokens: int | None = Field(default=None, gt=0)
     recent_step_count: int = Field(default=6, ge=0)
     repeated_state_action_limit: int = Field(default=3, gt=0)
     max_observation_text: int = Field(default=12000, gt=0)
@@ -113,6 +114,7 @@ class StudyConfig(StrictModel):
     enable_wonder: bool = False
     reflection_every_actions: int = Field(default=5, gt=0)
     memory_limit: int = Field(default=8, gt=0)
+    max_active_memories: int = Field(default=64, ge=10, le=64)
     embedding_model: str | None = None
     model: str = "gpt-4o-mini"
     provider_model: str | None = None
@@ -272,17 +274,135 @@ class AgentDecision(StrictModel):
         return self
 
 
+class BrainStageRecord(StrictModel):
+    """A generated stage result with links to the state used to produce it."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    record_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    stage: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    observation_id: str | None = Field(default=None, min_length=1)
+    plan_id: str | None = Field(default=None, min_length=1)
+    plan_version: int | None = Field(default=None, ge=1)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    snapshot_seq: int | None = Field(default=None, ge=0)
+    text: str = Field(min_length=1)
+    action: Action | None = None
+    finish: Finish | None = None
+    content_status: Literal["generated"] = "generated"
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_provenance(self):
+        if (self.plan_id is None) != (self.plan_version is None):
+            raise ValueError("plan_id and plan_version must be provided together")
+        if self.stage in ("perception", "plan", "decision", "plan_review") and self.observation_id is None:
+            raise ValueError(f"observation_id is required for {self.stage}")
+        if self.stage in ("plan", "decision", "plan_review") and self.plan_id is None:
+            raise ValueError(f"plan_id and plan_version are required for {self.stage}")
+        if self.stage == "decision":
+            if (self.action is None) == (self.finish is None):
+                raise ValueError("decision requires exactly one action or finish proposal")
+            if self.action is not None and self.action.observation_id != self.observation_id:
+                raise ValueError("proposed action must reference the decision observation")
+        elif self.action is not None or self.finish is not None:
+            raise ValueError("only decision stages may propose an action or finish")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
+class BrainTaskEvent(StrictModel):
+    """One append-only state change for a scheduled Slow Loop task."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    event_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    kind: Literal["importance", "reflection", "plan_review", "wonder"]
+    status: Literal["scheduled", "started", "skipped", "completed", "failed", "cancelled"]
+    snapshot_seq: int = Field(ge=0)
+    observation_id: str | None = Field(default=None, min_length=1)
+    plan_id: str | None = Field(default=None, min_length=1)
+    plan_version: int | None = Field(default=None, ge=1)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    output_record_ids: list[str] = Field(default_factory=list)
+    reason_code: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_event(self):
+        if (self.plan_id is None) != (self.plan_version is None):
+            raise ValueError("plan_id and plan_version must be provided together")
+        if self.kind == "plan_review" and (self.plan_id is None or self.observation_id is None):
+            raise ValueError("plan_review requires plan and observation references")
+        if self.status in ("failed", "cancelled", "skipped"):
+            if self.reason_code is None:
+                raise ValueError(f"{self.status} requires reason_code")
+        elif self.reason_code is not None:
+            raise ValueError(f"{self.status} must not have reason_code")
+        if self.status != "completed" and self.output_record_ids:
+            raise ValueError("only completed tasks may reference output records")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
 class MemoryEntry(StrictModel):
+    schema_version: Literal["1.0", "2.0"] = "1.0"
     memory_id: str
-    seq: int
+    seq: int = Field(ge=1)
     run_id: str
     kind: Literal["observation", "plan", "action", "reflection", "wonder"]
     text: str
     source_step_ids: list[int] = Field(default_factory=list)
     source_observation_ids: list[str] = Field(default_factory=list)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    source_stage_record_id: str | None = Field(default=None, min_length=1)
     created_at: str
     created_monotonic_ms: int
     based_on_seq: int = 0
-    importance: int | None = Field(default=None, ge=0, le=5)
+    importance: int | None = None
     embedding_ref: str | None = None
     content_status: Literal["observed", "generated"] = "observed"
+
+    @model_validator(mode="after")
+    def validate_importance_scale(self):
+        if self.importance is not None:
+            minimum, maximum = (0, 5) if self.schema_version == "1.0" else (1, 10)
+            if not minimum <= self.importance <= maximum:
+                raise ValueError(f"importance for memory schema {self.schema_version} must be {minimum}..{maximum}")
+        return self
+
+
+class MemoryChangeEvent(StrictModel):
+    """An append-only importance update or active-memory eviction record."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    event_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    memory_id: str = Field(min_length=1)
+    memory_seq: int = Field(ge=1)
+    change: Literal["importance_scored", "evicted"]
+    importance_before: int | None = Field(default=None, ge=1, le=10)
+    importance_after: int | None = Field(default=None, ge=1, le=10)
+    retention_score: float | None = Field(default=None, ge=0, le=1)
+    source_stage_record_id: str | None = Field(default=None, min_length=1)
+    reason_code: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_change(self):
+        if self.change == "importance_scored":
+            if self.importance_after is None or self.source_stage_record_id is None:
+                raise ValueError("importance scoring requires a score and source stage")
+            if self.retention_score is not None or self.reason_code is not None:
+                raise ValueError("importance scoring cannot carry eviction fields")
+        else:
+            if self.retention_score is None or self.reason_code is None:
+                raise ValueError("eviction requires a retention score and reason")
+            if self.importance_after is not None:
+                raise ValueError("eviction cannot set importance_after")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self

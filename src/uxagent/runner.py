@@ -6,7 +6,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit
 from pydantic import ValidationError
-from .schemas import StudyConfig, Persona
+from .schemas import BrainStageRecord, StudyConfig, Persona
 from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
@@ -14,7 +14,7 @@ from .evaluator import evaluate
 from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded
 from .fast_loop import FastLoop
 from .memory import MemoryStore
-from .slow_loop import SlowLoop
+from .slow_loop import ImportanceScorer, SlowLoop
 from .storage import write_json, JsonlWriter
 from .security import normalize_origin
 from .model_catalog import resolve_model
@@ -100,9 +100,10 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"fast-2","condition":persona_mode,
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"fast-stages-1","condition":persona_mode,
         "execution_mode":"ai", "source_kind":"synthetic_fixture" if is_fixture else config.source_kind})
-    steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl")
+    steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
+    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
     llm_elapsed_total=0
@@ -116,8 +117,19 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"),model=record.get("model"))
         record.setdefault("fallback_reason",None)
         calls.write(record)
+    def write_fast_stage(stage, observation, text, source_memory_ids, *, plan_id=None,
+                         action=None, finish=None):
+        record_id=f"stage-{stage}-{uuid.uuid4().hex}"
+        record=BrainStageRecord(record_id=record_id,run_id=run_id,stage=stage,
+            observation_id=observation.observation_id,
+            plan_id=plan_id,plan_version=1 if plan_id else None,
+            source_memory_ids=source_memory_ids,text=text,action=action,finish=finish,
+            recorded_at=datetime.now(timezone.utc))
+        brain_stage_writer.write(record.model_dump())
+        return record
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
-    memory=MemoryStore(run_id,memory_writer)
+    memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
+    importance_scorer=ImportanceScorer(provider,budget,model,config.max_output_tokens,memory,brain_task_writer,brain_stage_writer,log_call)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     actual_headed=config.headed if headed is None else headed
     try:
@@ -142,6 +154,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None))
                 verification=evaluation["verification"]
                 if verification=="success":termination="verified_success";break
+                step_id=step_count+1
+                observation_memory=memory.append("observation",observation.html[:600],
+                    [step_id],[observation.observation_id])
                 try:
                     if config.embedding_model:
                         memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
@@ -152,16 +167,47 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 except Exception as exc:
                     memories=list(memory.retrieve(config.task,config.memory_limit))
                     previous_error={"code":"embedding_error","message":str(exc)[:300]}
-                # Mock model uses the action history deterministically; the live prompt sees only bounded logged context.
+                # Keep scored memories and recent actions separate so history cannot displace top-ranked memories.
+                memories=memories[:(4 if hasattr(provider,"choose") else 6)]
                 history_tail=step_history[-config.recent_step_count:] if config.recent_step_count else []
-                memories.extend({"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail)
-                step_id=step_count+1
+                recent_actions=[{"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail]
                 try:
                     decision_started=time.monotonic()
                     remaining=run_deadline-time.monotonic()
                     if remaining<=0:termination="run_timeout";break
                     async with asyncio.timeout(remaining):
-                        decision=await fast.decide(persona,config.task,observation,memories,previous_error,config.max_steps-step_count,persona_mode=persona_mode)
+                        perception=await fast.perceive(persona,config.task,observation,memories,persona_mode)
+                        perception_sources=[m["memory_id"] for m in memories if "memory_id" in m]
+                        perception_record=write_fast_stage("perception",observation,perception,
+                            perception_sources)
+                        perception_memory=memory.append("observation",perception,[step_id],
+                            [observation.observation_id],"generated",source_memory_ids=perception_sources,
+                            source_stage_record_id=perception_record.record_id)
+                        if config.embedding_model:
+                            plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                        else:
+                            plan_memories=list(memory.retrieve(config.task,config.memory_limit))
+                        plan_memories=plan_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        plan=await fast.plan(persona,config.task,observation,plan_memories,perception,
+                            previous_error,persona_mode,recent_actions,config.max_steps-step_count)
+                        plan_sources=[m["memory_id"] for m in plan_memories if "memory_id" in m]
+                        plan_record=write_fast_stage("plan",observation,plan,plan_sources,
+                            plan_id=f"plan-{uuid.uuid4().hex}")
+                        plan_memory=memory.append("plan",plan,[step_id],[observation.observation_id],
+                            "generated",source_memory_ids=plan_sources,
+                            source_stage_record_id=plan_record.record_id)
+                        if config.embedding_model:
+                            decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                        else:
+                            decision_memories=list(memory.retrieve(config.task,config.memory_limit))
+                        decision_memories=decision_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        decision=await fast.decide_action(persona,config.task,observation,
+                            decision_memories,perception,plan,previous_error,
+                            config.max_steps-step_count,persona_mode,recent_actions=recent_actions)
+                        decision_sources=[m["memory_id"] for m in decision_memories if "memory_id" in m]
+                        write_fast_stage("decision",observation,decision.rationale_summary,
+                            decision_sources,plan_id=plan_record.plan_id,
+                            action=decision.action,finish=decision.finish)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
                 except BudgetExceeded:
                     termination="budget_exceeded";break
@@ -174,9 +220,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
                 step_count+=1
                 if decision.action is None:
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"memory_ids":[m["memory_id"] for m in memories if "memory_id" in m],"verification":verification,"timing_ms":{"llm":decision_ms}})
+                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms}})
                     termination="agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
-                    memory.append("plan",decision.plan,[step_id],[observation.observation_id],"generated")
                     break
                 action_attempts+=1
                 if decision.action.type=="back": back_count+=1
@@ -199,14 +244,20 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 repeated_key=fingerprint+action_key;seen[repeated_key]=seen.get(repeated_key,0)+1
                 if seen[repeated_key]>=config.repeated_state_action_limit:termination="stuck"
                 summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
-                memory.append("observation",observation.html[:600],[step_id],[observation.observation_id])
-                memory.append("plan",decision.plan,[step_id],[observation.observation_id],"generated")
-                memory.append("action",summary,[step_id],[observation.observation_id],"observed")
+                new_memories=[
+                    observation_memory,
+                    perception_memory,
+                    plan_memory,
+                    memory.append("action",summary,[step_id],[observation.observation_id],"observed"),
+                ]
+                persona_context=persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent}
+                for entry in new_memories:
+                    importance_scorer.schedule(entry,persona_context,config.task,decision.plan)
                 mock_stage={"type":"type","click":"click-search","select":"select-color" if decision.action.option_value=="검정" else "select-price" if decision.action.option_value=="30000" else "apply-filter"}.get(decision.action.type,decision.action.type)
                 # use semantic target to distinguish repeated select/click phases
                 if decision.action.type=="click" and decision.action.target_id and "필터" in decision.action.target_id:mock_stage="apply-filter"
                 step_history.append({"mock_stage":mock_stage,"summary":summary})
-                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":[m["memory_id"] for m in memories if "memory_id" in m],"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
+                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
                 if config.enable_slow_loop:
                     if slow is None:slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,memory,log_call)
                     if action_attempts%config.reflection_every_actions==0 or action_result.error:
@@ -220,6 +271,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         termination="browser_error";previous_error={"code":"browser_error","message":str(exc)[:500]}
         error_counts["browser_error"]=error_counts.get("browser_error",0)+1
     finally:
+        await importance_scorer.close()
         if slow: await slow.close()
         if server and server_started:server.close()
     elapsed=int((time.monotonic()-started)*1000)
@@ -248,11 +300,11 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
              "steps":step_count,"action_attempts":action_attempts,"action_successes":action_successes,"llm_request_count":budget.requests,
              "llm_tokens":budget.tokens,"cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
              "provider_usage":provider_usage,"elapsed_ms":elapsed,"llm_ms":llm_elapsed_total,"back_count":back_count,"error_counts":error_counts,"last_error":previous_error,
-             "provider":provider_name,"model":model,"condition":persona_mode,"slow_loop_status":slow.status if slow else ("idle" if config.enable_slow_loop else "disabled"),"started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
+             "provider":provider_name,"model":model,"condition":persona_mode,"slow_loop_status":slow.status if slow else ("idle" if config.enable_slow_loop else "disabled"),"importance_scoring_status":importance_scorer.status,"started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
     from .metrics import run_metrics
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     summary.update(measured)
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
-    steps.close();calls.close();memory_writer.close()
+    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close()
     return run_dir,summary

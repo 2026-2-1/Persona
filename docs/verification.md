@@ -1,5 +1,21 @@
 # 검증 기록
 
+## 2026-10-14 #40 메모리 입력 분리 첫 단계
+
+Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 별도 필드로 전달하도록 수정했다. 변경 후 `git diff --check`와 관련 Python 파일의 `compileall`은 통과했다. pytest·실제 모델 호출·브라우저 실행은 아직 수행하지 않았다. 이 기록은 #40 전체의 완료 검증이 아니다.
+
+## 2026-10-14 #39 Brain 기록 계약
+
+로컬 Python 3.14에서 새 `BrainStageRecord`의 생성물·출처·계획 참조·시간대 검증 7개를 먼저 실패 재현(모델 미정의)한 뒤 통과시켰다. `python3 -m pytest -q tests/test_brain_schema.py tests/test_core.py tests/test_metrics.py`는 fixture 서버의 소켓 바인딩이 제한된 실행 환경에서 4개 실패·22개 통과였고, 소켓이 허용된 실행에서 **26개 통과**했다. `python3 scripts/check_repo.py`와 `git diff --check`도 통과했다.
+
+후속 단계에서는 비동기 작업 사건, 메모리 변경 사건, 구버전 `MemoryEntry` 읽기, `max_active_memories` 예약 필드, 제거 후 단조 순번과 Slow 출처를 추가했다. 제거 뒤 Slow가 목록 길이를 snapshot 순번으로 쓰는 실패를 재현하고 수정했다. 양의 N을 입력해도 실제 상한이 적용되지 않는 문제를 실패 테스트로 확인한 뒤 명시적 미지원 오류로 막았다. 첫 전체 검사인 로컬 Python 3.14의 `python3 -m pytest -q`는 **197 passed in 80.46s**였다. 유료 API나 실제 외부 사이트 호출은 하지 않았다.
+
+예약 필드의 미지원 검증을 추가한 뒤 `tests/test_brain_schema.py tests/test_core.py tests/test_dashboard.py tests/test_experiments.py` 관련 **35개가 통과**했다. `doctor --study configs/study.json`은 제한된 실행 환경에서 Chromium 권한 오류였고 허용된 환경에서 재실행한 결과 Playwright Chromium 사용 가능·설정 오류 없음이었다. `scripts/check_repo.py`와 `git diff --check`도 통과했다.
+
+이 결과는 새 기록 스키마의 직렬화와 기존 mock/메모리·지표·대시보드·보고서 경로의 호환성 검사다. Runner가 새 Brain 단계/작업 사건을 실제로 쓰거나 두 루프가 동작한다는 검증은 아니다. 활성 N개 상한도 아직 적용하지 않는다.
+
+이후 사용자 결정에 따라 새 메모리 중요도를 1~10으로 제한하고 구버전 1.0의 0~5점을 버전별로 읽도록 변경했다. 위 검사 수치는 이 변경 전 실행 결과이며 변경 후 검사는 아직 수행하지 않았다.
+
 ## 2026-10-09 Windows 1차 MVP
 
 환경: Windows, Python 3.13.5, Playwright 1.55.0, Chromium 140.0.7339.16 (build 1187). 원본 e4dfa98에서 개발한 작업 트리 기준이다.
@@ -193,6 +209,13 @@
 - 실제 합성 실패 `20261014T165643-1173dceb`: 별도 임시 검토 이력 파일을 손상시켜 실제 API 오류 유발 → 마지막 정상 시각·초안 유지·저장 비활성 화면 확인 → 테스트 파일 복구 후 자동 재조회 회복 → 보존된 초안으로 deferred 저장 → 새로고침 후 이력 1건 확인. 개인/기존 실행 파일은 변경하지 않았다.
 - 390px 정상/중단/빈 결과/근거 누락과 네 형식 내보내기 회귀를 추가했다. 독립 팀원 재현·prototype 통합은 남아 있다.
 
+## 2026-10-15 Fast 단계별 생성 (#41)
+
+- Fast의 perception·plan·decision을 별도 생성 요청으로 수행하고 단계별 입력 기억 ID, observation ID, plan ID, 생성 결과를 `brain_stages.jsonl`에 기록한다. perception·plan 생성 결과는 다음 단계 전에 메모리에 저장한다.
+- Jev의 후보 선택과 생성 fallback, 완료 선언과 독립 평가 구분을 유지했다. Slow 작업 예약과 Brain 신규 조율은 포함하지 않았다.
+- 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
+- mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
 ## 2026-10-15 D Brain 기록 소비 (#47)
 
 - 브랜치 `codex/47-brain-trace-viewer`, 선행 D 하드닝 PR #67.

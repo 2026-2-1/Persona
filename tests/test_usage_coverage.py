@@ -58,14 +58,14 @@ def test_runner_comparison_persists_actual_usage(tmp_path, monkeypatch, mode):
     assert saved['groups'] == aggregate_sessions(saved['sessions'])
     for session in saved['sessions']:
         group = saved['groups'][session['condition']]
-        assert session['llm_request_count'] == (2 if mode == 'error' else 1)
+        assert session['llm_request_count'] == (2 if mode == 'error' else 7)
         assert group['llm_request_count'] == session['llm_request_count']
         assert group['requested'] == 1
         assert group['recording']['attempted'] == session['metrics']['recording']['attempted']
         assert session['llm_tokens_complete'] is (mode == 'zero')
         assert group['llm_tokens'] == (0 if mode == 'zero' else None)
         assert group['llm_tokens_known_total'] == (0 if mode == 'zero' else None)
-        assert group['input_tokens'] == (10 if mode == 'partial' else 0 if mode == 'zero' else None)
+        assert group['input_tokens'] == (70 if mode == 'partial' else 0 if mode == 'zero' else None)
         assert group['output_tokens'] == (0 if mode == 'zero' else None)
 
 @pytest.mark.parametrize('records, requests', [([], 1), ([{'provider':'fake','input_tokens':True,'output_tokens':2}], 1), ([{'provider':'fake','input_tokens':-1,'output_tokens':float('inf')}], 1)])

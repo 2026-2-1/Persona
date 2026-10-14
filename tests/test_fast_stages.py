@@ -1,0 +1,72 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from uxagent.fast_loop import FastLoop
+from uxagent.llm import BudgetManager
+from uxagent.runner import run_study
+from uxagent.schemas import Observation, Persona, ElementInfo
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.asyncio
+async def test_fast_loop_generates_perception_plan_and_decision_as_separate_calls():
+    class StageProvider:
+        def __init__(self):
+            self.stages = []
+
+        async def complete(self, messages, model, temperature, max_tokens):
+            stage = messages[0]["content"].split("FAST_STAGE:", 1)[1].splitlines()[0]
+            self.stages.append(stage)
+            obs = json.loads(messages[1]["content"])["observation"]
+            outputs = {
+                "perception": {"perception": "검색창과 검색 버튼이 보입니다."},
+                "plan": {"plan": "과업에 맞는 검색어를 입력하고 검색합니다."},
+                "decision": {
+                    "rationale_summary": "검색어를 입력합니다.",
+                    "action": {"type": "type", "observation_id": obs["observation_id"],
+                               "tab_id": obs["tab_id"], "target_id": "search", "text": "가방"},
+                    "finish": None,
+                },
+            }
+            return json.dumps(outputs[stage], ensure_ascii=False), {
+                "model": "stage-test", "input_tokens": 3, "output_tokens": 2,
+            }
+
+    persona = Persona.model_validate_json((ROOT / "configs/persona.json").read_text())
+    observation = Observation(
+        observation_id="obs-current", tab_id="tab-current", url="https://shop.test",
+        title="Shop", html="검색", input_elements=[ElementInfo(id="search", role="textbox", name="상품 검색")],
+    )
+    provider = StageProvider()
+    fast = FastLoop(provider, BudgetManager(5, 10000), "stage-test", .2, 100)
+
+    perception = await fast.perceive(persona, "가방 찾기", observation, [])
+    plan = await fast.plan(persona, "가방 찾기", observation, [], perception)
+    decision = await fast.decide_action(
+        persona, "가방 찾기", observation, [], perception, plan,
+    )
+
+    assert provider.stages == ["perception", "plan", "decision"]
+    assert perception == "검색창과 검색 버튼이 보입니다."
+    assert plan == "과업에 맞는 검색어를 입력하고 검색합니다."
+    assert decision.action.observation_id == "obs-current"
+    assert decision.action.target_id == "search"
+
+
+@pytest.mark.asyncio
+async def test_runner_records_fast_stages_and_saves_them_before_next_stage(tmp_path):
+    run_dir, summary = await run_study(ROOT / "configs/study.json", "mock", None, False, tmp_path)
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["prompt_version"] == "fast-stages-1"
+    stages = [json.loads(line) for line in (run_dir / "brain_stages.jsonl").read_text().splitlines()]
+    step = json.loads((run_dir / "steps.jsonl").read_text().splitlines()[0])
+
+    assert [record["stage"] for record in stages[:3]] == ["perception", "plan", "decision"]
+    assert all(record["observation_id"] == step["observation_id"] for record in stages[:3])
+    assert stages[1]["source_memory_ids"]
+    assert stages[2]["plan_id"] == stages[1]["plan_id"]
+    assert step["decision"]["perception"] == stages[0]["text"]
+    assert step["decision"]["plan"] == stages[1]["text"]
+    assert summary["verification"] == "success"

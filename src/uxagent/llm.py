@@ -172,14 +172,14 @@ class BudgetExceeded(RuntimeError): pass
 
 
 class BudgetManager:
-    def __init__(self, max_requests: int, max_tokens: int):
+    def __init__(self, max_requests: int | None, max_tokens: int | None):
         self.max_requests, self.max_tokens = max_requests, max_tokens
         self.requests = self.tokens = self.reserved_tokens = 0
         self.lock = threading.Lock()
 
     def reserve(self, estimated_tokens: int):
         with self.lock:
-            if self.requests >= self.max_requests or self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens:
+            if (self.max_requests is not None and self.requests >= self.max_requests) or (self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens):
                 raise BudgetExceeded("LLM request or token budget exhausted")
             self.requests += 1
             self.reserved_tokens += estimated_tokens
@@ -199,14 +199,51 @@ class MockProvider:
     model = "mock-v1"
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
         payload = json.loads(messages[-1]["content"])
+        system = messages[0]["content"]
+        if "Rate the importance of one memory" in messages[0]["content"]:
+            return json.dumps({"score":5,"reason":"Mock importance score for a saved memory."}),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "Summarize up to three brief insights" in messages[0]["content"]:
             ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed"][-2:]
             insights=[]
             if ids:insights=[{"summary":"최근 관찰과 행동 기록을 바탕으로 다음 화면에서 조건 적용 여부를 확인합니다.","source_memory_ids":ids}]
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:perception" in system:
+            obs = payload["observation"]
+            visible = [e.get("name") for e in obs.get("clickable_elements", []) + obs.get("input_elements", []) + obs.get("select_elements", [])]
+            text = "현재 화면에서 " + (", ".join(x for x in visible if x) or "과업 진행 요소") + "을 확인했습니다."
+            return json.dumps({"perception":text},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:plan" in system:
+            return json.dumps({"plan":"과업과 페르소나 조건에 맞는 화면 요소를 사용하고 결과를 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:decision" in system:
+            obs = payload["observation"]
+            memories = payload.get("memories", [])
+            action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
+            inputs, clicks, selects = obs.get("input_elements", []), obs.get("clickable_elements", []), obs.get("select_elements", [])
+            def target(items, name): return next((x for x in items if name in x["name"]), None)
+            action = None
+            if "type" not in action_types:
+                x=target(inputs,"상품 검색")
+                action={"type":"type","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"text":"가방"} if x else None
+            elif "click-search" not in action_types:
+                x=target(clicks,"검색")
+                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+            elif "select-color" not in action_types:
+                x=target(selects,"색상")
+                action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"검정"} if x else None
+            elif "select-price" not in action_types:
+                x=target(selects,"최대 가격")
+                action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"30000"} if x else None
+            elif "apply-filter" not in action_types:
+                x=target(clicks,"필터 적용")
+                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+            else:
+                x=target(clicks,"상세 보기")
+                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+            finish = {"claim":"give_up","summary":"현재 화면에서 다음 행동 대상을 찾을 수 없습니다."} if action is None else None
+            return json.dumps({"rationale_summary":"현재 관찰과 계획을 바탕으로 다음 행동을 선택합니다.","action":action,"finish":finish},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         obs = payload["observation"]
         memories = payload.get("memories", [])
-        action_types = [m.get("action_type") for m in memories]
+        action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
         inputs = obs.get("input_elements", [])
         clicks = obs.get("clickable_elements", [])
         selects = obs.get("select_elements", [])

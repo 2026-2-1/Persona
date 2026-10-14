@@ -57,6 +57,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     load_env_file(Path(study_path).resolve().parent / ".env")
     load_env_file()
     config,persona,config_path=load_study(study_path)
+    profile=json.loads((config_path.parent/config.evaluation_profile_file).read_text(encoding="utf-8")) if config.evaluation_profile_file else None
     model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
@@ -106,7 +107,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 pre_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=observation
                 executor.publish(registry)
-                evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations)
+                evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations,profile=profile)
                 verification=evaluation["verification"]
                 if verification=="success":termination="verified_success";break
                 try:
@@ -159,7 +160,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     raise
                 post_observed_at=datetime.now(timezone.utc).isoformat()
                 executor.publish(next_registry)
-                post_eval=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations);verification=post_eval["verification"];evaluation=post_eval
+                post_eval=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None),expectations=config.evaluation_expectations,profile=profile);verification=post_eval["verification"];evaluation=post_eval
                 fingerprint_state=next_obs.model_dump(exclude={"observation_id","capture","error","tabs"})
                 fingerprint=hashlib.sha256(json.dumps(fingerprint_state,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                 action_key=json.dumps({k:getattr(decision.action,k) for k in ("type","target_id","text","option_value","url","target_tab_id") if getattr(decision.action,k) is not None},sort_keys=True,ensure_ascii=False)

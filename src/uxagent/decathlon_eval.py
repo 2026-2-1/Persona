@@ -216,11 +216,15 @@ async def _evaluate_public_live(page, task_id, expectations, profile):
             price = await consistent_text(page, 'detail_price', price=True)
             evidence.update(name=name, price=price)
             expected_name = ' '.join(str(expectations.get('product_name') or '').split())
+            # A keyword accepts any qualifying product, e.g. an AI run choosing among several matches.
+            name_keyword = ' '.join(str(expectations.get('product_name_contains') or '').split())
             limit = parse_price(expectations.get('max_price'))
-            evidence['expected'] = {'product_name': expected_name, 'max_price': limit}
-            if not expected_name or limit is None:
+            evidence['expected'] = {'product_name': expected_name, 'product_name_contains': name_keyword, 'max_price': limit}
+            if not (expected_name or name_keyword) or limit is None:
                 return outcome('unknown', 'basic_detail_expectations_required')
-            if name is not None and name != expected_name:
+            if name is not None and expected_name and name != expected_name:
+                return outcome('fail', 'detail_product_mismatch')
+            if name is not None and name_keyword and name_keyword.casefold() not in name.casefold():
                 return outcome('fail', 'detail_product_mismatch')
             if price is not None and price > limit:
                 return outcome('fail', 'detail_price_mismatch')

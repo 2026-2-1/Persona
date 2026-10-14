@@ -109,3 +109,11 @@
 - 실제 실행(유료 API, 키는 로컬 `.env`): 수정 전 `20261014T153403-c958d7b5` model_error, 1차 수정 후 `20261014T154056-7b12da8f` model_error($0.00063), 최종 `20261014T154123-dda0d05a` verified_success 3행동·3요청·5,617토큰·$0.00102·10.8초, `20261014T154144-e76d8432` verified_success 2단계·2요청·3,556토큰·$0.00065·6.3초. 원자료 runs는 커밋하지 않는다.
 - 전체 pytest 188 passed, 재현 테스트 3 passed, doctor 정상, mock verified_success, repository check PASS.
 - 남은 범위: 데카트론 페이지의 AI 실행·판정 연결(P04), 실제 데카트론 검색 제출(#19), Claude/Gemini 경로의 같은 프롬프트 실측은 미검증이다. 반복 실행 수가 적어 형식 오류 재발률은 확인하지 않았다.
+
+## 2026-10-15 합성 데카트론 AI 실행 연결 / #59
+
+- 증상: AI runner는 `shop.html`일 때만 합성 페이지 서버를 띄워 `decathlon.html`로 시작할 수 없었다. 판정기 호출에 기대값을 넘기지 않아, 기대값이 없는 `decathlon-detail-v1`은 상세 영역과 필수 7개 필드만 확인했다. 기대값을 뺀 재현에서 러닝 가방 블루·트레킹 신발 블랙 상세를 열어도 verified_success였다.
+- 해결: runner가 `decathlon.html`도 합성 페이지로 서빙한다. `StudyConfig.evaluation_expectations`를 추가해 runner의 두 판정 호출에 전달한다. `configs/study-decathlon.json`은 `detail` 검사와 상품명 러닝 가방 블랙·검정·30000 이하 기대값을 쓴다(A 확인 전 제안). 과업 문구에는 정답 상품명을 넣지 않는다.
+- 재현 테스트 5 passed(정답 상품 success, 블루·프로·신발 failure, 과업 문구 정답 비노출). 전체 pytest 193 passed, doctor study_errors 없음, mock verified_success, repository check PASS.
+- 실제 OpenAI `gpt-4o-mini`: `20261014T160558-bd30eb0c`, `20261014T160602-7c9b4930` 모두 verified_success, 1행동(러닝 가방 블랙 상세 보기)·1요청·약 1,580토큰·$0.0003. 원자료 runs는 커밋하지 않는다.
+- 한계: 합성 페이지 첫 화면에 상품 4개의 이름·가격·색상이 모두 보여 AI가 검색·필터 없이 정답 상세를 바로 연다. 검색·필터 과정을 보려면 시작 화면 또는 과업 설계 변경이 필요하다(P01, A 확인). 판정 시점(#44)과 실제 사이트 프로필(P03, #19)은 범위 밖이다.

@@ -21,6 +21,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [검증 기록](verification.md) | 이 저장소에서 실제 실행한 결과 |
 | [작업 목록](tasks/README.md) | 이슈와 연결되는 과업·완료 조건 |
 | [Fast Loop 단계 분리](tasks/41-fast-loop-stages.md) | #41 인식·계획·행동 결정의 단계별 생성과 기록 |
+| [Slow Loop 성찰·계획 검토](tasks/42-slow-reflection-review.md) | #42 비동기 작업, 고정 snapshot, 계획 검토 기록 |
 | [통합 기획](2026-10-09-persona-product-plan.md) | 제품·화면·기술 실험·출처에 대한 검토용 초안 |
 | [과거 명세](reference/legacy-plan/agent.md) | 초기 구현 설계; 현재 완료 상태의 기준이 아님 |
 | [과거 검증](reference/validation-2026-10-08.md) | 이전 macOS mock 검증 기록 |

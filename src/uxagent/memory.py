@@ -4,6 +4,8 @@ import math, time, uuid
 from datetime import datetime, timezone
 from .schemas import MemoryChangeEvent, MemoryEntry
 
+FIXED_IMPORTANCE = 5
+
 
 class MemoryStore:
     def __init__(self, run_id, writer=None, clock=time.monotonic, *, max_active_memories=64, change_writer=None):
@@ -17,8 +19,12 @@ class MemoryStore:
         self.embedding_cache: dict[str, list[float]] = {}
 
     def append(self, kind, text, source_step_ids=None, source_observation_ids=None,
-               content_status="observed", based_on_seq=0, importance=None, *,
+               content_status="observed", based_on_seq=0, importance=FIXED_IMPORTANCE, *,
                source_memory_ids=None, source_stage_record_id=None):
+        if importance is None:
+            importance = FIXED_IMPORTANCE
+        if importance != FIXED_IMPORTANCE:
+            raise ValueError(f"new memory importance is fixed at {FIXED_IMPORTANCE}")
         seq=self._next_seq
         entry=MemoryEntry(schema_version="2.0",memory_id=f"m-{seq}-{uuid.uuid4().hex[:10]}",seq=seq,run_id=self.run_id,
             kind=kind,text=text,source_step_ids=source_step_ids or [],source_observation_ids=source_observation_ids or [],
@@ -65,26 +71,7 @@ class MemoryStore:
             self.embedding_cache.pop(victim.memory_id, None)
 
     def update_importance(self, memory_id: str, importance: int, source_stage_record_id: str):
-        if isinstance(importance, bool) or not isinstance(importance, int) or not 1 <= importance <= 10:
-            raise ValueError("importance must be an integer from 1 to 10")
-        for index, entry in enumerate(self.entries):
-            if entry.memory_id != memory_id:
-                continue
-            if entry.schema_version != "2.0":
-                raise ValueError("legacy memory importance cannot be updated on the 1..10 scale")
-            updated = MemoryEntry.model_validate({**entry.model_dump(), "importance": importance})
-            event = MemoryChangeEvent(
-                event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
-                memory_id=memory_id, memory_seq=entry.seq, change="importance_scored",
-                importance_before=entry.importance, importance_after=importance,
-                source_stage_record_id=source_stage_record_id,
-                recorded_at=datetime.now(timezone.utc),
-            )
-            if self.change_writer: self.change_writer.write(event.model_dump())
-            # Replace the value so already captured Slow snapshots keep their old score.
-            self.entries[index] = updated
-            return updated
-        raise KeyError(f"memory {memory_id} is not active")
+        raise RuntimeError(f"importance scores are fixed at {FIXED_IMPORTANCE}; score updates are disabled")
 
     def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms

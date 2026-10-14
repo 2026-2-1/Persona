@@ -106,3 +106,11 @@
 - 해결: perception → 저장 → 기억 검색 → plan → 저장 → 기억 검색 → decision 순서로 호출한다. 단계별 입력 기억·생성 결과·관찰/계획 참조를 `brain_stages.jsonl`에 기록하고 기존 step 기록의 perception/plan 필드는 유지한다.
 - 함께 확인할 회귀: 단계 JSON 오류 복구, 요청 한도 소진, Jev 선택과 생성 fallback, 최신 observation/tab 참조, finish 선언과 독립 evaluator 분리.
 - 실제 검증: 전체 199개 pytest 통과. 실제 기록은 [검증 기록](verification.md)에 있다.
+
+## 2026-10-15 #42 Slow 성찰·계획 검토
+
+- 증상: Slow가 행동 뒤 주기적으로 성찰 하나만 예약하고, 실행 중 작업이 있으면 다음 요청을 거절했다. perception·plan 단계와 Slow 입력/출력도 연결되지 않았다.
+- 원인: reflection과 plan review가 분리되지 않았고, 단일 작업 슬롯이 새 요청을 버렸다. snapshot은 전체 항목의 깊은 복사와 단계별 provenance를 기록하지 않았다.
+- 해결: perception 저장 뒤 reflection, plan 저장 뒤 plan_review를 비동기 순차 worker에 예약한다. 대기열은 제한하지 않는다. 각 작업 시작 시 메모리를 깊은 복사하고 task/stage 로그에 상태·snapshot 순번·출처·모델을 기록한다. 중요도는 5로 고정하고 LLM 갱신을 사용하지 않는다.
+- 함께 확인할 회귀: 두 작업이 빠른 단계 실행을 막지 않음, snapshot 이후 텍스트/점수 변경이 입력에 소급되지 않음, provider 실패/예산 소진/종료 취소 기록, 오래된 계획 검토가 현재 plan과 행동 요소 ID를 바꾸지 않음.
+- 실제 검증: mock provider 기반 full pytest 204개 통과. snapshot 변경, timeout/실패 이벤트, 두 단계 runner 예약을 포함한다. 실제 유료 API는 호출하지 않았다. 자세한 검사는 [검증 기록](verification.md)에 남겼다.

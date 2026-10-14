@@ -14,7 +14,7 @@ from .evaluator import evaluate
 from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded
 from .fast_loop import FastLoop
 from .memory import MemoryStore
-from .slow_loop import ImportanceScorer, SlowLoop
+from .slow_loop import SlowLoop
 from .storage import write_json, JsonlWriter
 from .security import normalize_origin
 from .model_catalog import resolve_model
@@ -96,7 +96,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         return record
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
-    importance_scorer=ImportanceScorer(provider,budget,model,config.max_output_tokens,memory,brain_task_writer,brain_stage_writer,log_call)
+    if config.enable_slow_loop:
+        slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
+                      memory,brain_task_writer,brain_stage_writer,log_call)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     actual_headed=config.headed if headed is None else headed
     try:
@@ -150,6 +152,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         perception_memory=memory.append("observation",perception,[step_id],
                             [observation.observation_id],"generated",source_memory_ids=perception_sources,
                             source_stage_record_id=perception_record.record_id)
+                        if slow:
+                            slow.schedule_reflection(persona,config.task,observation.observation_id,
+                                                     error=previous_error,wonder=config.enable_wonder)
                         if config.embedding_model:
                             plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
                         else:
@@ -163,6 +168,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         plan_memory=memory.append("plan",plan,[step_id],[observation.observation_id],
                             "generated",source_memory_ids=plan_sources,
                             source_stage_record_id=plan_record.record_id)
+                        if slow:
+                            slow.schedule_plan_review(persona,config.task,plan,
+                                observation.observation_id,plan_record.plan_id,plan_record.plan_version)
                         if config.embedding_model:
                             decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
                         else:
@@ -211,24 +219,12 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 repeated_key=fingerprint+action_key;seen[repeated_key]=seen.get(repeated_key,0)+1
                 if seen[repeated_key]>=config.repeated_state_action_limit:termination="stuck"
                 summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
-                new_memories=[
-                    observation_memory,
-                    perception_memory,
-                    plan_memory,
-                    memory.append("action",summary,[step_id],[observation.observation_id],"observed"),
-                ]
-                persona_context=persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent}
-                for entry in new_memories:
-                    importance_scorer.schedule(entry,persona_context,config.task,decision.plan)
+                memory.append("action",summary,[step_id],[observation.observation_id],"observed")
                 mock_stage={"type":"type","click":"click-search","select":"select-color" if decision.action.option_value=="검정" else "select-price" if decision.action.option_value=="30000" else "apply-filter"}.get(decision.action.type,decision.action.type)
                 # use semantic target to distinguish repeated select/click phases
                 if decision.action.type=="click" and decision.action.target_id and "필터" in decision.action.target_id:mock_stage="apply-filter"
                 step_history.append({"mock_stage":mock_stage,"summary":summary})
                 steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
-                if config.enable_slow_loop:
-                    if slow is None:slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,memory,log_call)
-                    if action_attempts%config.reflection_every_actions==0 or action_result.error:
-                        slow.schedule(persona,config.task,previous_error,config.enable_wonder)
                 if termination=="stuck":break
                 if verification=="success":termination="verified_success";break
             else:termination="max_steps"
@@ -238,7 +234,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         termination="browser_error";previous_error={"code":"browser_error","message":str(exc)[:500]}
         error_counts["browser_error"]=error_counts.get("browser_error",0)+1
     finally:
-        await importance_scorer.close()
         if slow: await slow.close()
         if server and server_started:server.close()
     elapsed=int((time.monotonic()-started)*1000)
@@ -261,7 +256,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
              "steps":step_count,"action_attempts":action_attempts,"action_successes":action_successes,"llm_request_count":budget.requests,
              "llm_tokens":budget.tokens,"cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
              "provider_usage":provider_usage,"elapsed_ms":elapsed,"llm_ms":llm_elapsed_total,"back_count":back_count,"error_counts":error_counts,"last_error":previous_error,
-             "provider":provider_name,"model":model,"condition":persona_mode,"slow_loop_status":slow.status if slow else ("idle" if config.enable_slow_loop else "disabled"),"importance_scoring_status":importance_scorer.status,"started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
+             "provider":provider_name,"model":model,"condition":persona_mode,"slow_loop_status":slow.status if slow else ("idle" if config.enable_slow_loop else "disabled"),"importance_scoring_status":"fixed_equal_5","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
     from .metrics import run_metrics
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)

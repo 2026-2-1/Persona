@@ -124,3 +124,10 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
 - Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
 - mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
+
+## 2026-10-15 Slow 성찰·계획 검토 (#42)
+
+- 전체 pytest: **204 passed in 80.86s**. Slow 전용 테스트는 대기열 무제한 예약, 비동기 호출, 성찰/계획 검토 기록, 고정 snapshot, provider 실패·timeout 기록과 mock runner 연결을 확인했다.
+- `python3 -m compileall -q src tests/test_slow_loop.py tests/test_core.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 신규 메모리 중요도는 5로 고정되며 점수 산정 API/작업은 실행되지 않는다. Slow 결과는 기존 계획을 바꾸지 않고 기록·메모리 후보만 추가한다.
+- 네트워크 기반 유료 LLM 호출은 하지 않았다. 브라우저 통합 검사는 로컬 fixture와 mock provider를 사용했다.

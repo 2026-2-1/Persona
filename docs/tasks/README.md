@@ -16,5 +16,6 @@
 | 10 | [[phase:2] Jev·Slow Loop·MiroFish·프롬프트 기술 비교](10-technology-experiments.md) | [#11](https://github.com/2026-2-1/Persona/issues/11) | phase:2 |
 | 11 | [[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동](11-research-mcp.md) | [#12](https://github.com/2026-2-1/Persona/issues/12) | phase:3 |
 | 41 | [[phase:1] Fast Loop의 인식·계획·행동 결정 분리](41-fast-loop-stages.md) | [#41](https://github.com/2026-2-1/Persona/issues/41) | phase:1 |
+| 42 | [[phase:1] Slow Loop 성찰·계획 검토](42-slow-reflection-review.md) | [#42](https://github.com/2026-2-1/Persona/issues/42) | phase:1 |
 
 - [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.

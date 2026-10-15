@@ -2,14 +2,14 @@
 
 이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
 
-아래 구현 범위는 이 브랜치의 preview다. 최신 원격 #71~#79는 Fast 작업 kind와 adopted/discarded를 포함한 8상태, Wonder 추첨·채택 계약을 추가했다. D 소비의 6상태 허용 목록과 자동 호환된다고 가정하지 않는다. 통합할 계약과 실제 입력 연결은 [최신 확인 기록](handoffs/2026-10-15-latest-github-review.md)을 따른다.
+현재 통합 브랜치는 #79와 #78 후속의 생성 계약을 D/C 소비에 연결했다. Fast 작업 kind와 adopted/discarded를 포함한 8상태, Wonder 추첨·부모 연결을 같은 검증 reader로 읽는다. [통합 검증](handoffs/2026-10-16-latest-pr-integration.md)을 따른다. 실제 입력 소비 계측과 연구용 실험 제어는 별도 후속이다.
 
 ## Brain 기록 계약 (#39)
 
 | 기록 | 버전·내용 | 현재 생성 여부 |
 |---|---|---|
-| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | preview는 perception/plan/decision/importance를 `brain_stages.jsonl`에 기록; 성찰·계획 검토·Wonder의 새 생성 계약 연결은 후속 |
-| `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | importance 작업만 `brain_tasks.jsonl`에 기록; 나머지는 후속 이슈 |
+| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | 해당 생성 결과를 `brain_stages.jsonl`에 기록; Wonder는 당첨 생성 시 기록 |
+| `BrainTaskEvent` | 1.0; Fast 및 비동기 작업의 예약·시작·완료·채택·폐기·생략·실패·취소 사건과 snapshot 출처 | 각 작업 사건을 `brain_tasks.jsonl`에 append; 마지막 append 사건으로 최신 상태 계산 |
 | `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
 | `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 활성 메모리 제거와 1~10점 중요도 갱신을 `memory_changes.jsonl`에 기록 |
 | `WonderDrawRecord` | 1.0; 실행 seed·시작된 부모 Slow 작업 ID/종류·추첨 순번/값·당첨 시 Wonder 작업 ID | Wonder를 켠 실행에서 `wonder_draws.jsonl`에 작업별 한 건 기록 |
@@ -30,7 +30,7 @@ Slow는 실행별 단일 worker, 사용자 결정에 따른 무제한 대기열�
 
 #46에서 `run.json`의 `model_routes`는 설정된 단계별 제공자/모델 경로이고, `llm_calls.jsonl`의 `provider`·`model`은 각 실제 호출의 응답 또는 시도 대상이다. Jev의 `decision_choice`는 TypeSafe `jev-latest`, perception·plan·decision fallback·reflection·plan_review·Wonder는 선택한 Gemini 모델이다. 실패·취소·재시도 시도도 별도 호출 행으로 남긴다. 비용 단가/사용량을 알 수 없는 행과 이를 포함한 실행 총비용은 `null`이다. `summary.json`의 `budget`에는 요청·토큰 사용량, 설정 한도, 마지막 한도 초과 종류(`request_limit` 또는 `token_limit`)를 기록한다. `limits`에는 행동·실행 시간 상한을 기록한다. 예산 때문에 실행하지 못한 단계는 `steps.jsonl`의 `error.budget_reason`으로 구분한다.
 
-#47 실행 상세는 `brain_stages.jsonl`, `brain_tasks.jsonl`, `memory.jsonl`, `memory_changes.jsonl`의 원본 사건을 그대로 보존하고, 행동의 `observation_id`로 묶은 `trace`를 덧붙인다. 관찰 ID가 없는 Wonder는 `wonder_draws.jsonl`의 부모 작업 ID로 연결한다. 원본 기억이 활성 목록에서 제거돼도 ID·본문·제거 사건을 조회한다. 단계는 AI 생성물, `steps.action/result`는 제안과 도구 실행, `steps.evaluation`은 독립 평가다. 생성 단계나 Slow 완료를 과업 성공·사람의 생각으로 해석하지 않는다. 이전 실행에서 파일이 없거나 `action/result=null`이면 해당 근거를 빈 목록 또는 미확인 값으로 읽는다. CSV의 기존 카드 열 뒤에 `record_type` 등 근거 열을 추가한다.
+#47 실행 상세는 `brain_trace.py`로 `brain_stages.jsonl`, `brain_tasks.jsonl`, `memory.jsonl`, `memory_changes.jsonl`, `wonder_draws.jsonl`을 한 번 검증해 읽는다. `brain`과 호환 최상위 별칭은 같은 자료이며, 행동의 `observation_id`로 묶은 `trace`를 덧붙인다. 관찰 ID가 없는 Wonder는 부모 작업 ID로 연결한다. 원본 기억이 활성 목록에서 제거돼도 ID·본문·제거 사건을 조회한다. 단계는 AI 생성물, `steps.action/result`는 제안과 도구 실행, `steps.evaluation`은 독립 평가다. 생성 단계나 Slow 완료·채택을 과업 성공·사람의 생각·실제 입력 소비로 해석하지 않는다. 이전 실행에서 파일이 없거나 `action/result=null`이면 해당 근거를 빈 목록 또는 미확인 값으로 읽는다. CSV의 기존 카드 열과 Brain 확장 열은 [소비 계약](tasks/d-brain-trace-viewer.md)을 따른다.
 
 Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현재 mock/OpenAI에서만 제공한다. 미지원 조합은 run 폴더와 비교 세션 생성 전에 거부한다. 일반 AI 비교 조건에는 독립 실행별 기억을 사용하고, Fast/Slow 생성 입력의 persona 배경·선호·숙련도를 제외한다. Wonder에는 일반 조건 공통 제약만 전달한다.
 

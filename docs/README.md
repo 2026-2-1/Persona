@@ -4,7 +4,8 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
-| [최신 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 10/15 23:27 원격 #66/#71~#79 구현·preview 차이·분기·D 계약 통합 대기 |
+| [최신 PR 통합 검증](handoffs/2026-10-16-latest-pr-integration.md) | #79 + #78 후속 + D/C 통합·403개 검사·실제 화면/네 형식 출력·남은 범위 |
+| [10/15 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 통합 전 원격 #66/#71~#79 구현·preview 차이·분기 확인 이력 |
 | [연구·데이터 회의 안건](meetings/2026-10-15-research-and-data-agenda.md) | Slow 정의·실험 조건·데이터·Novelty·담당/기한 결정표 |
 | [Slow 실행·검색 실험 계획](research/2026-10-15-slow-loop-experiment-plan.md) | 빈도와 검색 정책의 단계별 비교·실제 입력 소비·예산·평가 분리 |
 | [제출 초안 3항목](research/2026-10-15-project-submission-draft.md) | 기업 데이터 미수령 0건·시스템 구조도/구현 범위·핵심 논문 주제 |
@@ -14,7 +15,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [C 담당 검토·집계](tasks/c-review-data.md) | 공통 계약·검토 저장 API·예정 분모와 누락 |
 | [현재 상태](current-state.md) | 구현됨·미구현·기존 제한 |
-| [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md) | 현재 코드·논문·사용자 요구 대조; Fast/중요도 생성은 구현, 완전한 Brain 조율은 후속 |
+| [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md) | 설계 당시 코드·논문·사용자 요구 대조; 현재 구현은 통합 검증/현재 상태 문서 기준 |
 | [구버전 run 기록 호환 계획](plans/2026-10-14-brain-legacy-run-compatibility.md) | #39 구버전 로그를 새 기록과 함께 읽기 위한 원칙·검증 항목; 구현 전 |
 | [점검 상태 표시 계획](plans/2026-10-11-check-status.md) | 상태 체크리스트·근거 펼침 유지 |
 | [한 화면 배치 계획](plans/2026-10-11-compact-dashboard.md) | 중복 제목 제거·좌우 배치·화면 검사 |

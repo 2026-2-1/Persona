@@ -1,5 +1,16 @@
 # 검증 기록
 
+## 2026-10-16 최신 Brain + D/C 통합 (#69/#47/#36)
+
+- `codex/latest-pr-integration-20261015`에 #79 고정 head `1f82379b0139`, 별도 분기된 #78 `28f912b90a7f` 및 #75 `9c397b4f94e1` 후속을 통합했다. D #68/C 측정/문서 #80을 보존했다. [통합 범위·재현·한계](handoffs/2026-10-16-latest-pr-integration.md)를 따른다.
+- 최신 Fast kind·adopted/discarded·Wonder와 검증 reader/별칭의 불일치를 전용 3개 실패 테스트, 채택 배지 누락을 390px 브라우저 실패로 먼저 재현했다. reader/단일 패널/타입별 출력을 통일한 뒤 통과했다.
+- 전체 pytest: 처음 402 passed/1 failed(기존 #75 중복 패널 제목), 통합 패널에 맞춰 생성/실행/독립 결과 회귀를 보존한 최종 **403 passed in 168.98s**. 이후 #75의 데이터 갱신 대기 1줄을 별도 merge하고 해당 Chromium 검사 **1 passed in 3.51s**. #78 초기화 관련 2개도 통과했다.
+- doctor: Python 3.13.13, Chromium available, study_errors 없음. Node 문법, Python compileall, repo/staged 검사와 diff 공백 검사 통과. 원격 CI는 통합 PR의 현재 head 검사로 확인한다.
+- 실제 무료 Mock `20261015T145603-83f78314`: 6행동·60요청·독립 verified_success, 생성 60·작업 사건 193·기억 30·Wonder 추첨 12/당첨 1·읽기 경고 0. 최신 상태 completed 47/adopted 6/discarded 7. plan_review는 stale 5 + 종료 미소비 1로 전부 폐기됐고 reflection 5/Wonder 1이 채택됐다. 실제 계획의 출처 관찰 `obs-3fda456cc3`을 화면에서 열었다.
+- 실제 scripted 합성 필터 결함 `20261015T145630-7a949075`: 후보 `feature-6-filters`의 행동 6 이미지 확인 → deferred 초안 입력 → 다른 실행 왕복/자동 갱신 유지 → 저장 → 새로고침 → 이력 1건 유지. 독립 failure는 변하지 않았다.
+- 두 실행의 JSON/CSV/Markdown/HTML을 저장해 상세 API와 전체 Brain/카드 ID·버전·판정·메모를 대조했다. Brain CSV 330행의 타입별 JSON과 step trace도 일치했다. 실제 인앱 JSON 다운로드는 확인했고 나머지 실제 형식은 응답을 대조했다. 자동 Chromium 회귀에서는 네 형식 모두 다운로드했다. 인앱 다운로드 도구의 긴 지연과 검증 방법을 인수인계에 명시했다.
+- 유료 API·실제 사이트·사람 판단 유사성·기업 데이터는 이 검증에 사용하지 않았다. B #58/#60/#62와 prototype/main 병합은 별도다. 결과/스크린샷/원자료는 로컬 ignored/임시 폴더에 유지했다.
+
 ## 2026-10-15 23:27 KST 최신 원격 구현 반영 정정
 
 - 직접 GitHub PR/이슈 목록과 prototype SHA를 다시 조회하고 #66/#71~#79 본문·고정 head, #79의 Brain/Runner/Slow/Memory/Schema/비교 코드를 읽었다. #78/#79의 분기와 #78 후속 패치도 확인했다. [최신 확인 기록](handoffs/2026-10-15-latest-github-review.md)에 근거를 남겼다.

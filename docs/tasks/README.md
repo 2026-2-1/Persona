@@ -17,3 +17,5 @@
 | 11 | [[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동](11-research-mcp.md) | [#12](https://github.com/2026-2-1/Persona/issues/12) | phase:3 |
 
 - [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.
+
+- [C 담당 P05/P06/P08](c-review-data.md): 이슈 #27/#28/#29, 계약·검토 이력·집계 후속.

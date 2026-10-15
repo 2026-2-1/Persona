@@ -20,6 +20,38 @@ from .security import normalize_origin
 from .model_catalog import resolve_model
 
 
+def measured_usage(records, requests):
+    """Measured call subtotals; completeness also requires every reserved request logged."""
+    from .metrics import _count, _number
+    usage = {}
+    for record in records:
+        entry = usage.setdefault(record.get('provider', 'unknown'), {'requests': 0})
+        entry['requests'] += 1
+    for provider, entry in usage.items():
+        calls = [r for r in records if r.get('provider', 'unknown') == provider]
+        entry['requests_complete'] = len(records) == requests
+        entry['requests_measured_total'] = len(calls)
+        costs = [r['estimated_cost_usd'] for r in calls if _number(r.get('estimated_cost_usd'))]
+        entry['estimated_cost_usd_complete'] = len(costs) == len(calls) and len(records) == requests
+        entry['estimated_cost_usd_measured_total'] = sum(costs) if costs else None
+        for key in ('input_tokens', 'output_tokens'):
+            known = [r[key] for r in calls if _count(r.get(key))]
+            entry[key + '_measured_total'] = sum(known) if known else None
+            entry[key + '_known_calls'] = len(known)
+            entry[key + '_unknown_calls'] = len(calls) - len(known)
+            entry[key + '_complete'] = len(known) == len(calls) and len(records) == requests
+    totals = [r['input_tokens'] + r['output_tokens'] for r in records
+              if _count(r.get('input_tokens')) and _count(r.get('output_tokens'))]
+    costs = [r['estimated_cost_usd'] for r in records if _number(r.get('estimated_cost_usd'))]
+    return {'provider_usage': usage, 'provider_usage_complete': len(records) == requests,
+            'cost_complete': len(costs) == len(records) == requests,
+            'cost_measured_total': sum(costs) if costs else (0 if requests == 0 else None),
+            'llm_tokens_complete': len(totals) == len(records) == requests,
+            'llm_tokens_measured_total': sum(totals) if totals else (0 if requests == 0 else None),
+            'llm_tokens_known_calls': len(totals),
+            'llm_tokens_unknown_calls': max(requests, len(records)) - len(totals)}
+
+
 def load_study(path: str | Path):
     path=Path(path).resolve()
     raw=json.loads(path.read_text(encoding="utf-8"))
@@ -205,6 +237,12 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     for entry in provider_usage.values():
         if not entry["cost_known"]: entry["estimated_cost_usd"]=None
         del entry["cost_known"]
+    measured = measured_usage(call_records, budget.requests)
+    for name, entry in measured['provider_usage'].items():
+        provider_usage[name].update(entry)
+    measured['provider_usage'] = provider_usage
+    if len(call_records) != budget.requests:
+        measured['cost_complete'] = False
     summary={"run_id":run_id,"termination_reason":termination,"verification":verification,"evaluator":evaluation if 'evaluation' in locals() else {"verification":"unknown"},
              "steps":step_count,"action_attempts":action_attempts,"action_successes":action_successes,"llm_request_count":budget.requests,
              "llm_tokens":budget.tokens,"cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
@@ -212,6 +250,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
              "provider":provider_name,"model":model,"condition":persona_mode,"slow_loop_status":slow.status if slow else ("idle" if config.enable_slow_loop else "disabled"),"started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
     from .metrics import run_metrics
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    summary.update(measured)
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
     steps.close();calls.close();memory_writer.close()

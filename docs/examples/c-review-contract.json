@@ -1,0 +1,525 @@
+{
+  "schema_version": "1.0",
+  "examples": [
+    {
+      "description": "가상 계약 예시: 실제 API/사이트 호출 기록 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-1",
+          "execution_mode": "ai",
+          "source_kind": "live_configured"
+        },
+        "steps": [
+          {
+            "step_id": 1,
+            "observation_id": "obs-1",
+            "next_observation_id": "obs-2",
+            "action": {
+              "type": "click",
+              "target_id": "button-1"
+            },
+            "result": {
+              "ok": false,
+              "error": {
+                "code": "unsupported_control"
+              }
+            }
+          }
+        ],
+        "summary": {
+          "verification": "success",
+          "evaluator": {
+            "feature_checks": [
+              {
+                "id": "search",
+                "label": "검색 결과 표시",
+                "status": "fail",
+                "step_id": 1,
+                "task_id": "search",
+                "reason": "등록된 표시 조건 미충족",
+                "evidence": {
+                  "visible": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cards": [
+        {
+          "issue_id": "feature-search",
+          "title": "검색 결과 표시",
+          "observed_behavior": "종료 시 '검색 결과 표시' 확인 조건이 충족되지 않았습니다.",
+          "hypothesis": "과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
+          "evidence_step_ids": [
+            1
+          ],
+          "task_id": "search",
+          "reason": "등록된 표시 조건 미충족",
+          "feature_evidence": {
+            "visible": false
+          },
+          "review_status": "needs_human_review",
+          "classification": "unmet_checkpoint",
+          "run_id": "example-1",
+          "recommendation": "검색 입력과 제출 후 목록 갱신, 검색어에 맞는 상품 표시를 확인하세요.",
+          "acceptance": "정의한 검색어로 재실행해 입력·URL·표시된 상품이 검색 조건에 맞는지 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "feature-search",
+          "execution_mode": "ai",
+          "source_kind": "live_configured",
+          "card_version": "07f3f2071064bf8515f98f42d08a8e531f441722db9f365e59c572ab17622a18"
+        }
+      ],
+      "review_record": {
+        "card_id": "feature-search",
+        "card_version": "07f3f2071064bf8515f98f42d08a8e531f441722db9f365e59c572ab17622a18",
+        "reviewer_id": "example-reviewer",
+        "verdict": "valid",
+        "note": "계약 설명용 가상 기록",
+        "schema_version": "1.0",
+        "review_id": "00000000-0000-4000-8000-000000000001",
+        "run_id": "example-1",
+        "created_at": "2026-10-11T00:00:00Z"
+      }
+    },
+    {
+      "description": "가상 계약 예시: 실제 API/사이트 호출 기록 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-2",
+          "execution_mode": "ai",
+          "source_kind": "synthetic_fixture"
+        },
+        "steps": [
+          {
+            "step_id": 1,
+            "observation_id": "obs-1",
+            "next_observation_id": "obs-2",
+            "action": {
+              "type": "click",
+              "target_id": "button-1"
+            },
+            "result": {
+              "ok": false,
+              "error": {
+                "code": "unsupported_control"
+              }
+            }
+          }
+        ],
+        "summary": {
+          "verification": "failure",
+          "evaluator": {
+            "feature_checks": [
+              {
+                "id": "search",
+                "label": "검색 결과 표시",
+                "status": "fail",
+                "step_id": 1,
+                "task_id": "search",
+                "reason": "등록된 표시 조건 미충족",
+                "evidence": {
+                  "visible": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cards": [
+        {
+          "issue_id": "feature-search",
+          "title": "검색 결과 표시",
+          "observed_behavior": "종료 시 '검색 결과 표시' 확인 조건이 충족되지 않았습니다.",
+          "hypothesis": "과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
+          "evidence_step_ids": [
+            1
+          ],
+          "task_id": "search",
+          "reason": "등록된 표시 조건 미충족",
+          "feature_evidence": {
+            "visible": false
+          },
+          "review_status": "needs_human_review",
+          "classification": "unmet_checkpoint",
+          "run_id": "example-2",
+          "recommendation": "검색 입력과 제출 후 목록 갱신, 검색어에 맞는 상품 표시를 확인하세요.",
+          "acceptance": "정의한 검색어로 재실행해 입력·URL·표시된 상품이 검색 조건에 맞는지 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "feature-search",
+          "execution_mode": "ai",
+          "source_kind": "synthetic_fixture",
+          "card_version": "4d8d89b16930a7d6768ec02fc9a82f11ea96057b0c2470ec5c4e68e37906c3e0"
+        }
+      ],
+      "review_record": {
+        "card_id": "feature-search",
+        "card_version": "4d8d89b16930a7d6768ec02fc9a82f11ea96057b0c2470ec5c4e68e37906c3e0",
+        "reviewer_id": "example-reviewer",
+        "verdict": "invalid",
+        "note": "계약 설명용 가상 기록",
+        "schema_version": "1.0",
+        "review_id": "00000000-0000-4000-8000-000000000002",
+        "run_id": "example-2",
+        "created_at": "2026-10-11T00:00:00Z"
+      }
+    },
+    {
+      "description": "가상 계약 예시: 실제 API/사이트 호출 기록 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-3",
+          "execution_mode": "scripted",
+          "source_kind": "live_configured"
+        },
+        "steps": [
+          {
+            "step_id": 1,
+            "observation_id": "obs-1",
+            "next_observation_id": "obs-2",
+            "action": {
+              "type": "click",
+              "target_id": "button-1"
+            },
+            "result": {
+              "ok": false,
+              "error": {
+                "code": "unsupported_control"
+              }
+            }
+          }
+        ],
+        "summary": {
+          "verification": "unknown",
+          "evaluator": {
+            "feature_checks": [
+              {
+                "id": "search",
+                "label": "검색 결과 표시",
+                "status": "fail",
+                "step_id": 1,
+                "task_id": "search",
+                "reason": "등록된 표시 조건 미충족",
+                "evidence": {
+                  "visible": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cards": [
+        {
+          "issue_id": "feature-search",
+          "title": "검색 결과 표시",
+          "observed_behavior": "점검 단계에서 '검색 결과 표시' 확인 조건이 충족되지 않았습니다.",
+          "hypothesis": "과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
+          "evidence_step_ids": [
+            1
+          ],
+          "task_id": "search",
+          "reason": "등록된 표시 조건 미충족",
+          "feature_evidence": {
+            "visible": false
+          },
+          "review_status": "needs_human_review",
+          "classification": "unmet_checkpoint",
+          "run_id": "example-3",
+          "recommendation": "검색 입력과 제출 후 목록 갱신, 검색어에 맞는 상품 표시를 확인하세요.",
+          "acceptance": "정의한 검색어로 재실행해 입력·URL·표시된 상품이 검색 조건에 맞는지 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "feature-search",
+          "execution_mode": "scripted",
+          "source_kind": "live_configured",
+          "card_version": "6befe4dc11fc74e1606ad62b43f2376b32339b309fd53eb0af52a5474aade9d7"
+        },
+        {
+          "issue_id": "action-1",
+          "title": "조작 또는 관찰 오류 확인",
+          "observed_behavior": "'정의된 단계'에서 unsupported_control 오류가 기록됐습니다.",
+          "hypothesis": "선택자·화면 상태·도구 지원을 먼저 확인하세요. 사이트 사용성 문제로 확정할 수 없습니다.",
+          "evidence_step_ids": [
+            1
+          ],
+          "review_status": "needs_human_review",
+          "classification": "system_error_candidate",
+          "run_id": "example-3",
+          "recommendation": "근거 화면과 행동을 재현해 원인을 구분하고, 필요한 안내·상태 표시·상호작용을 수정하세요.",
+          "acceptance": "같은 과업·환경·확인 조건으로 재실행해 해당 조건 통과와 기존 조작의 회귀 여부를 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "action-1",
+          "execution_mode": "scripted",
+          "source_kind": "live_configured",
+          "card_version": "32277afc0dc39bd13ffa00c259a8aaa7eb8559b1029abd9bd4984a12e8fd4491"
+        }
+      ],
+      "review_record": {
+        "card_id": "feature-search",
+        "card_version": "6befe4dc11fc74e1606ad62b43f2376b32339b309fd53eb0af52a5474aade9d7",
+        "reviewer_id": "example-reviewer",
+        "verdict": "deferred",
+        "note": "계약 설명용 가상 기록",
+        "schema_version": "1.0",
+        "review_id": "00000000-0000-4000-8000-000000000003",
+        "run_id": "example-3",
+        "created_at": "2026-10-11T00:00:00Z"
+      }
+    },
+    {
+      "description": "가상 계약 예시: 실제 API/사이트 호출 기록 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-4",
+          "execution_mode": "scripted",
+          "source_kind": "synthetic_fixture"
+        },
+        "steps": [
+          {
+            "step_id": 1,
+            "observation_id": "obs-1",
+            "next_observation_id": "obs-2",
+            "action": {
+              "type": "click",
+              "target_id": "button-1"
+            },
+            "result": {
+              "ok": false,
+              "error": {
+                "code": "unsupported_control"
+              }
+            }
+          }
+        ],
+        "summary": {
+          "verification": "failure",
+          "evaluator": {
+            "feature_checks": [
+              {
+                "id": "search",
+                "label": "검색 결과 표시",
+                "status": "fail",
+                "step_id": 1,
+                "task_id": "search",
+                "reason": "등록된 표시 조건 미충족",
+                "evidence": {
+                  "visible": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cards": [
+        {
+          "issue_id": "feature-search",
+          "title": "검색 결과 표시",
+          "observed_behavior": "점검 단계에서 '검색 결과 표시' 확인 조건이 충족되지 않았습니다.",
+          "hypothesis": "과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
+          "evidence_step_ids": [
+            1
+          ],
+          "task_id": "search",
+          "reason": "등록된 표시 조건 미충족",
+          "feature_evidence": {
+            "visible": false
+          },
+          "review_status": "needs_human_review",
+          "classification": "unmet_checkpoint",
+          "run_id": "example-4",
+          "recommendation": "검색 입력과 제출 후 목록 갱신, 검색어에 맞는 상품 표시를 확인하세요.",
+          "acceptance": "정의한 검색어로 재실행해 입력·URL·표시된 상품이 검색 조건에 맞는지 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "feature-search",
+          "execution_mode": "scripted",
+          "source_kind": "synthetic_fixture",
+          "card_version": "a0356e9195944708413e9084e0e28327fbbaf6d0b5d27e20b337d870fa24b411"
+        },
+        {
+          "issue_id": "action-1",
+          "title": "조작 또는 관찰 오류 확인",
+          "observed_behavior": "'정의된 단계'에서 unsupported_control 오류가 기록됐습니다.",
+          "hypothesis": "선택자·화면 상태·도구 지원을 먼저 확인하세요. 사이트 사용성 문제로 확정할 수 없습니다.",
+          "evidence_step_ids": [
+            1
+          ],
+          "review_status": "needs_human_review",
+          "classification": "system_error_candidate",
+          "run_id": "example-4",
+          "recommendation": "근거 화면과 행동을 재현해 원인을 구분하고, 필요한 안내·상태 표시·상호작용을 수정하세요.",
+          "acceptance": "같은 과업·환경·확인 조건으로 재실행해 해당 조건 통과와 기존 조작의 회귀 여부를 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "action-1",
+          "execution_mode": "scripted",
+          "source_kind": "synthetic_fixture",
+          "card_version": "1ca64794f337f27472f67ed357cbf4d0dd5f211232631ffff0078a1d8cbd76af"
+        }
+      ],
+      "review_record": {
+        "card_id": "feature-search",
+        "card_version": "a0356e9195944708413e9084e0e28327fbbaf6d0b5d27e20b337d870fa24b411",
+        "reviewer_id": "example-reviewer",
+        "verdict": "tool_error",
+        "note": "계약 설명용 가상 기록",
+        "schema_version": "1.0",
+        "review_id": "00000000-0000-4000-8000-000000000004",
+        "run_id": "example-4",
+        "created_at": "2026-10-11T00:00:00Z"
+      }
+    },
+    {
+      "description": "가상 계약 예시: 실제 API/사이트 호출 기록 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-5"
+        },
+        "steps": [
+          {
+            "step_id": 1,
+            "observation_id": "obs-1",
+            "next_observation_id": "obs-2",
+            "action": {
+              "type": "click",
+              "target_id": "button-1"
+            },
+            "result": {
+              "ok": false,
+              "error": {
+                "code": "unsupported_control"
+              }
+            }
+          }
+        ],
+        "summary": {
+          "verification": "unknown",
+          "evaluator": {
+            "feature_checks": [
+              {
+                "id": "search",
+                "label": "검색 결과 표시",
+                "status": "fail",
+                "step_id": 1,
+                "task_id": "search",
+                "reason": "등록된 표시 조건 미충족",
+                "evidence": {
+                  "visible": false
+                }
+              }
+            ]
+          }
+        }
+      },
+      "cards": [
+        {
+          "issue_id": "feature-search",
+          "title": "검색 결과 표시",
+          "observed_behavior": "종료 시 '검색 결과 표시' 확인 조건이 충족되지 않았습니다.",
+          "hypothesis": "과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
+          "evidence_step_ids": [
+            1
+          ],
+          "task_id": "search",
+          "reason": "등록된 표시 조건 미충족",
+          "feature_evidence": {
+            "visible": false
+          },
+          "review_status": "needs_human_review",
+          "classification": "unmet_checkpoint",
+          "run_id": "example-5",
+          "recommendation": "검색 입력과 제출 후 목록 갱신, 검색어에 맞는 상품 표시를 확인하세요.",
+          "acceptance": "정의한 검색어로 재실행해 입력·URL·표시된 상품이 검색 조건에 맞는지 확인하세요.",
+          "severity": "사람 검토 필요",
+          "source_location": "소스 연결 없음: 파일·라인 미확인",
+          "evidence": [
+            {
+              "step_id": 1,
+              "observation_id": "obs-1",
+              "next_observation_id": "obs-2"
+            }
+          ],
+          "card_id": "feature-search",
+          "execution_mode": "unknown",
+          "source_kind": "unknown",
+          "card_version": "4a0188f7e17fe9db6c075ff5130c4c4c18f3d3c1f44707958c8bc7fead63e34a"
+        }
+      ],
+      "review_record": {
+        "card_id": "feature-search",
+        "card_version": "4a0188f7e17fe9db6c075ff5130c4c4c18f3d3c1f44707958c8bc7fead63e34a",
+        "reviewer_id": "example-reviewer",
+        "verdict": "environment_error",
+        "note": "계약 설명용 가상 기록",
+        "schema_version": "1.0",
+        "review_id": "00000000-0000-4000-8000-000000000005",
+        "run_id": "example-5",
+        "created_at": "2026-10-11T00:00:00Z"
+      }
+    },
+    {
+      "description": "정상 조건 통과 시 후보 0; 사이트 결함 부재의 증명이 아님",
+      "detail": {
+        "run": {
+          "run_id": "example-normal",
+          "execution_mode": "scripted",
+          "source_kind": "synthetic_fixture"
+        },
+        "steps": [],
+        "summary": {
+          "verification": "success",
+          "evaluator": {
+            "feature_checks": []
+          }
+        }
+      },
+      "cards": []
+    }
+  ]
+}

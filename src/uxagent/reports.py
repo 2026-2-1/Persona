@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import html
 import io
 import json
@@ -19,6 +20,48 @@ def redact(value):
             text = text.replace(json.dumps(secret)[1:-1], "[redacted]")
     text = re.sub(r"sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}", "[redacted]", text)
     return json.loads(text)
+
+
+def enrich_card_identity(card, detail):
+    """Identify factual card content independently of mutable human review state."""
+    enriched = dict(card)
+    run = detail.get("run") or {}
+    enriched.update(card_id=card["issue_id"], run_id=run.get("run_id") or card.get("run_id"),
+                    execution_mode=run.get("execution_mode") or "unknown",
+                    source_kind=run.get("source_kind") or "unknown")
+    review_fields = {"card_version", "review_status", "verdict", "note", "reviewer_id",
+                     "review_id", "created_at", "review_history", "latest_review", "review", "reviews"}
+    facts = {key: value for key, value in enriched.items() if key not in review_fields}
+    linked_steps = []
+    linked_observations = {}
+    for step in detail.get("steps", []):
+        if step.get("step_id") not in card.get("evidence_step_ids", []):
+            continue
+        evidence = {key: step.get(key) for key in ("step_id", "observation_id", "next_observation_id",
+                    "action", "result", "error", "verification", "scenario_step")}
+        if isinstance(evidence["result"], dict):
+            evidence["result"] = {key: value for key, value in evidence["result"].items()
+                                  if key != "elapsed_ms"}
+        linked_steps.append(evidence)
+        for observation_id in (step.get("observation_id"), step.get("next_observation_id")):
+            observation = (detail.get("observations") or {}).get(observation_id)
+            if not isinstance(observation, dict):
+                continue
+            observed = {key: value for key, value in observation.items() if key in (
+                "schema_version", "observation_id", "tab_id", "url", "title", "html",
+                "clickable_elements", "input_elements", "hoverable_elements", "select_elements",
+                "tabs", "error", "capture")}
+            if isinstance(observed.get("capture"), dict):
+                observed["capture"] = {key: value for key, value in observed["capture"].items()
+                                       if key != "screenshot_path"}
+            linked_observations[observation_id] = observed
+    version_facts = {"card": facts, "linked_steps": linked_steps}
+    if linked_observations:
+        version_facts["linked_observations"] = linked_observations
+    canonical = json.dumps(version_facts,
+                           ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    enriched["card_version"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return enriched
 
 
 def build_cards(detail):
@@ -67,22 +110,23 @@ def build_cards(detail):
         card["evidence"] = [{"step_id":step.get("step_id"), "observation_id":step.get("observation_id"),
             "next_observation_id":step.get("next_observation_id")} for step in steps
             if step.get("step_id") in card.get("evidence_step_ids",[])]
-    return redact(cards)
+    return [enrich_card_identity(card, detail) for card in redact(cards)]
 
 
 def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
                    "cards":detail.get("cards",build_cards(detail)),
-                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "AI가 제안한 미검토 후보입니다. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
+                   "reviews":detail.get("reviews", []), "review_summary":detail.get("review_summary"),
+                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "실행 근거에서 도출한 후보입니다. 카드별 사람 검토 상태를 확인하세요. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
         return json.dumps(safe,ensure_ascii=False,indent=2)
     if kind == "csv":
         out=io.StringIO(newline="")
         writer=csv.writer(out)
-        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids"])
+        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"])
         for card in safe["cards"]:
-            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids")]
+            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version")]
             # Spreadsheet import must treat untrusted text as data, not a formula.
             writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values])
         return out.getvalue()
@@ -95,7 +139,9 @@ def export_report(detail, kind):
         lines.extend(["", f"## {card['issue_id']}: {card.get('title','')}", "",
             f"관찰: {card['observed_behavior']}", f"가설: {card['hypothesis']}",
             f"근거 단계: {card['evidence_step_ids']}", f"제안: {card['recommendation']}",
-            f"완료 조건: {card['acceptance']}", "상태: 사람 검토 전"])
+            f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",
+            f"판정: {card.get('verdict') or ''}", f"검토 메모: {card.get('note','')}",
+            f"검토자: {card.get('reviewer_id') or ''}", f"검토 이력: {json.dumps(card.get('review_history',[]),ensure_ascii=False)}"])
     text="\n".join(lines)+"\n"
     if kind == "md":
         return text

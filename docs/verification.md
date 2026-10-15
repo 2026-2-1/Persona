@@ -100,3 +100,27 @@
 - 추천은 source template/ai를 구분하고 사용자가 적용해야 사용자 설명을 바꾼다. 키·인증 URL·Unicode 이스케이프 응답 우회와 요청/토큰 한도를 재현 검사한다.
 
 최종 화면 확인에서 초기 상태 로딩과 도우미 이동의 경합을 발견해 실패 테스트로 재현 후 수정했다. 브라우저 회귀 17 passed (249.58s). 모델 발급 안내 간격도 줄였다. 앞선 커밋의 Windows/Ubuntu CI는 모두 통과했다.
+
+## 2026-10-11 C/P05·P06
+
+- Baseline reports/metrics/experiments 10 passed.
+- P05 계약·보고서 집중25 passed; 한글/긴 카드 ID와 동일 observation ID의 내용 변경 회귀를 포함한다. 구현자 시나리오/회귀 포함38 passed, 작업 리뷰 지적2건 수정 후 blocker 없음.
+- P06 새 저장/HTTP/출력·계약·UI 집중37 passed. 보안 보완 후 candidate_reviews/setup_guide/HTTP 68 passed. 따옴표·역슬래시·개행 환경 비밀값 우회9건 실패 재현 후 통과했다.
+- 합성 필터 결함 scenario 실제 실행 ID `20261011T105939-438c89d8`: failure, 검색/상세 pass·필터 fail, 8행동/기록8, LLM0. 로컬 HTTP로 테스트 판정 deferred→valid 저장 후 새 Dashboard에서 이력2건/최신valid 조회, 독립verification은failure 유지, JSON/CSV/MD/HTML 일치.
+- 위 integration-test 검토는 개발용 가상 판정이며 실제 사람/독립2인검토 결과가 아니다. runs 원자료는 Git에 추가하지 않는다. 실제 사이트·유료API 검증은 이번 작업 범위가 아니다.
+
+## 2026-10-11 C/P08
+
+- 集중 지표·실험 검사15 passed (2.78s), 구현자 MVP/회귀 포함25 passed. scripted 분모7→5, 비유효 중앙값, null status, 저장 누락/legacy stale rate, bool 요청수의 거짓0을 실패 재현 후 수정했다.
+- 무료 비교 `20261011T110414-9c0c68e4`: 일반/페르소나 각각 성공1/예정1, 요청6, 기록6/6·rate1. 비용은null/unknown1로 유지한다. 실제 LLM 성능 비교나 사람 행동 재현 증거가 아니다.
+- doctor Python3.13.5/Playwright1.55.0/Chromium, study_errors없음. Mock 통합 `20261011T110505-f74829ea`: verified_success, 검색·필터·상세pass, 행동6/기록6.
+- P08 작업 리뷰 지적1건 수정 후 해당 범위 blocker없음. 전체검사와 최종통합리뷰는 아래에 추가한다.
+
+## C 최종 통합 검사
+
+- 최종 코드 전체 pytest: **257 passed in 225.28s**. 수정 전236개 통과만으로 완료 처리하지 않고 새 실패 재현을 추가했다.
+- Unicode JSONL과 실제 usage 누락 보완의 집중/통합 검사121 passed (211.83s), 안전 실행 ID 계약/저장51 passed. 통합 코드 리뷰의 두 지적과 추가 ID 호환 보완 후 Important/Critical blocker없음.
+- 최종 CLI Mock `20261011T112434-c256adcb`: success, 검색·필터·상세pass, 6행동/기록6, 실제 측정토큰0/complete=true. 비용complete=false로 유지한다. 외부 유료 API 호출0.
+- doctor / node --check / repo 검사 / diff 검사 통과. 1365×768 개선 보드에서 최신 판정·테스트 메모를 확인하고 가로 넘침없음. 기존 입력폼은 D 후속 범위다.
+- 메모의 Unicode 구분자, 환경 비밀값 이스케이프, 동시저장/손상/경로, 비용·토큰·기록의 부분값, 실제 실행기→비교 저장→조회 경로를 검사했다.
+- CI와 prototype 병합의 최종 상태는 관련 PR 기록에서 확인한다. 사람 독립 판정·실제 LLM 성능·실제 사이트 전체 평가는 이번 검사에 포함하지 않는다.

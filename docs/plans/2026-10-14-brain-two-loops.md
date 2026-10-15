@@ -1,8 +1,8 @@
 # Brain과 두 루프 설계 초안
 
-작성일: 2026-10-14. 상태: **사용자 요구와 설계 논의의 기록; #39 기록 계약만 구현**.
+작성일: 2026-10-14. 상태: **사용자 요구와 설계 논의의 기록; #39 기록 계약과 #41 Fast 단계 일부 구현**.
 
-이 문서는 현재 코드, UXAgent 논문, 사용자가 원하는 변경을 대조한다. `brain.py`와 새 호출 흐름은 아직 존재하지 않는다. 최초 작성 이후 [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마·단조 메모리 순번을 구현했으며 두 루프 실행 설계는 여전히 목표 상태다.
+이 문서는 현재 코드, UXAgent 논문, 사용자가 원하는 변경을 대조한다. `brain.py`와 새 호출 흐름은 아직 존재하지 않는다. 최초 작성 이후 [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마·단조 메모리 순번과 [#41](https://github.com/2026-2-1/Persona/issues/41)의 Fast 단계별 생성·기록을 구현했다. Brain 조율기와 Slow reflection/plan review 실행은 여전히 목표 상태다.
 
 ## 1. 목표와 이번에 정한 내용
 
@@ -25,10 +25,10 @@
 |---|---|---|
 | 조율 | [runner.py](../../src/uxagent/runner.py)의 `run_study()`가 관찰·검색·판단·실행·평가를 직접 조율 | runner는 브라우저·실행 수명주기, Brain은 두 루프·메모리를 조율 |
 | 첫 평가 | 관찰 후 `evaluate()`가 success면 LLM 호출 없이 종료 | 근거 저장 후 Brain을 거치고 행동/종료 선언 뒤 평가 |
-| Fast Loop | [fast_loop.py](../../src/uxagent/fast_loop.py)의 일반 생성 경로는 한 응답에 perception·plan·action/finish를 받음. Jev 경로는 후보 선택 뒤 정형 설명을 구성 | perception·plan·decision의 의존 관계를 분리하고 단계별 입력/결과 저장 |
+| Fast Loop | [fast_loop.py](../../src/uxagent/fast_loop.py)가 perception·plan·decision을 별도 호출로 수행. Jev도 생성 fallback으로 인식·계획을 만들고 행동은 후보 선택 | 단계 사이의 기억 검색·저장 경계와 기록을 유지; Brain·Slow 작업 스케줄은 후속 |
 | Slow Loop | [schemas.py](../../src/uxagent/schemas.py)의 `enable_slow_loop=False`. runner가 행동 뒤 설정 주기 또는 오류 때 예약 | perception 저장 직후 성찰 예약, plan 저장 직후 계획 검토 예약; 실제 AI 실행에서 필수 활성 |
 | Slow 입력 | [slow_loop.py](../../src/uxagent/slow_loop.py)의 `schedule()`이 전체 메모리 목록 snapshot을 사용. 이미 작업 중이면 새 예약 거절 | 작업별 점수 기반 snapshot, 성찰과 계획 검토를 식별하고 대기/누락을 기록 |
-| 점수 | [memory.py](../../src/uxagent/memory.py)는 중요도·관련도·최신성 검색 지원. 중요도 필드는 있으나 현재 runner/Slow Loop는 LLM 중요도를 산정하지 않음 | 중요도를 실제 산정하고 단계별 검색 우선순위를 명시 |
+| 점수 | [memory.py](../../src/uxagent/memory.py)는 중요도·관련도·최신성 검색을 지원하고 runner의 `ImportanceScorer`가 저장된 기억의 중요도를 비동기로 산정 | 단계별 검색 우선순위와 Slow 성찰의 실제 반영을 후속 구현 |
 | 모델에 전달되는 기억 | 검색 결과는 점수 내림차순이지만 최근 행동을 뒤에 붙인 후 Fast는 `[-6:]`, Jev는 `[-4:]`만 전달. 기본 최근 이력 6개가 차면 일반 생성 경로의 검색 기억은 모두 제외됨 | 점수로 선택한 top-k와 최근 행동 이력을 분리해 실제 입력에 보존 |
 | 메모리 상한 | `memory_limit` 기본 8은 한 번에 검색할 수. 저장 목록에는 N개 상한과 제거 기능이 없음 | 활성 저장 상한 N과 단계별 검색 개수를 분리 |
 | Wonder | `enable_wonder=False`. 켜면 성찰 응답의 `next_focus`를 저장; persona-only 확률 호출은 아님 | 실제 Slow 작업마다 확률 추첨 후 별도 persona-only 생성 |

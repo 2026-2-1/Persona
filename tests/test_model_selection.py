@@ -58,13 +58,14 @@ async def test_selected_model_reaches_request_and_all_run_artifacts(tmp_path,mon
     config.update(provider_model='gemini-2.5-flash',persona_file=str(ROOT/'configs/persona.json'),headed=False)
     study=tmp_path/'study.json';study.write_text(json.dumps(config),encoding='utf-8')
     folder,summary=await runner.run_study(study,provider_name='gemini',output_root=tmp_path/'runs')
-    assert seen==['gemini-2.5-flash']
+    assert seen==['gemini-2.5-flash']*3
     for name in ('run.json','summary.json'):
         assert json.loads((folder/name).read_text(encoding='utf-8'))['model']=='gemini-2.5-flash'
     calls=[json.loads(line) for line in (folder/'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert calls[0]['model']=='gemini-2.5-flash'
-    assert calls[0]['provider']=='gemini'
-    assert calls[0]['estimated_cost_usd'] is None
+    assert [call['stage'] for call in calls]==['perception','plan','decision']
+    assert all(call['model']=='gemini-2.5-flash' for call in calls)
+    assert all(call['provider']=='gemini' for call in calls)
+    assert all(call['estimated_cost_usd'] is None for call in calls)
 
 @pytest.mark.parametrize("legacy_model", ["gpt-4.1-mini","existing-custom-model"])
 def test_dashboard_legacy_live_model_is_not_reset(tmp_path,monkeypatch,legacy_model):

@@ -97,5 +97,14 @@
     "path": "docs/tasks/11-research-mcp.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/12",
     "issue_number": 12
+  },
+  {
+    "slug": "41-fast-loop-stages",
+    "title": "[phase:1] Fast Loop의 인식·계획·행동 결정 분리",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/41-fast-loop-stages.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/41",
+    "issue_number": 41
   }
 ]

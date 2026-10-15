@@ -43,25 +43,28 @@ async def test_jev_choice_maps_to_action_and_low_confidence_falls_back():
         model="jev-latest"
         def __init__(self, confidence): self.confidence=confidence; self.fallback_calls=0
         async def choose(self,state,candidates):
-            self.candidate=candidates[0]
+            self.candidate=next(c for c in candidates if c["id"].startswith("click:"))
             return self.candidate["id"],self.confidence,{self.candidate["id"]:self.confidence}, {"model":"jev-test","input_tokens":10,"output_tokens":2}
         async def complete(self,messages,model,temperature,max_tokens):
             self.fallback_calls+=1
             payload=json.loads(messages[-1]["content"])
+            stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
+            if stage=="perception":return json.dumps({"perception":"검색 버튼이 보입니다."}), {"model":"gemini-2.5-flash-lite","input_tokens":2,"output_tokens":1}
+            if stage=="plan":return json.dumps({"plan":"검색 버튼을 사용합니다."}), {"model":"gemini-2.5-flash-lite","input_tokens":2,"output_tokens":1}
             self.fallback_reason=payload.get("fallback_reason")
-            return json.dumps({"candidate_id":self.candidate["id"]}), {"model":"gemini-2.5-flash-lite","input_tokens":20,"output_tokens":5}
+            return json.dumps({"candidate_id":self.candidate["id"],"rationale_summary":"검색 버튼을 선택합니다."}), {"model":"gemini-2.5-flash-lite","input_tokens":20,"output_tokens":5}
 
     persona=Persona.model_validate_json((ROOT/"configs/persona.json").read_text())
     observation=Observation(observation_id="o1",tab_id="t1",url="https://shop.test",title="Shop",html="",
         clickable_elements=[ElementInfo(id="search",role="button",name="검색")])
     provider=JevThenGemini(.9); records=[]; budget=BudgetManager(4,10000)
     result=await FastLoop(provider,budget,"gemini-2.5-flash-lite",.2,100,records.append).decide(persona,"가방 찾기",observation,[])
-    assert result.action.type=="click" and provider.fallback_calls==0
-    assert records[0]["provider"]=="typesafe"
+    assert result.action.type=="click" and provider.fallback_calls==2
+    assert records[2]["provider"]=="typesafe"
 
     provider=JevThenGemini(.4);records=[];budget=BudgetManager(4,10000)
     result=await FastLoop(provider,budget,"gemini-2.5-flash-lite",.2,100,records.append).decide(persona,"가방 찾기",observation,[])
-    assert result.action.type=="click" and provider.fallback_calls==1
+    assert result.action.type=="click" and provider.fallback_calls==3
     assert provider.fallback_reason=="low_confidence"
     assert records[-1]["fallback_reason"]=="low_confidence"
 
@@ -116,13 +119,13 @@ async def test_fast_loop_repairs_invalid_json_once():
             self.calls+=1
             if self.calls==1:return "not-json",{"model":"fake","input_tokens":1,"output_tokens":1}
             return json.dumps({"perception":"검색창","plan":"검색","rationale_summary":"과제 조건 검색","action":{"type":"type","observation_id":"o1","tab_id":"tab-1","target_id":"상품.검색","text":"가방"},"finish":None},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
-    provider=RepairProvider();budget=BudgetManager(3,10000)
+    provider=RepairProvider();budget=BudgetManager(5,10000)
     persona=Persona.model_validate_json((ROOT/"configs/persona.json").read_text())
     observation={"observation_id":"o1","tab_id":"tab-1","input_elements":[{"id":"상품.검색"}]}
     from types import SimpleNamespace
-    result=await FastLoop(provider,budget,"fake",0.2,100).decide(persona,"가방 검색",SimpleNamespace(model_dump=lambda:observation),[])
+    result=await FastLoop(provider,budget,"fake",0.2,100).decide(persona,"가방 검색",SimpleNamespace(model_dump=lambda:observation,observation_id="o1",tab_id="tab-1"),[])
     assert result.action.target_id=="상품.검색"
-    assert provider.calls==budget.requests==2
+    assert provider.calls==budget.requests==4
 
 
 @pytest.mark.asyncio
@@ -156,8 +159,11 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
     raw=json.loads((ROOT/"configs/study.json").read_text());raw["persona_file"]=str(ROOT/"configs/persona.json")
     study=tmp_path/"study.json";study.write_text(json.dumps(raw),encoding="utf-8")
     class FinishProvider:
-        async def complete(self,*args,**kwargs):
-            return json.dumps({"perception":"초기 화면","plan":"완료 여부를 확인한다","rationale_summary":"현재 결과는 조건에 맞지 않습니다.","action":None,"finish":{"claim":"completed","summary":"완료했다고 판단했습니다."}},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
+        async def complete(self,messages,*args,**kwargs):
+            stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
+            result={"perception":{"perception":"초기 화면"},"plan":{"plan":"완료 여부를 확인한다"},
+                "decision":{"rationale_summary":"현재 결과는 조건에 맞지 않습니다.","action":None,"finish":{"claim":"completed","summary":"완료했다고 판단했습니다."}}}[stage]
+            return json.dumps(result,ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",FinishProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"false-finish")
     assert summary["termination_reason"]=="agent_finished"
@@ -165,9 +171,12 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
 
     class RepeatingProvider:
         async def complete(self,messages,*args,**kwargs):
+            stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
+            if stage=="perception":return json.dumps({"perception":"검색 버튼이 보인다"}),{"model":"fake","input_tokens":1,"output_tokens":1}
+            if stage=="plan":return json.dumps({"plan":"검색 버튼을 누른다"}),{"model":"fake","input_tokens":1,"output_tokens":1}
             payload=json.loads(messages[-1]["content"]);obs=payload["observation"]
             target=next(e for e in obs["clickable_elements"] if e["name"]=="검색")
-            return json.dumps({"perception":"검색 버튼이 보인다","plan":"검색을 실행한다","rationale_summary":"화면에서 검색 버튼을 사용한다.","action":{"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":target["id"]},"finish":None},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
+            return json.dumps({"rationale_summary":"화면에서 검색 버튼을 사용한다.","action":{"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":target["id"]},"finish":None},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",RepeatingProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"repeated")
     assert summary["termination_reason"]=="stuck"

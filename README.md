@@ -77,6 +77,9 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 ## 개발 진입점
 
 - 연구·회의 자료: [실험 계획](docs/research/2026-10-15-slow-loop-experiment-plan.md), [회의 안건](docs/meetings/2026-10-15-research-and-data-agenda.md), [기업 데이터·시스템·Novelty 제출 초안](docs/research/2026-10-15-project-submission-draft.md). 기업 데이터는 사용자 확인 기준 미수령 0건이며 조건·목표 수량은 제안입니다.
+- 협업: [브랜치·커밋](docs/collaboration.md), [PR·리뷰](docs/pull-requests.md)
+- 운영: [브랜치 보호](docs/branch-protection.md), [디스코드 알림 연결 준비](docs/discord-notifications.md)
+
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)

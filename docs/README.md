@@ -11,6 +11,10 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [제출 초안 3항목](research/2026-10-15-project-submission-draft.md) | 기업 데이터 미수령 0건·시스템 구조도/구현 범위·핵심 논문 주제 |
 | [관련 연구·Novelty 근거](research/2026-10-15-novelty-evidence.md) | 원문 기반 선행과 차별화 후보·주장 한계 |
 | [D 진행 현황과 회의 안건](meetings/2026-10-14-d-progress-and-decisions.md) | D-01~D-04 결과·D-05·통합/추가 수정·회의 결정표 |
+| [브랜치·커밋](collaboration.md) | prototype 통합과 실험 브랜치 운영 |
+| [PR·리뷰](pull-requests.md) | 작성 규칙과 작성자 외 승인 1명 |
+| [브랜치 보호](branch-protection.md) | GitHub 원격 적용값과 확인 방법 |
+| [디스코드 알림](discord-notifications.md) | 채널 확정 후 웹훅 연결과 알림 확장 |
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [C 담당 검토·집계](tasks/c-review-data.md) | 공통 계약·검토 저장 API·예정 분모와 누락 |

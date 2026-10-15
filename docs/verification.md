@@ -359,3 +359,8 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - #58의 행동 필드 명세를 최신 3단계 Fast의 decision 프롬프트에 연결했다. 기존 단일 decide 전제 테스트를 실제 decision API에 맞췄다.
 - 날짜 snapshot 응답 모델의 비용 미확인과 프롬프트 필드 명세 누락을 2개 실패로 재현했다. 실제 응답 모델 식별을 유지하고 명시적으로 확인한 snapshot만 단가표에 추가했다. 알 수 없는 모델은 null을 유지한다.
 - 단가는 [GPT-4o mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4o-mini)와 [GPT-4.1 mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4.1-mini)를 2026-10-16 확인했다. 입력/출력 토큰 기준 추정이며 계정 청구액·캐시 할인·기타 서비스 요금의 실측값이 아니다.
+- 최종 준비본 전체 pytest 406 passed in 168.43s. 무료 Mock `20261015T164134-c9f17515` 종료 `verified_success`, doctor·Node·compileall·repo/staged·diff 검사 통과. 원격 prototype 병합은 보호 설정 변경 명시 허용 대기다.
+
+## 2026-10-16 사용자 명시 허용 후 순차 병합
+
+이번 작업에 한해 승인 수 1→0→1의 일시 변경을 허용받았다. CI·strict·관리자 적용은 유지하며 각 시도 직후 복원한다. 위 준비 당시 허용 대기 기록과 현재 권한을 구분한다. 원격 결과는 개별 PR의 squash commit과 최신 CI에서 확인하며, 전체 절차·로컬 검증·남은 문제는 [병합 기록](handoffs/2026-10-16-prototype-merge-queue.md)을 따른다.

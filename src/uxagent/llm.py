@@ -10,6 +10,8 @@ CLAUDE_MODEL = "claude-sonnet-4-6"
 GEMINI_INPUT_USD_PER_MILLION = 0.10
 GEMINI_OUTPUT_USD_PER_MILLION = 0.40
 JEV_INPUT_USD_PER_MILLION = 0.042
+OPENAI_GPT_4O_MINI_INPUT_USD_PER_MILLION = 0.15
+OPENAI_GPT_4O_MINI_OUTPUT_USD_PER_MILLION = 0.60
 
 
 def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
@@ -72,6 +74,9 @@ def estimate_cost_usd(provider: str, input_tokens: int | None, output_tokens: in
             return None
         return round(input_tokens * GEMINI_INPUT_USD_PER_MILLION / 1_000_000 +
                      output_tokens * GEMINI_OUTPUT_USD_PER_MILLION / 1_000_000, 10)
+    if provider == "openai" and model in {"gpt-4o-mini", "gpt-4o-mini-2024-07-18"}:
+        return round(input_tokens * OPENAI_GPT_4O_MINI_INPUT_USD_PER_MILLION / 1_000_000 +
+                     output_tokens * OPENAI_GPT_4O_MINI_OUTPUT_USD_PER_MILLION / 1_000_000, 10)
     if provider == "typesafe":
         if model is not None and model != "jev-latest":
             return None

@@ -34,6 +34,8 @@ macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 �
 
 Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 입력 문구가 필요하면 Gemini가 생성합니다. 낮은 신뢰도·잘못된 선택·Jev 오류에도 Gemini fallback을 사용합니다. OpenAI 경로는 기존 Chat Completions API, Claude는 Anthropic Messages API와 Claude Sonnet 4.6을 사용합니다. Claude 키 변수는 `ANTHROPIC_API_KEY`입니다. 연결되지 않은 유료 모델은 다음 단계로 진행할 수 없습니다.
 
+Fast의 OpenAI 호출은 인식·계획·행동 결정을 별도 JSON 응답으로 생성합니다. `gpt-4o-mini`의 알려진 호출 가격은 기록에 추정 비용으로 표시하며, 계정 청구액과 다를 수 있습니다.
+
 **ChatGPT 구독 로그인은 아직 구현하지 않았습니다.** 적격 로컬/오픈소스 앱의 공식 구독 연동 PoC는 후속 이슈로 관리합니다. 공개 호스팅·다중 사용자 키 관리도 이 MVP 범위 밖입니다.
 
 

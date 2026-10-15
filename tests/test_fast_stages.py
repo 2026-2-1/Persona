@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from uxagent.fast_loop import FastLoop
-from uxagent.llm import BudgetManager
+from uxagent.llm import BudgetManager, estimate_cost_usd
 from uxagent.runner import run_study
 from uxagent.schemas import Observation, Persona, ElementInfo
 
@@ -54,6 +54,51 @@ async def test_fast_loop_generates_perception_plan_and_decision_as_separate_call
     assert plan == "과업에 맞는 검색어를 입력하고 검색합니다."
     assert decision.action.observation_id == "obs-current"
     assert decision.action.target_id == "search"
+
+
+@pytest.mark.asyncio
+async def test_staged_openai_prompts_explain_field_types_and_action_schema():
+    class CapturingProvider:
+        def __init__(self):
+            self.systems = {}
+
+        async def complete(self, messages, model, temperature, max_tokens):
+            system = messages[0]["content"]
+            stage = system.split("FAST_STAGE:", 1)[1].splitlines()[0]
+            self.systems[stage] = system
+            observation = json.loads(messages[1]["content"])["observation"]
+            result = {"perception": {"perception": "검색창이 보입니다."},
+                      "plan": {"plan": "검색어를 입력합니다."},
+                      "decision": {"rationale_summary": "검색을 시작합니다.",
+                                   "action": {"type": "type", "observation_id": observation["observation_id"],
+                                              "tab_id": observation["tab_id"], "target_id": "search", "text": "가방"},
+                                   "finish": None}}[stage]
+            return json.dumps(result, ensure_ascii=False), {
+                "model": "gpt-4o-mini-2024-07-18", "input_tokens": 1000, "output_tokens": 200}
+
+    persona = Persona.model_validate_json((ROOT / "configs/persona.json").read_text())
+    observation = Observation(observation_id="obs-current", tab_id="tab-current",
+                              url="https://shop.test", title="Shop", html="검색",
+                              input_elements=[ElementInfo(id="search", role="textbox", name="상품 검색")])
+    provider = CapturingProvider()
+    calls = []
+    await FastLoop(provider, BudgetManager(3, 10000), "gpt-4o-mini", .2, 100, calls.append).decide(
+        persona, "가방 찾기", observation, [])
+
+    assert "perception must be a plain string" in provider.systems["perception"]
+    assert "plan must be a plain string" in provider.systems["plan"]
+    decision_prompt = provider.systems["decision"]
+    assert "finish must be null or an object; never false" in decision_prompt
+    assert "copy observation_id and tab_id from the current observation" in decision_prompt
+    assert "select: target_id, option_value" in decision_prompt
+    assert "type: target_id, text" in decision_prompt
+    assert all(call["estimated_cost_usd"] == pytest.approx(.00027) for call in calls)
+
+
+def test_openai_cost_catalog_only_prices_known_models():
+    assert estimate_cost_usd("openai", 1_000_000, 1_000_000, "gpt-4o-mini") == .75
+    assert estimate_cost_usd("openai", 1_000_000, 1_000_000, "gpt-4o-mini-2024-07-18") == .75
+    assert estimate_cost_usd("openai", 100, 100, "gpt-unknown") is None
 
 
 @pytest.mark.asyncio

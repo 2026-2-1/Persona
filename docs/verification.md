@@ -205,3 +205,10 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `tests/test_memory_integration.py`의 로컬 mock runner 2개(활성 상한 10·64)와 빈 기억·오래된 고점 제거/순번 테스트 1개를 추가했다. **3 passed in 6.84s**. 상한 10 실행에서는 제거 사건이 발생했고, 64 실행에서는 발생하지 않았다. 두 실행 모두 원본 기억 ID·점수 변경·Slow 작업/단계 출처·호출 수와 공통 예산을 대조했다. Fast 계획의 검색 기억 최대 6개와 별도 최근 행동 이력도 확인했다.
 - 전체 `python3 -m pytest -q`: **273 passed in 102.92s**. 여기에는 #40의 점수 실패·예산·늦은 응답, #47의 이전 JSONL·null 행동, #54 검색 순위, #55의 N=10/12·Slow snapshot·embedding 경합, 기존 Slow 취소 회귀가 포함된다.
 - mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 API·공개 사이트 성공·사람 행동 유사성은 검증하지 않았다.
+
+## 2026-10-15 단계별 OpenAI 응답 형식 (#57)
+
+- 단계별 Fast의 자료형·행동 필드와 `gpt-4o-mini` 가격 누락에 대한 테스트 2개가 수정 전 실패하고 수정 후 통과했다.
+- `python3 -m pytest -q --tb=line`: **275 passed in 103.92s** (로컬 브라우저 서버 사용을 허용한 실행). 제한된 샌드박스 첫 시도는 소켓 생성 불가로 45 failed, 209 passed, 21 errors였으며 코드 회귀 판정에 사용하지 않았다.
+- `python3 scripts/check_repo.py`: 0 problems. 실제 API 호출은 `OPENAI_API_KEY`가 현재 실행 환경과 로컬 `.env`에 없어 수행하지 못했다. 모델 형식의 실호출 성공은 미검증이다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T064911-78e45798`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6이었다. Python compileall과 `git diff --check`도 통과했다.

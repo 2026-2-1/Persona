@@ -203,7 +203,12 @@ def test_loop_trace_shows_generated_work_and_independent_result(local_dashboard)
                                  'observation_id':observation_id,'reason_code':'run_finished'}]
         payload['memories']=[{'memory_id':'memory-1','text':'원본 관찰','content_status':'observed'}]
         payload['memory_changes']=[{'memory_id':'memory-1','change':'evicted'}]
-        payload['trace']=[{'observation_id':observation_id,'next_observation_id':'obs-2',
+        payload['brain']={'available':True,'stages':payload['brain_stages'],
+                          'task_events':payload['brain_tasks'],'tasks':payload['brain_tasks'],
+                          'task_counts':{'cancelled':1},'warnings':[],
+                          'memories':[{**payload['memories'][0],'evicted':True}],
+                          'memory_changes':payload['memory_changes'],'wonder_draws':[]}
+        payload['trace']=[{'step_id':1,'observation_id':observation_id,'next_observation_id':'obs-2',
                            'stages':payload['brain_stages'],'tasks':payload['brain_tasks'],
                            'memories':[{**payload['memories'][0],'removed':True}],
                            'action':payload['steps'][0].get('action'),
@@ -212,14 +217,16 @@ def test_loop_trace_shows_generated_work_and_independent_result(local_dashboard)
         page.goto(local_dashboard)
         page.get_by_role('tab',name='실행 기록',exact=True).click()
         page.locator('#run-select').select_option('run-0')
-        page.get_by_text('모델 호출과 비용',exact=True).first.click()
-        page.get_by_text('두 루프 단계·작업 근거',exact=True).click()
-        expect(page.locator('#loop-records')).to_contain_text('AI 생성 perception')
-        expect(page.locator('#loop-records')).to_contain_text('cancelled')
-        expect(page.locator('#loop-records')).to_contain_text('활성 목록에서 제거됨')
+        page.locator('#brain-trace > summary').click()
+        expect(page.locator('#brain-content')).to_contain_text('AI 생성 · 화면 인식')
+        expect(page.locator('#brain-content')).to_contain_text('취소 1')
+        expect(page.locator('#brain-content')).to_contain_text('활성 목록에서 제거됨')
         assert page.locator('probe').count()==0
         page.locator('#steps button').first.click()
+        page.locator('#loop-records details > summary').click()
         expect(page.locator('#loop-records')).to_contain_text('독립 판정')
+        expect(page.locator('#loop-records')).to_contain_text('cancelled')
+        assert page.locator('#brain-trace').count()==1
         browser.close()
 
 

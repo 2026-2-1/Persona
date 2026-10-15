@@ -363,6 +363,32 @@ def test_wizard_validates_and_preserves_inputs(local_dashboard):
         browser.close()
 
 
+def test_wizard_preserves_edits_before_initial_state_load(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        page.add_init_script("""
+            const originalFetch=window.fetch.bind(window);
+            let delayInitialState=true;
+            window.fetch=(input,init)=>{
+                const url=typeof input==='string'?input:input.url;
+                if(delayInitialState&&url.includes('/api/state')){
+                    delayInitialState=false;
+                    return new Promise((resolve,reject)=>setTimeout(
+                        ()=>originalFetch(input,init).then(resolve,reject),1000));
+                }
+                return originalFetch(input,init);
+            };
+        """)
+        page.goto(local_dashboard)
+        page.locator('#target-url').fill('https://shop.example.test')
+        page.locator('#task-input').fill('초기 로딩 중 입력한 과업')
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
+        expect(page.locator('#target-url')).to_have_value('https://shop.example.test')
+        expect(page.locator('#task-input')).to_have_value('초기 로딩 중 입력한 과업')
+        browser.close()
+
+
 def test_history_search_and_filter_reach_records_beyond_twelve(local_dashboard):
     with sync_playwright() as p:
         browser=p.chromium.launch()

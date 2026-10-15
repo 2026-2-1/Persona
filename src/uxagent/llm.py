@@ -172,14 +172,14 @@ class BudgetExceeded(RuntimeError): pass
 
 
 class BudgetManager:
-    def __init__(self, max_requests: int, max_tokens: int):
+    def __init__(self, max_requests: int | None, max_tokens: int | None):
         self.max_requests, self.max_tokens = max_requests, max_tokens
         self.requests = self.tokens = self.reserved_tokens = 0
         self.lock = threading.Lock()
 
     def reserve(self, estimated_tokens: int):
         with self.lock:
-            if self.requests >= self.max_requests or self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens:
+            if (self.max_requests is not None and self.requests >= self.max_requests) or (self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens):
                 raise BudgetExceeded("LLM request or token budget exhausted")
             self.requests += 1
             self.reserved_tokens += estimated_tokens
@@ -199,6 +199,8 @@ class MockProvider:
     model = "mock-v1"
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
         payload = json.loads(messages[-1]["content"])
+        if "Rate the importance of one memory" in messages[0]["content"]:
+            return json.dumps({"score":5,"reason":"Mock importance score for a saved memory."}),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "Summarize up to three brief insights" in messages[0]["content"]:
             ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed"][-2:]
             insights=[]
@@ -206,7 +208,7 @@ class MockProvider:
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         obs = payload["observation"]
         memories = payload.get("memories", [])
-        action_types = [m.get("action_type") for m in memories]
+        action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
         inputs = obs.get("input_elements", [])
         clicks = obs.get("clickable_elements", [])
         selects = obs.get("select_elements", [])

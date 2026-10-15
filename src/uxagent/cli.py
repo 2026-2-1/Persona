@@ -91,10 +91,10 @@ async def _batch(args):
         if line.strip(): personas.append(__import__("uxagent.schemas",fromlist=["Persona"]).Persona.model_validate_json(line))
     results=[];request_total=token_total=0
     study_config,_,_=load_study(args.study)
-    request_cap=study_config.max_llm_requests*len(personas)
-    token_cap=study_config.max_total_tokens*len(personas)
+    request_cap=study_config.max_llm_requests*len(personas) if study_config.max_llm_requests is not None else None
+    token_cap=study_config.max_total_tokens*len(personas) if study_config.max_total_tokens is not None else None
     for persona in personas:
-        if request_total>=request_cap or token_total>=token_cap:
+        if (request_cap is not None and request_total>=request_cap) or (token_cap is not None and token_total>=token_cap):
             results.append({"persona_id":persona.persona_id,"error":"batch_budget_exceeded"})
             continue
         try:

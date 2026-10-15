@@ -33,11 +33,18 @@ def test_runner_comparison_persists_actual_usage(tmp_path, monkeypatch, mode):
     from uxagent import runner
     from uxagent.experiments import run_comparison
     original = runner.MockProvider
+    providers = []
     class FakeProvider(original):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.attempted_calls = self.returned_calls = 0
+            providers.append(self)
         async def complete(self, *args, **kwargs):
+            self.attempted_calls += 1
             if mode == 'error':
                 raise RuntimeError('fake provider error')
             content, usage = await super().complete(*args, **kwargs)
+            self.returned_calls += 1
             if mode == 'missing':
                 usage.pop('input_tokens'); usage.pop('output_tokens')
             elif mode == 'partial':
@@ -56,16 +63,17 @@ def test_runner_comparison_persists_actual_usage(tmp_path, monkeypatch, mode):
     directory, result = asyncio.run(run_comparison(study, personas, output_root=tmp_path))
     saved = json.loads((directory / 'experiment.json').read_text(encoding='utf-8'))
     assert saved['groups'] == aggregate_sessions(saved['sessions'])
-    for session in saved['sessions']:
+    assert len(providers) == len(saved['sessions'])
+    for session, provider in zip(saved['sessions'], providers):
         group = saved['groups'][session['condition']]
-        assert session['llm_request_count'] == (2 if mode == 'error' else 1)
+        assert session['llm_request_count'] == provider.attempted_calls > 0
         assert group['llm_request_count'] == session['llm_request_count']
         assert group['requested'] == 1
         assert group['recording']['attempted'] == session['metrics']['recording']['attempted']
         assert session['llm_tokens_complete'] is (mode == 'zero')
         assert group['llm_tokens'] == (0 if mode == 'zero' else None)
         assert group['llm_tokens_known_total'] == (0 if mode == 'zero' else None)
-        assert group['input_tokens'] == (10 if mode == 'partial' else 0 if mode == 'zero' else None)
+        assert group['input_tokens'] == (10 * provider.returned_calls if mode == 'partial' else 0 if mode == 'zero' else None)
         assert group['output_tokens'] == (0 if mode == 'zero' else None)
 
 @pytest.mark.parametrize('records, requests', [([], 1), ([{'provider':'fake','input_tokens':True,'output_tokens':2}], 1), ([{'provider':'fake','input_tokens':-1,'output_tokens':float('inf')}], 1)])

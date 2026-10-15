@@ -1,6 +1,6 @@
 # 구조와 변경 영향
 
-`cli.py` 또는 `monitor.py` → `runner.run_study` → BrowserSession → observe → FastLoop → ActionExecutor → 새 observe와 evaluate → JSON/JSONL/PNG.
+`cli.py` 또는 `monitor.py` → `runner.run_study` → BrowserSession → observe → FastLoop(perception → plan → decision, 단계별 기억 저장/재검색) → ActionExecutor → 새 observe와 evaluate → JSON/JSONL/PNG. 비동기 중요도 산정은 별도 작업으로 생성되며 고수준 성찰·계획 검토 조율과 구분한다.
 
 2026-10-14 변경 논의: [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md)은 위 현재 구조와 신규 Brain 조율·단계별 생성·필수 비동기 Slow Loop를 대조한다. #39에서 단계 결과·비동기 작업·메모리 변경 사건의 기록 스키마를 정의했으며 `brain.py`와 해당 실행 동작은 아직 구현되지 않았다.
 
@@ -20,3 +20,5 @@
 새 기능은 관찰/행동/평가/분석/UI 중 책임을 정하고 작은 모듈을 추가한다. 동일 변경에 전체 구조 재작성을 포함하지 않는다. 새 계약은 기존 로그도 읽을 수 있게 버전과 기본값을 정의한다.
 
 Brain 로그의 읽기 경계는 `brain_trace.py`다. monitor가 선택 실행의 선택적 JSONL을 읽고 reports/dashboard가 같은 brain 자료를 소비한다. 이 경계는 원본 파일을 변경하거나 평가/사람 검토 상태를 생성하지 않는다. 생성기 schemas 버전과 구버전 소비는 [D 계약](tasks/d-brain-trace-viewer.md)을 따른다.
+
+연구용 전체 구조도와 구현/설계 구분은 [제출 초안](research/2026-10-15-project-submission-draft.md)에 있다. [상위 실험 계획](research/2026-10-15-slow-loop-experiment-plan.md)의 연구 manifest·유효성/소비 기록은 후속 설계이며 기존 일반/페르소나 비교 계약을 변경하지 않는다.

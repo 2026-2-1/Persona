@@ -6,7 +6,7 @@
 
 | 기록 | 버전·내용 | 현재 생성 여부 |
 |---|---|---|
-| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | importance 결과만 `brain_stages.jsonl`에 기록; 나머지는 후속 이슈 |
+| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | preview는 perception/plan/decision/importance를 `brain_stages.jsonl`에 기록; 성찰·계획 검토·Wonder의 새 생성 계약 연결은 후속 |
 | `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | importance 작업만 `brain_tasks.jsonl`에 기록; 나머지는 후속 이슈 |
 | `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
 | `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 제거·중요도 갱신 사건을 `memory_changes.jsonl`에 기록 |

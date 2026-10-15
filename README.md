@@ -73,10 +73,11 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 ## 개발 진입점
 
+- 연구·회의 자료: [실험 계획](docs/research/2026-10-15-slow-loop-experiment-plan.md), [회의 안건](docs/meetings/2026-10-15-research-and-data-agenda.md), [기업 데이터·시스템·Novelty 제출 초안](docs/research/2026-10-15-project-submission-draft.md). 기업 데이터는 사용자 확인 기준 미수령 0건이며 조건·목표 수량은 제안입니다.
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)
-- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마를 정의했으며 실제 두 루프 실행 흐름은 구현 전
+- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — preview에 Fast 단계·중요도 생성·기록 소비를 연결했으며 완전한 성찰/계획 검토 조율과 실제 채택은 후속입니다.
 - 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
 - 입출력·판정 기준: [계약](docs/contracts.md)
 - 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)

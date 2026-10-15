@@ -1,5 +1,7 @@
 # Persona / UXAgent Prototype
 
+현재 `codex/prototype-merge-prep-20261016`은 #81 + #31 협업 문서 + #58의 최신 Fast 호환을 검증하는 병합 준비본입니다. 원격 prototype 병합은 필수 승인 설정 변경에 대한 명시적 허용 대기 중이며 아직 수행하지 않았습니다. [병합 순서와 보류](docs/handoffs/2026-10-16-prototype-merge-queue.md)를 따릅니다.
+
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.
 
 이 브랜치 `codex/latest-pr-integration-20261015`는 최신 Brain 누적 PR #79와 #78 후속 수정, D 검토·내보내기와 C 측정 범위를 통합한 검토용 브랜치입니다. 전체 테스트 **403개**와 실제 무료 Mock·결함 시나리오를 확인했습니다. [통합 범위·재현·한계](docs/handoffs/2026-10-16-latest-pr-integration.md)를 먼저 읽으세요. prototype/main 병합, B의 실제 사이트 PR #58/#60/#62 검증은 별도입니다.

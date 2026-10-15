@@ -4,6 +4,9 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
+| [prototype squash 병합 준비](handoffs/2026-10-16-prototype-merge-queue.md) | 병합 순서·중복/충돌·보호 설정 허용 대기·준비본 검증 |
+| [계획 검토 폐기 진단](research/2026-10-16-plan-review-discard-diagnosis.md) | 실제 호출 순서·0/2 재현·2/2 대조·입력 도달·후속 정책 |
+| [제출 3항목과 긴급 결정](research/2026-10-16-submission-decision-brief.md) | 데이터 0건·시스템·논문 기여 후보·회의 우선순위 |
 | [최신 PR 통합 검증](handoffs/2026-10-16-latest-pr-integration.md) | #79 + #78 후속 + D/C 통합·403개 검사·실제 화면/네 형식 출력·남은 범위 |
 | [10/15 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 통합 전 원격 #66/#71~#79 구현·preview 차이·분기 확인 이력 |
 | [연구·데이터 회의 안건](meetings/2026-10-15-research-and-data-agenda.md) | Slow 정의·실험 조건·데이터·Novelty·담당/기한 결정표 |

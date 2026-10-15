@@ -279,10 +279,12 @@ def test_detail_and_report_label_wonder_as_generated_assumption(tmp_path):
     (run_dir / "summary.json").write_text('{"run_id":"wonder-run","verification":"unknown"}', encoding="utf-8")
     (run_dir / "brain_stages.jsonl").write_text(json.dumps({
         "record_id": "stage-wonder-1", "stage": "wonder",
+        "run_id": "wonder-run",
         "text": "가정된 생각: 오늘은 차를 마셔 볼까?",
     }, ensure_ascii=False) + "\n", encoding="utf-8")
     (run_dir / "memory.jsonl").write_text(json.dumps({
         "memory_id": "m-wonder-1", "kind": "wonder", "source_stage_record_id": "stage-wonder-1",
+        "run_id": "wonder-run",
         "content_status": "generated",
     }) + "\n", encoding="utf-8")
     dashboard = Dashboard(tmp_path / "runs", tmp_path / "personas", root / "configs/study.json")

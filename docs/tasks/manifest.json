@@ -142,5 +142,14 @@
     "path": "docs/tasks/45-persona-wonder.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/45",
     "issue_number": 45
+  },
+  {
+    "slug": "46-loop-provider-budget",
+    "title": "[phase:1] 두 루프 LLM 제공자·예산·비교 조건 호환",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/46-loop-provider-budget.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/46",
+    "issue_number": 46
   }
 ]

@@ -11,7 +11,7 @@ from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
 from .evaluator import evaluate
-from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded
+from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
 from .fast_loop import FastLoop
 from .brain import Brain
 from .memory import MemoryStore
@@ -37,6 +37,27 @@ def load_study(path: str | Path):
     return config,persona,path
 
 
+def model_routes(provider_name: str, model: str):
+    generator = "gemini" if provider_name == "jev" else "openai" if provider_name == "live" else provider_for_model(model, provider_name)
+    routes = {stage: {"provider": generator, "model": model} for stage in
+              ("perception", "plan", "decision", "reflection", "plan_review", "wonder")}
+    if provider_name == "jev":
+        routes["decision"] = {"provider": "typesafe", "model": "jev-latest"}
+        routes["decision_choice"] = routes["decision"]
+        routes["decision_fallback"] = {"provider": "gemini", "model": model}
+    return routes
+
+
+def validate_provider_configuration(provider_name: str, config: StudyConfig):
+    if provider_name == "jev":
+        if not os.environ.get("TYPESAFE_API_KEY"):
+            raise ValueError("Jev requires a TypeSafe API key before execution")
+        if not os.environ.get("GEMINI_API_KEY"):
+            raise ValueError("Jev requires a Gemini API key for every generation stage")
+    if config.embedding_model and provider_name not in {"mock", "live"}:
+        raise ValueError("This provider does not support the configured embedding model")
+
+
 class FixtureServer:
     def __init__(self, port=8000, host="127.0.0.1"): self.port=port; self.host=host; self.server=None; self.thread=None
     def start(self):
@@ -59,6 +80,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     load_env_file()
     config,persona,config_path=load_study(study_path)
     model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
+    validate_provider_configuration(provider_name, config)
+    routes = model_routes(provider_name, model)
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
     if not isinstance(run_id,str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
@@ -70,7 +93,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     now=datetime.now(timezone.utc).isoformat()
     wonder_seed=config.wonder_seed if config.wonder_seed is not None else secrets.randbits(63)
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"brain-3","condition":persona_mode,"wonder_seed":wonder_seed if config.enable_wonder else None})
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"model_routes":routes,"prompt_version":"brain-3","condition":persona_mode,"wonder_seed":wonder_seed if config.enable_wonder else None})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
     brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl");wonder_draw_writer=JsonlWriter(run_dir/"wonder_draws.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None;brain=None
@@ -80,7 +103,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         nonlocal llm_elapsed_total
         llm_elapsed_total+=int(record.get("elapsed_ms",0) or 0)
         if "provider" not in record:
-            record["provider"]="gemini" if str(record.get("model","")).startswith("gemini-") else "typesafe" if str(record.get("model","")).startswith("jev-") else "mock" if record.get("model")=="mock-v1" else "claude" if str(record.get("model","")).startswith("claude-") else "openai"
+            record["provider"]=provider_for_model(record.get("model"))
         if "estimated_cost_usd" not in record:
             from .llm import estimate_cost_usd
             record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"),model=record.get("model"))
@@ -117,7 +140,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                      "recorded_at":datetime.now(timezone.utc).isoformat(),
                      "memory_ids":memory_ids or [],"verification":"unknown",
                      "evaluation":{"verification":"unknown","reason":"not_evaluated","feature_checks":[]},
-                     "error":{"code":code,"message":message}})
+                     "error":{"code":code,"message":message,
+                              **({"budget_reason":budget.last_exceeded_reason} if code=="budget_exceeded" else {})}})
     def stop_requested():
         return stop_file is not None and Path(stop_file).is_file()
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
@@ -331,7 +355,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     brain_summary=brain.summary() if brain else {"status":"incomplete","fast":{},"slow":{"status":"not_started","events":{}},"adoption":{}}
     summary={"run_id":run_id,"termination_reason":termination,"verification":verification,"evaluator":evaluation if 'evaluation' in locals() else {"verification":"unknown"},
              "steps":step_count,"action_attempts":action_attempts,"action_successes":action_successes,"llm_request_count":budget.requests,
-             "llm_tokens":budget.tokens,"cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
+             "llm_tokens":budget.tokens,"budget":budget.snapshot(),"model_routes":routes,
+             "limits":{"max_steps":config.max_steps,"run_timeout_seconds":config.run_timeout_seconds},
+             "cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
              "provider_usage":provider_usage,"elapsed_ms":elapsed,"llm_ms":llm_elapsed_total,"back_count":back_count,"error_counts":error_counts,"last_error":previous_error,
              "provider":provider_name,"model":model,"condition":persona_mode,"brain_status":brain_summary["status"],"brain":brain_summary,"slow_loop_status":slow.status if slow else "not_started","importance_scoring_status":"fixed_equal_5","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
     from .metrics import run_metrics

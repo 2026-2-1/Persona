@@ -24,6 +24,10 @@ Slow는 실행별 단일 worker, 사용자 결정에 따른 무제한 대기열�
 
 요청 수와 총토큰 예산은 기본 `null`로 제한하지 않는다. 양의 정수를 지정하면 기존 예산 검사를 적용한다. 실행 시간·최대 행동 단계·요청별 출력 토큰 상한은 별도로 유지한다.
 
+#46에서 `run.json`의 `model_routes`는 설정된 단계별 제공자/모델 경로이고, `llm_calls.jsonl`의 `provider`·`model`은 각 실제 호출의 응답 또는 시도 대상이다. Jev의 `decision_choice`는 TypeSafe `jev-latest`, perception·plan·decision fallback·reflection·plan_review·Wonder는 선택한 Gemini 모델이다. 실패·취소·재시도 시도도 별도 호출 행으로 남긴다. 비용 단가/사용량을 알 수 없는 행과 이를 포함한 실행 총비용은 `null`이다. `summary.json`의 `budget`에는 요청·토큰 사용량, 설정 한도, 마지막 한도 초과 종류(`request_limit` 또는 `token_limit`)를 기록한다. `limits`에는 행동·실행 시간 상한을 기록한다. 예산 때문에 실행하지 못한 단계는 `steps.jsonl`의 `error.budget_reason`으로 구분한다.
+
+Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현재 mock/OpenAI에서만 제공한다. 미지원 조합은 run 폴더와 비교 세션 생성 전에 거부한다. 일반 AI 비교 조건에는 독립 실행별 기억을 사용하고, Fast/Slow 생성 입력의 persona 배경·선호·숙련도를 제외한다. Wonder에는 일반 조건 공통 제약만 전달한다.
+
 생성된 단계 기록은 `content_status=generated`만 허용한다. 행동 결정의 `action`/`finish`는 제안이며 실행 결과는 기존 `ActionResult`, 성공 판정은 evaluator, 사람 검토는 별도 기록이다. 기존 `steps.jsonl`·`memory.jsonl` 소비자는 새 선택 필드와 구버전 누락 필드를 허용한다. 출처 ID의 실제 존재 확인과 작업 상태 전이 검사는 이후 조율 코드에서 수행한다.
 
 #44 runner에서는 `observe()`의 JSON/PNG 저장과 registry 발행 뒤 Brain을 호출한다. 실제 행동 차례에는 `decision`의 제안, `action`·`result`의 실행, 새 `next_observation_id`, `evaluation`·`verification`의 독립 판정을 단계별로 기록한다. `finish`/`give_up`은 `action`·`result`가 null이고 현재 화면의 평가 결과를 별도로 기록한다. 평가하지 못한 모델·예산·시간 오류는 `unknown`이며, 행동 뒤 관찰 실패는 실행 결과를 보존하고 `post_observation_error`와 `unknown`을 남긴다. 초기 화면의 성공 조건은 Brain 전에 실행을 종료시키지 않는다.

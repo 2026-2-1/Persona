@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 
-from .llm import BudgetExceeded, estimate_cost_usd
+from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
 from .schemas import Action, AgentDecision, Finish
 
 
@@ -98,27 +98,44 @@ class FastLoop:
                 actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
                 self.budget.settle(reservation, actual)
                 settled = True
+                actual_model = usage.get("model", self.model)
+                actual_provider = usage.get("provider") or provider_for_model(actual_model, self._provider_name())
                 if self.call_log:
                     self.call_log({"module": "fast", "stage": stage,
-                        "provider": self._provider_name(), "model": usage.get("model", self.model),
+                        "provider": actual_provider, "model": actual_model,
                         "elapsed_ms": int((time.monotonic() - started) * 1000),
                         "input_tokens": input_tokens, "output_tokens": output_tokens,
                         "estimated": actual is None,
                         "fallback_reason": payload.get("fallback_reason"),
-                        "estimated_cost_usd": estimate_cost_usd(self._provider_name(), input_tokens,
-                                                                 output_tokens, model=self.model)})
+                        "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
+                                                                 output_tokens, model=actual_model)})
                 result = json.loads(response)
                 if not isinstance(result, dict):
                     raise ValueError("stage response must be a JSON object")
                 self._validate_stage_output(stage, result)
                 return result
-            except (BudgetExceeded, asyncio.CancelledError):
+            except (BudgetExceeded, asyncio.CancelledError) as exc:
                 if not settled:
                     self.budget.settle(reservation, None)
+                    if self.call_log:
+                        self.call_log({"module": "fast", "stage": stage,
+                            "provider": self._provider_name(), "model": self.model,
+                            "elapsed_ms": int((time.monotonic() - started) * 1000),
+                            "input_tokens": None, "output_tokens": None,
+                            "estimated": True, "estimated_cost_usd": None,
+                            "error": type(exc).__name__, "fallback_reason": payload.get("fallback_reason")})
                 raise
             except Exception as exc:
                 if not settled:
                     self.budget.settle(reservation, None)
+                    if self.call_log:
+                        self.call_log({"module": "fast", "stage": stage,
+                            "provider": self._provider_name(), "model": self.model,
+                            "elapsed_ms": int((time.monotonic() - started) * 1000),
+                            "input_tokens": None, "output_tokens": None,
+                            "estimated": True, "estimated_cost_usd": None,
+                            "error": type(exc).__name__,
+                            "fallback_reason": payload.get("fallback_reason")})
                 message = str(exc)
                 transient = "provider_transient" in message or any(
                     f"provider_http_{code}" in message for code in ("429", "500", "502", "503", "504"))

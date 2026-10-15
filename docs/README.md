@@ -25,6 +25,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [Brain 두 루프 조율](tasks/43-brain-coordination.md) | #43 실행별 Fast/Slow 조율, 결과 채택·stale 폐기·종료 취소 |
 | [Runner 관찰·실행·독립 평가](tasks/44-runner-evaluation-flow.md) | #44 관찰·Brain·행동·재관찰·평가 순서와 종료 선언 판정 |
 | [Persona 기반 1% Wonder](tasks/45-persona-wonder.md) | #45 Slow 작업별 추첨, 별도 생성, 기록·표시 |
+| [두 루프 제공자·예산·비교 호환](tasks/46-loop-provider-budget.md) | #46 실제 호출 모델·비용·한도와 Jev/일반 조건 계약 |
 | [통합 기획](2026-10-09-persona-product-plan.md) | 제품·화면·기술 실험·출처에 대한 검토용 초안 |
 | [과거 명세](reference/legacy-plan/agent.md) | 초기 구현 설계; 현재 완료 상태의 기준이 아님 |
 | [과거 검증](reference/validation-2026-10-08.md) | 이전 macOS mock 검증 기록 |

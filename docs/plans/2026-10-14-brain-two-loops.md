@@ -187,7 +187,7 @@ Fast의 perception·planning·decision을 별도 요청으로 하면 행동 차�
 
 현재 기본값은 `max_steps=30`이고, 사용자의 임시 결정에 따라 `max_llm_requests`와 `max_total_tokens`는 `null`(총량 제한 없음)이다. 두 값에 양의 정수를 지정하면 기존 예산 검사를 적용한다. 실행 시간과 요청별 출력 토큰 상한은 남아 있다. 실제 호출 수와 비용은 계속 기록하며, 비용을 확인할 수 없으면 0으로 표시하지 않는다.
 
-Jev는 행동 후보 분류용이다. 현재 `_decision()`의 perception·plan은 정형 문구이고, 빈 입력을 생성할 때는 Gemini fallback을 쓴다. 새 설계의 perception·planning·reflection·plan review·Wonder에는 생성 모델이 필요하다. Jev를 지원하려면 생성 단계는 Gemini 등의 제공자, 행동 선택은 Jev로 나누고 단계 우회 없이 실제 호출 모델을 기록해야 한다.
+Jev는 행동 후보 분류용이다. #46에서 perception·planning·reflection·plan review·Wonder와 decision fallback에는 선택한 Gemini 모델을 배정하고, Jev의 후보 선택과 구분해 호출별 실제 provider/model을 기록한다. 선택한 모델의 계정별 접근 가능 여부는 실제 API 연결로 별도 확인해야 한다.
 
 일반/페르소나 비교는 두 조건에 각각 독립 Brain과 메모리를 둔다. 일반 조건 Fast/Slow에는 persona 배경·선호를 전달하지 않고 constraints/intent만 전달한다. 비교는 여전히 mock 기반일 때 시스템 흐름 검사이며 실제 persona 효과의 증거가 아니다.
 
@@ -201,7 +201,7 @@ Jev는 행동 후보 분류용이다. 현재 `_decision()`의 perception·plan�
 | 점수 | 신규 중요도 5 고정 / I·Q·R 임시 동일 가중 / 중요도 동점은 생성 순번으로 제거 | 단계별 검색 가중치와 고정 점수 정책 재검토는 후속 논의 |
 | Slow 예약 | perception 후 성찰, plan 후 검토. 순차 실행, 대기열 상한 없음, 종료 시 활성·대기 작업 취소 | #43에서 구현 완료 |
 | Wonder | persona-only, Slow 호출당 1% | 실제 작업당 추첨 제안 채택 여부, 단독 메모리의 검색 영향 |
-| 제공자 | 생성 단계와 행동 선택을 구분 | 단계별 모델과 Jev 분기 계약 |
+| 제공자 | #46: 생성 단계의 Gemini와 Jev 후보 선택을 구분해 기록 | 실제 유료 API 모델 접근·비용은 별도 검증 |
 | 로그 호환 | 기존 원자료 근거 보존 | 새 메모리 종류/점수 갱신·제거 이벤트, schema/prompt 버전 |
 
 주의가 필요한 두 지점은 명확하다. **비동기 작업의 즉시 사용은 보장할 수 없으므로 기다리지 않고 이후 반영한다. Brain이 결정만 반환한 시점에는 실제 과업 성공을 확인할 수 없으므로 executor 실행·재관찰 뒤 판정한다.** 이 두 보정은 사용자의 답변에 반영된 방향이다.

@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit, parse_qs
 
 from .security import normalize_origin
 from .llm import load_env_file, BudgetExceeded
-from .runner import load_study
+from .runner import load_study, validate_provider_configuration
 from .schemas import Persona, StudyConfig
 from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
@@ -408,6 +408,7 @@ class Dashboard:
                         "live": ("OPENAI_API_KEY",), "claude": ("ANTHROPIC_API_KEY",)}.get(provider, ())
             if any(not os.environ.get(name) for name in required):
                 raise ValueError(f"{provider} 실행에 필요한 API 키가 .env에 없습니다")
+            validate_provider_configuration(provider, config)
         with self.job_lock:
             if self.guide_busy or (self.job and self.job["process"].poll() is None):
                 raise RuntimeError("another dashboard job or guide request is already running")

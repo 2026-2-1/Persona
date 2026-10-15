@@ -8,7 +8,7 @@ import uuid
 from collections import deque
 from datetime import datetime, timezone
 
-from .llm import BudgetExceeded
+from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
 from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord
 from .setup_guide import _check_sensitive
 
@@ -127,10 +127,6 @@ class SlowLoop:
                 self._event(item, "failed", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, reason_code=reason)
                 self._refresh_status()
-                if self.call_log:
-                    self.call_log({"module": "slow", "stage": item["kind"],
-                                   "model": self.model, "task_id": item["task_id"],
-                                   "elapsed_ms": 0, "error": type(exc).__name__})
 
     def _maybe_schedule_wonder(self, parent, snapshot_seq):
         if not self.wonder_enabled:
@@ -202,10 +198,6 @@ class SlowLoop:
         except Exception as exc:
             reason = "wonder_timeout" if isinstance(exc, TimeoutError) else "wonder_call_failed"
             self._event(item, "failed", snapshot_seq=snapshot_seq, reason_code=reason)
-            if self.call_log:
-                self.call_log({"module": "slow", "stage": "wonder", "model": self.model,
-                               "task_id": item["task_id"], "elapsed_ms": 0,
-                               "error": type(exc).__name__})
         finally:
             self._refresh_status()
 
@@ -226,19 +218,31 @@ class SlowLoop:
             self.budget.settle(reservation, actual)
             settled = True
             actual_model = usage.get("model", self.model)
+            actual_provider = usage.get("provider") or provider_for_model(actual_model)
             if self.call_log:
-                self.call_log({"module": "slow", "stage": stage, "model": actual_model,
+                self.call_log({"module": "slow", "stage": stage, "provider": actual_provider,
+                               "model": actual_model,
                                "task_id": item["task_id"],
                                "elapsed_ms": int((time.monotonic() - started) * 1000),
                                "input_tokens": input_tokens, "output_tokens": output_tokens,
-                               "estimated": actual is None})
+                               "estimated": actual is None,
+                               "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
+                                                                        output_tokens, model=actual_model)})
             parsed = json.loads(result)
             if not isinstance(parsed, dict):
                 raise ValueError("Slow Loop response must be a JSON object")
             return parsed
-        except BaseException:
+        except BaseException as exc:
             if not settled:
                 self.budget.settle(reservation, None)
+                if self.call_log:
+                    self.call_log({"module": "slow", "stage": stage,
+                                   "provider": provider_for_model(self.model), "model": self.model,
+                                   "task_id": item["task_id"],
+                                   "elapsed_ms": int((time.monotonic() - started) * 1000),
+                                   "input_tokens": None, "output_tokens": None,
+                                   "estimated": True, "estimated_cost_usd": None,
+                                   "error": type(exc).__name__})
             raise
 
     async def _reflect(self, item, snapshot, snapshot_seq):

@@ -13,7 +13,7 @@ from .schemas import Persona
 from .storage import write_json
 
 
-async def run_comparison(study_path, personas_path, provider_name='mock', repetitions=1, output_root='runs'):
+async def run_comparison(study_path, personas_path, provider_name='mock', repetitions=1, output_root='runs', *, stop_file=None):
     if repetitions not in (1, 2, 3):
         raise ValueError('repetitions must be between 1 and 3')
     config, _, _ = load_study(study_path)
@@ -44,14 +44,17 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
     save()
     by_id = {p.persona_id: p for p in personas}
     for session in sessions:
+        if stop_file is not None and Path(stop_file).is_file():
+            break
         session['status'] = 'running'
         save()
         try:
-            run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'])
+            stop_kwargs={'stop_file':stop_file} if stop_file is not None else {}
+            run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'], **stop_kwargs)
             session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost')})
             session['run_dir'] = str(run_dir.resolve())
             reason = summary.get('termination_reason')
-            session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason == 'interrupted' else 'completed'
+            session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason in ('interrupted', 'cancelled') else 'completed'
             if session['status'] == 'error': result['system_errors'] += 1
         except (KeyboardInterrupt, asyncio.CancelledError):
             session.update(status="cancelled", verification="unknown", termination_reason="interrupted")

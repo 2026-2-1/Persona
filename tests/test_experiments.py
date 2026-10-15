@@ -45,6 +45,27 @@ def test_cancelled_comparison_keeps_unstarted_sessions(tmp_path):
     assert sum(group['requested'] for group in result['groups'].values()) == 2
 
 
+def test_cooperative_stop_keeps_remaining_comparison_session_unstarted(tmp_path):
+    personas = tmp_path / 'personas.jsonl'
+    personas.write_text(Path('configs/persona.json').read_text(encoding='utf-8').replace('\n', '') + '\n', encoding='utf-8')
+    stop_file = tmp_path / 'stop.request'
+    started = []
+
+    async def stop_after_first(study, provider, persona, headed, output, *, persona_mode, run_id_override, stop_file):
+        started.append(run_id_override)
+        Path(stop_file).touch()
+        return Path(output) / run_id_override, {'run_id': run_id_override, 'verification': 'unknown',
+                'termination_reason': 'cancelled', 'action_attempts': 1, 'elapsed_ms': 20, 'cost': None}
+
+    with patch('uxagent.experiments.run_study', stop_after_first):
+        directory, result = asyncio.run(run_comparison('configs/study.json', personas,
+                                                         output_root=tmp_path, stop_file=stop_file))
+    assert len(started) == 1
+    assert sorted(s['status'] for s in result['sessions']) == ['cancelled', 'not_started']
+    assert result['finished_at']
+    assert (directory / 'experiment.json').is_file()
+
+
 def test_runner_preserves_action_when_post_observation_fails(tmp_path):
     from uxagent import runner
     study = tmp_path / 'study.json'

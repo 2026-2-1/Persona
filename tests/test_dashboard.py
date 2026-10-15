@@ -49,6 +49,21 @@ def test_batch_snapshot_resolves_persona_after_relocation(dashboard):
     assert d._job_state()["status"] == "running"  # Starting a job must not deadlock.
 
 
+def test_stop_batch_waits_for_runner_to_preserve_current_step(dashboard):
+    d, process, commands = dashboard
+    d.start_job("batch")
+    stop_file = Path(commands[-1][commands[-1].index("--stop-file") + 1])
+    assert not stop_file.exists()
+
+    state = d.stop_job()
+
+    assert stop_file.is_file()
+    assert process.poll() is None
+    assert state["status"] == "stopping"
+    process.returncode = 0
+    assert d._job_state()["status"] == "cancelled"
+
+
 def test_generation_uses_form_input_and_avoids_unrelated_old_run(dashboard):
     d, process, commands = dashboard
     old = d.runs_dir / "old-run"

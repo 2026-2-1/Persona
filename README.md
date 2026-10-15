@@ -69,6 +69,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)
 - Brain·두 루프: 실행마다 Fast·Slow를 조율하며, Slow가 완료된 결과만 단계 경계에서 검증 후 채택합니다. 작업 대기열은 제한하지 않고 종료 시 남은 작업을 취소합니다. [설계 초안](docs/plans/2026-10-14-brain-two-loops.md)과 [#43 작업](docs/tasks/43-brain-coordination.md)을 참고하세요.
+- Runner·독립 평가: 관찰 기록 뒤 Brain을 호출하고, 행동 뒤 재관찰 또는 종료 선언 시 별도로 성공 조건을 검사합니다. 대시보드 중지는 현재 행동의 결과를 기록한 뒤 완료됩니다. [#44 작업](docs/tasks/44-runner-evaluation-flow.md)을 참고하세요.
 - 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
 - 입출력·판정 기준: [계약](docs/contracts.md)
 - 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)

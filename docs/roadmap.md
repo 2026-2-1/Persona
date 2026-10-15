@@ -30,7 +30,9 @@
 
 ## 후속 단계
 
-2026-10-15: #42에서 perception 뒤 성찰과 plan 뒤 검토를 예약했고, #43에서 실행별 Brain이 Fast/Slow를 조율한다. Slow는 단일 worker·무제한 대기열이며 요청/토큰 기본 한도는 무제한이다. 완료 reflection은 다음 단계에서 채택하고 plan review는 동일 관찰·계획 버전 decision에만 채택한다. 실행 종료 때 미완료 작업은 취소한다. persona-only Wonder와 메모리 검색 가중치 재검토는 후속 작업이다. [설계 초안](plans/2026-10-14-brain-two-loops.md)과 [#43 작업](tasks/43-brain-coordination.md)을 따른다.
+2026-10-15: #42에서 perception 뒤 성찰과 plan 뒤 검토를 예약했고, #43에서 실행별 Brain이 Fast/Slow를 조율한다. Slow는 단일 worker·무제한 대기열이며 요청/토큰 기본 한도는 무제한이다. 완료 reflection은 다음 단계에서 채택하고 plan review는 동일 관찰·계획 버전 decision에만 채택한다. 실행 종료 때 미완료 작업은 취소한다. 메모리 검색 가중치 재검토는 후속 작업이다. [설계 초안](plans/2026-10-14-brain-two-loops.md)과 [#43 작업](tasks/43-brain-coordination.md)을 따른다.
+
+2026-10-15: #45에서 시작된 Slow 작업당 기본 1% Wonder 추첨과 별도 persona 입력 생성, seed·상태 기록, 생성 가정 표시를 연결했다. [#45 작업](tasks/45-persona-wonder.md)에 입력 범위와 제한을 기록한다.
 
 2026-10-15: #44에서 runner의 초기 평가 조기 종료를 제거하고 관찰 → Brain → ActionExecutor → 재관찰 → 독립 평가 순서로 연결했다. `finish` 선언도 현재 화면을 따로 평가한다. 대시보드의 일괄·비교 중지는 진행 중인 행동의 기록을 마친 뒤 취소하고 남은 세션을 시작하지 않는다. [#44 작업](tasks/44-runner-evaluation-flow.md)에 검증 범위와 제한을 기록한다.
 

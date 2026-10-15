@@ -31,7 +31,7 @@ class Brain:
         self.fast_counts = {stage: {key: 0 for key in
                            ("scheduled", "started", "completed", "failed", "skipped", "cancelled")}
                            for stage in self.STAGES}
-        self.adoption_counts = {"reflection": 0, "plan_review": 0, "discarded": 0}
+        self.adoption_counts = {"reflection": 0, "plan_review": 0, "wonder": 0, "discarded": 0}
 
     def begin_stage(self, stage, observation_id, *, plan_id=None, plan_version=None):
         if stage not in self.STAGES:
@@ -139,11 +139,14 @@ class Brain:
             if valid:
                 for output in result["outputs"]:
                     if output["kind"] in {"reflection", "wonder"}:
+                        if output["kind"] == "wonder" and not self.memory.can_append_wonder():
+                            continue
                         entry = self._append_output(output, result["snapshot_seq"])
-                        adopted_memories.append(entry.model_dump())
+                        if output["kind"] != "wonder":
+                            adopted_memories.append(entry.model_dump())
                         adopted_outputs.append(output)
                 adopted = bool(adopted_outputs)
-                reason = None if adopted else "no_usable_output"
+                reason = None if adopted else "memory_capacity" if result["kind"] == "wonder" and result["outputs"] else "no_usable_output"
             else:
                 adopted, reason = False, "stale_context"
             self.slow.record_consumption(result, adopted=adopted, reason_code=reason)

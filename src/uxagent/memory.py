@@ -41,14 +41,14 @@ class MemoryStore:
 
     def _enforce_active_limit(self):
         while len(self.entries) > self.max_active_memories:
-            protected_ids = {entry.memory_id for entry in self.entries[-10:]}
+            protected_ids = {entry.memory_id for entry in self.entries[-10:] if entry.kind != "wonder"}
             eligible = [entry for entry in self.entries if entry.memory_id not in protected_ids]
 
             def retention_key(entry):
                 if entry.importance is None:
-                    return (False, 0.0, entry.seq)
+                    return (entry.kind != "wonder", False, 0.0, entry.seq)
                 maximum = 5 if entry.schema_version == "1.0" else 10
-                return (True, entry.importance / maximum, entry.seq)
+                return (entry.kind != "wonder", True, entry.importance / maximum, entry.seq)
 
             ranked = sorted(eligible, key=retention_key)
             victim = ranked[0]
@@ -65,12 +65,16 @@ class MemoryStore:
                 memory_id=victim.memory_id, memory_seq=victim.seq, change="evicted",
                 importance_before=victim.importance if victim.schema_version == "2.0" else None,
                 retention_score=retention_score,
-                reason_code="active_capacity_importance_then_recency",
+                reason_code="wonder_lower_priority" if victim.kind == "wonder" else "active_capacity_importance_then_recency",
                 recorded_at=datetime.now(timezone.utc),
             )
             if self.change_writer: self.change_writer.write(event.model_dump())
             self.entries.remove(victim)
             self.embedding_cache.pop(victim.memory_id, None)
+
+    def can_append_wonder(self):
+        return len(self.entries) < self.max_active_memories or any(
+            entry.kind == "wonder" for entry in self.entries)
 
     def update_importance(self, memory_id: str, importance: int, source_stage_record_id: str):
         raise RuntimeError(f"importance scores are fixed at {FIXED_IMPORTANCE}; score updates are disabled")

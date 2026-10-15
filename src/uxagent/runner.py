@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio, hashlib, json, os, socket, threading, time, uuid
+import asyncio, hashlib, json, os, secrets, socket, threading, time, uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -68,10 +68,11 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     server_started=server.start() if server else False
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
+    wonder_seed=config.wonder_seed if config.wonder_seed is not None else secrets.randbits(63)
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"brain-3","condition":persona_mode})
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"brain-3","condition":persona_mode,"wonder_seed":wonder_seed if config.enable_wonder else None})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
-    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl")
+    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl");wonder_draw_writer=JsonlWriter(run_dir/"wonder_draws.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None;brain=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
     llm_elapsed_total=0
@@ -123,7 +124,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
-                  memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True)
+                  memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True,
+                  wonder_enabled=config.enable_wonder,wonder_seed=wonder_seed,
+                  wonder_draw_writer=wonder_draw_writer)
     brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer)
     evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
     actual_headed=config.headed if headed is None else headed
@@ -195,7 +198,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                             [observation.observation_id],"generated",source_memory_ids=perception_sources,
                             source_stage_record_id=perception_record.record_id)
                         brain.schedule_reflection(config.task,observation.observation_id,
-                                                  error=previous_error,wonder=config.enable_wonder)
+                                                  error=previous_error)
                         plan_boundary=brain.begin_stage("plan",observation.observation_id)
                         if config.embedding_model:
                             plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
@@ -335,5 +338,5 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
-    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close()
+    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close();wonder_draw_writer.close()
     return run_dir,summary

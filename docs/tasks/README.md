@@ -19,5 +19,6 @@
 | 42 | [[phase:1] Slow Loop 성찰·계획 검토](42-slow-reflection-review.md) | [#42](https://github.com/2026-2-1/Persona/issues/42) | phase:1 |
 | 43 | [[phase:1] Brain 모듈 신설과 두 루프 비동기 조율](43-brain-coordination.md) | [#43](https://github.com/2026-2-1/Persona/issues/43) | phase:1 |
 | 44 | [[phase:1] Runner 관찰·Brain·실행·독립 평가 흐름 연결](44-runner-evaluation-flow.md) | [#44](https://github.com/2026-2-1/Persona/issues/44) | phase:1 |
+| 45 | [[phase:1] Persona 기반 1% Wonder](45-persona-wonder.md) | [#45](https://github.com/2026-2-1/Persona/issues/45) | phase:1 |
 
 - [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.

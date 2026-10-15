@@ -73,6 +73,7 @@ def build_cards(detail):
 def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
+                   "wonder":detail.get("wonder",{}),
                    "cards":detail.get("cards",build_cards(detail)),
                    "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "AI가 제안한 미검토 후보입니다. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
@@ -89,6 +90,12 @@ def export_report(detail, kind):
     lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    thoughts=(safe.get("wonder") or {}).get("thoughts",[])
+    if thoughts:
+        lines.extend(["", "## AI가 생성한 가정된 생각", "",
+                      "실제 사용자 기억이나 검증된 선호가 아닙니다. 1%는 실제 시작된 Slow 작업당 실험 추첨률이며 인간 행동 확률이 아닙니다."])
+        lines.extend(f"- {thought.get('text','')} (기억 저장: {'예' if thought.get('stored') else '아니요'})"
+                     for thought in thoughts)
     if not safe["cards"]:
         lines.extend(["", "문제 후보가 없습니다. 사이트에 문제가 없다는 뜻은 아닙니다."])
     for card in safe["cards"]:

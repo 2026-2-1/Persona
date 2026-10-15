@@ -59,7 +59,8 @@ class StudyConfig(StrictModel):
     max_observation_elements: int = Field(default=100, gt=0)
     screenshot_input: Literal[False] = False
     enable_slow_loop: bool = Field(default=True, description="Legacy field; Slow Loop is always enabled.")
-    enable_wonder: bool = False
+    enable_wonder: bool = True
+    wonder_seed: int | None = Field(default=None, ge=0, le=2**63-1)
     reflection_every_actions: int = Field(default=5, gt=0)
     memory_limit: int = Field(default=8, gt=0)
     max_active_memories: int = Field(default=64, ge=10, le=64)
@@ -298,6 +299,31 @@ class BrainTaskEvent(StrictModel):
             raise ValueError(f"{self.status} must not have reason_code")
         if self.status not in ("completed", "adopted", "discarded") and self.output_record_ids:
             raise ValueError("only completed or consumed tasks may reference output records")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
+class WonderDrawRecord(StrictModel):
+    """One reproducible draw for a Slow task that actually started."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    run_id: str = Field(min_length=1)
+    seed: int = Field(ge=0, le=2**63-1)
+    draw_index: int = Field(ge=1)
+    parent_task_id: str = Field(min_length=1)
+    parent_kind: Literal["reflection", "plan_review"]
+    roll: float = Field(ge=0, lt=1)
+    selected: bool
+    wonder_task_id: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_draw(self):
+        if self.selected != (self.roll < 0.01):
+            raise ValueError("Wonder selection must use the fixed 1% threshold")
+        if self.selected != (self.wonder_task_id is not None):
+            raise ValueError("Only selected draws have a Wonder task ID")
         if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
             raise ValueError("recorded_at must include a time zone")
         return self

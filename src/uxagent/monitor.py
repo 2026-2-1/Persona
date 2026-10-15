@@ -223,6 +223,10 @@ class Dashboard:
         folder = self._run_folder(run_id)
         if folder is None:
             return None
+        stages = _jsonl_file(folder / "brain_stages.jsonl")
+        memories = _jsonl_file(folder / "memory.jsonl")
+        stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
+                            if entry.get("kind") == "wonder"}
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -238,6 +242,16 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "wonder": {
+                "draws": _jsonl_file(folder / "wonder_draws.jsonl"),
+                "thoughts": [{"task_id": record.get("task_id"),
+                              "record_id": record.get("record_id"),
+                              "text": record.get("text"),
+                              "stored": record.get("record_id") in stored_stage_ids,
+                              "source_type": "generated_assumption"}
+                             for record in stages if record.get("stage") == "wonder"],
+                "probability_unit": "started_slow_task",
+            },
             "observations": observations,
         }
         from .metrics import run_metrics

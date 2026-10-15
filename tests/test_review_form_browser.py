@@ -313,3 +313,62 @@ def test_round_trip_ignores_inflight_detail_from_previous_selection(review_dashb
         page.locator('#tab-board').click()
         expect(page.locator('.review-form').first.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
         browser.close()
+
+
+def test_history_versions_save_reload_and_expansion(review_dashboard, tmp_path):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={'width':390, 'height':844})
+        form = open_form(page, review_dashboard)
+        history = page.locator('.review-history')
+        history.locator('summary').click()
+        expect(history).to_contain_text('현재 버전의 저장된 검토가 없습니다')
+        fill_form(form, 'deferred')
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(history.locator('.review-record')).to_have_count(1)
+        expect(history).to_have_attribute('open', '')
+        expect(history.locator('time')).to_have_attribute('datetime', __import__('re').compile(r'^20'))
+        expect(history).to_contain_text('근거 확인 <b>테스트</b>')
+        assert history.locator('b').count() == 0
+        fill_form(form, 'valid')
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(history.locator('.review-record')).to_have_count(2)
+        expect(history).to_have_attribute('open', '')
+        page.reload()
+        page.locator('#tab-board').click()
+        history.locator('summary').click()
+        expect(history.locator('.review-record')).to_have_count(2)
+        path = tmp_path / 'runs/review-run/summary.json'
+        summary = json.loads(path.read_text())
+        summary['evaluator']['feature_checks'][0]['reason'] = '새 근거'
+        path.write_text(json.dumps(summary))
+        expect(page.locator('#cards .badge')).to_have_text('사람 검토 전')
+        expect(history).to_contain_text('이전 버전 검토 (2건)')
+        expect(history).to_contain_text('현재 버전의 저장된 검토가 없습니다')
+        history.locator('summary').click()
+        expect(history.locator('.review-record')).to_have_count(2)
+        assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+        assert page.request.get(review_dashboard+'/api/run/review-run').json()['summary']['verification'] == 'failure'
+        browser.close()
+
+
+@pytest.mark.parametrize('metadata,execution,source', [
+    ({'execution_mode':'scripted','source_kind':'synthetic_fixture'}, '사전 정의 스크립트', '합성 테스트 환경'),
+    ({'execution_mode':'ai','source_kind':'live_configured'}, 'AI 실행', '실제 사이트'),
+    ({'provider':'mock','execution_mode':'ai'}, 'Mock 데모', '미확인'),
+    ({'provider':'gemini','start_url':'https://example.com'}, '미확인', '미확인'),
+])
+def test_provenance_axes_and_legacy_no_inference(review_dashboard, tmp_path, metadata, execution, source):
+    path = tmp_path / 'runs/review-run/run.json'
+    path.write_text(json.dumps({'run_id':'review-run', **metadata}))
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(review_dashboard)
+        page.locator('#tab-history').click()
+        expect(page.locator('#run-provenance')).to_contain_text('실행 방식: '+execution)
+        expect(page.locator('#run-provenance')).to_contain_text('대상 출처: '+source)
+        page.locator('#tab-board').click()
+        expect(page.locator('#board-provenance')).to_contain_text('실행 방식: '+execution)
+        expect(page.locator('#board-provenance')).to_contain_text('실제 사람의 행동·판단 데이터가 아닙니다')
+        browser.close()

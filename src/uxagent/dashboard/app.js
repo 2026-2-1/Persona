@@ -83,6 +83,8 @@ function reviewForm(runId, card) {
         detailRevision++; // Discard reads issued before this confirmed save.
         const target = detail?.cards?.find(c=>c.card_id===card.card_id && c.card_version===card.card_version);
         if (target) {
+          detail.reviews = [...(detail.reviews||[]).filter(r=>r.review_id!==record.review_id), record];
+          target.review_history = [...(target.review_history||[]).filter(r=>r.review_id!==record.review_id), record];
           target.latest_review = record;
           target.review_status = record.verdict==='deferred'?'deferred':'reviewed';
           renderCards();
@@ -141,7 +143,9 @@ function mountReviewForms(cards, html) {
   const focused = document.activeElement;
   const selection = ['TEXTAREA','INPUT'].includes(focused?.tagName) && typeof focused.selectionStart==='number' ? [focused.selectionStart, focused.selectionEnd] : null;
   if (container.reviewSignature!==signature) {
+    const expanded = new Set([...container.querySelectorAll('[data-history-key][open]')].map(node=>node.dataset.historyKey));
     container.innerHTML = html;
+    container.querySelectorAll('[data-history-key]').forEach(node=>node.open=expanded.has(node.dataset.historyKey));
     container.reviewSignature = signature;
   }
   cards.forEach((card,index)=>{
@@ -157,7 +161,24 @@ function mountReviewForms(cards, html) {
   }
 }
 
-function renderCards(){const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 확인할 테스트를 선택하세요.';const category=c=>({system_error_candidate:'도구 오류 확인',unmet_checkpoint:'완료 조건 미충족'}[c.classification]||'사용성 후보');const html=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><div><p class="issue-category">${esc(category(c))}</p><h3>${esc(c.title||c.issue_id)}</h3></div><span class="badge">${esc(cardReviewLabel(c))}</span></div><dl class="issue-facts">${[['관찰',c.observed_behavior],['가능한 원인',c.hypothesis],['수정 제안',c.recommendation],['완료 조건',c.acceptance]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)||'<span class="muted">연결할 행동 기록 없음</span>'}</div>${c.latest_review?`<p class="help">검토: ${esc(c.latest_review.reviewer_id)} · ${esc(c.latest_review.note||'메모 없음')}</p>`:''}<details class="raw-evidence"><summary>원자료</summary><pre>${esc(valueText(c.evidence))}</pre></details></article>`).join(''):empty('이 실행에서 발견한 개선 후보가 없습니다.');mountReviewForms(cards,html);}
+function renderProvenance() {
+  const run = detail?.run;
+  const execution = run?.provider==='mock' ? 'Mock 데모' : ({ai:'AI 실행',scripted:'사전 정의 스크립트'}[run?.execution_mode]||'미확인');
+  const source = {synthetic_fixture:'합성 테스트 환경',live_configured:'실제 사이트 (설정된 범위)'}[run?.source_kind]||'미확인';
+  const html = run ? `<p>실행 방식: <strong>${execution}</strong> · 대상 출처: <strong>${source}</strong></p><p class="help">실제 사람의 행동·판단 데이터가 아닙니다. 사람 검토는 아래 별도 이력으로 확인하세요.${run.provider==='mock'?' Mock은 모델 API를 사용하지 않는 동작 확인용 데모입니다.':''}</p>` : '';
+  ['run-provenance','board-provenance'].forEach(id=>{$(id).innerHTML=html;});
+}
+function reviewHistory(card) {
+  const current = card.review_history||[];
+  const previous = (detail?.reviews||[]).filter(r=>r.card_id===card.card_id && r.card_version!==card.card_version);
+  const records = rows => rows.length ? [...rows].reverse().map(r=>{
+    const date = r.created_at ? new Date(r.created_at) : null;
+    const time = date && Number.isFinite(date.getTime()) ? `<time datetime="${esc(r.created_at)}">${esc(date.toLocaleString('ko-KR',{timeZoneName:'short'}))}</time>` : '시각 미기록';
+    return `<li class="review-record"><p><strong>${esc(reviewVerdicts[r.verdict]||'판정 미확인')}</strong> · ${esc(r.reviewer_id||'별칭 미기록')}</p><p class="help">${time}</p><p class="review-note">${esc(r.note||'메모 없음')}</p><p class="help review-version">근거 버전: ${esc(r.card_version||'미기록')}</p></li>`;
+  }).join('') : '';
+  return `<details class="review-history" data-history-key="${esc(reviewKey(selectedRun,card))}"><summary>사람 검토 이력 (${current.length+previous.length}건)</summary><p class="help">저장 순서의 최신 항목부터 표시합니다. 별칭은 인증 신원이나 독립 2인 합의를 뜻하지 않습니다. AI 계획 검토와 독립 과업 판정은 별개입니다.</p><h4>현재 버전 검토 (${current.length}건)</h4>${current.length?`<ol>${records(current)}</ol>`:'<p class="help">현재 버전의 저장된 검토가 없습니다.</p>'}<h4>이전 버전 검토 (${previous.length}건)</h4><p class="help">이전 판정은 현재 근거에 자동 적용하지 않습니다.</p>${previous.length?`<ol>${records(previous)}</ol>`:'<p class="help">이전 버전의 저장된 검토가 없습니다.</p>'}</details>`;
+}
+function renderCards(){renderProvenance();const cards=detail?.cards||[];$('board-run-label').textContent=selectedRun?`선택 실행: ${selectedRun}`:'실행 기록에서 확인할 테스트를 선택하세요.';const category=c=>({system_error_candidate:'도구 오류 확인',unmet_checkpoint:'완료 조건 미충족'}[c.classification]||'사용성 후보');const html=cards.length?cards.map(c=>`<article class="card issue"><div class="section-head"><div><p class="issue-category">${esc(category(c))}</p><h3>${esc(c.title||c.issue_id)}</h3></div><span class="badge">${esc(cardReviewLabel(c))}</span></div><dl class="issue-facts">${[['관찰',c.observed_behavior],['가능한 원인',c.hypothesis],['수정 제안',c.recommendation],['완료 조건',c.acceptance]].map(([k,v])=>`<dt>${k}</dt><dd>${esc(valueText(v))}</dd>`).join('')}</dl><div class="actions gap-top">${evidenceButtons(c)||'<span class="muted">연결할 행동 기록 없음</span>'}</div>${c.latest_review?`<p class="help">검토: ${esc(c.latest_review.reviewer_id)} · ${esc(c.latest_review.note||'메모 없음')}</p>`:''}${reviewHistory(c)}<details class="raw-evidence"><summary>원자료</summary><pre>${esc(valueText(c.evidence))}</pre></details></article>`).join(''):empty('이 실행에서 발견한 개선 후보가 없습니다.');mountReviewForms(cards,html);}
 function pairedSessions(sessions) { const pairs=new Map();for(const s of sessions){const key=`${s.pair_persona_id||s.persona_id||'세션'}:${s.repetition||1}`;if(!pairs.has(key))pairs.set(key,{});pairs.get(key)[s.condition]=s;} const cell=s=>s?`<button class="btn soft" ${s.run_id&&state?.runs?.some(r=>r.run_id===s.run_id)?`data-run="${esc(s.run_id)}"`:'disabled'}><span>${esc(verdict(s.verification))}</span> <small>${esc({running:'진행 중',completed:'종료',error:'오류',cancelled:'취소',not_started:'미실행'}[s.status]||s.status)}</small></button>`:'미등록';return `<div class="table-wrap gap-top"><table><thead><tr><th>대응 세션 / 반복</th><th>일반 AI</th><th>페르소나 AI</th></tr></thead><tbody>${[...pairs].map(([key,p])=>`<tr><td>${esc(key)}</td><td>${cell(p.general)}</td><td>${cell(p.persona)}</td></tr>`).join('')}</tbody></table></div>`;}
 function renderExperiments(){
  const rate=g=>g.rate==null?'미확인':`${(g.rate*100).toFixed(1)}%`;

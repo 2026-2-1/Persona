@@ -15,7 +15,17 @@
 | 09 | [[phase:2] 4개 과업·환경 편차·2인 검토·개선 전후 실험](09-human-ab.md) | [#10](https://github.com/2026-2-1/Persona/issues/10) | phase:2 |
 | 10 | [[phase:2] Jev·Slow Loop·MiroFish·프롬프트 기술 비교](10-technology-experiments.md) | [#11](https://github.com/2026-2-1/Persona/issues/11) | phase:2 |
 | 11 | [[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동](11-research-mcp.md) | [#12](https://github.com/2026-2-1/Persona/issues/12) | phase:3 |
+| 40 | [[phase:1] 기억 중요도 비동기 산정](40-memory-importance.md) | [#40](https://github.com/2026-2-1/Persona/issues/40) | phase:1 |
 | 41 | [[phase:1] Fast Loop의 인식·계획·행동 결정 분리](41-fast-loop-stages.md) | [#41](https://github.com/2026-2-1/Persona/issues/41) | phase:1 |
+| 42 | [[phase:1] Slow Loop 성찰·계획 검토](42-slow-reflection-review.md) | [#42](https://github.com/2026-2-1/Persona/issues/42) | phase:1 |
+| 43 | [[phase:1] Brain 모듈 신설과 두 루프 비동기 조율](43-brain-coordination.md) | [#43](https://github.com/2026-2-1/Persona/issues/43) | phase:1 |
+| 44 | [[phase:1] Runner 관찰·Brain·실행·독립 평가 흐름 연결](44-runner-evaluation-flow.md) | [#44](https://github.com/2026-2-1/Persona/issues/44) | phase:1 |
+| 45 | [[phase:1] Persona 기반 1% Wonder](45-persona-wonder.md) | [#45](https://github.com/2026-2-1/Persona/issues/45) | phase:1 |
+| 46 | [[phase:1] 두 루프 LLM 제공자·예산·비교 조건 호환](46-loop-provider-budget.md) | [#46](https://github.com/2026-2-1/Persona/issues/46) | phase:1 |
+| 47 | [[phase:1] 두 루프 기록의 대시보드·보고서 연결](47-loop-record-consumers.md) | [#47](https://github.com/2026-2-1/Persona/issues/47) | phase:1 |
+| 54 | [[phase:1] 메모리 검색 점수·가중치 수정 보완](54-memory-search-policy.md) | [#54](https://github.com/2026-2-1/Persona/issues/54) | phase:1 |
+| 55 | [[phase:1] 활성 메모리 제거 경계와 비동기 출처 보호](55-memory-retention-boundaries.md) | [#55](https://github.com/2026-2-1/Persona/issues/55) | phase:1 |
+| 56 | [[phase:1] 메모리 점수·상한·비동기 출처 종합 검증](56-memory-integration-regression.md) | [#56](https://github.com/2026-2-1/Persona/issues/56) | phase:1 |
 
 - [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.
 

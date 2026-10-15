@@ -99,6 +99,15 @@
     "issue_number": 12
   },
   {
+    "slug": "40-memory-importance",
+    "title": "[phase:1] 기억 중요도 비동기 산정",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/40-memory-importance.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/40",
+    "issue_number": 40
+  },
+  {
     "slug": "41-fast-loop-stages",
     "title": "[phase:1] Fast Loop의 인식·계획·행동 결정 분리",
     "phase": "phase:1",
@@ -106,5 +115,86 @@
     "path": "docs/tasks/41-fast-loop-stages.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/41",
     "issue_number": 41
+  },
+  {
+    "slug": "42-slow-reflection-review",
+    "title": "[phase:1] Slow Loop 성찰·계획 검토",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/42-slow-reflection-review.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/42",
+    "issue_number": 42
+  },
+  {
+    "slug": "43-brain-coordination",
+    "title": "[phase:1] Brain 모듈 신설과 두 루프 비동기 조율",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/43-brain-coordination.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/43",
+    "issue_number": 43
+  },
+  {
+    "slug": "44-runner-evaluation-flow",
+    "title": "[phase:1] Runner 관찰·Brain·실행·독립 평가 흐름 연결",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/44-runner-evaluation-flow.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/44",
+    "issue_number": 44
+  },
+  {
+    "slug": "45-persona-wonder",
+    "title": "[phase:1] Persona 기반 1% Wonder",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/45-persona-wonder.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/45",
+    "issue_number": 45
+  },
+  {
+    "slug": "46-loop-provider-budget",
+    "title": "[phase:1] 두 루프 LLM 제공자·예산·비교 조건 호환",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/46-loop-provider-budget.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/46",
+    "issue_number": 46
+  },
+  {
+    "slug": "47-loop-record-consumers",
+    "title": "[phase:1] 두 루프 기록의 대시보드·보고서 연결과 통합 검증",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/47-loop-record-consumers.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/47",
+    "issue_number": 47
+  },
+  {
+    "slug": "54-memory-search-policy",
+    "title": "[phase:1] 메모리 검색 점수·가중치 수정 보완",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/54-memory-search-policy.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/54",
+    "issue_number": 54
+  },
+  {
+    "slug": "55-memory-retention-boundaries",
+    "title": "[phase:1] 활성 메모리 제거 경계와 비동기 출처 보호",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/55-memory-retention-boundaries.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/55",
+    "issue_number": 55
+  },
+  {
+    "slug": "56-memory-integration-regression",
+    "title": "[phase:1] 메모리 점수·상한·비동기 출처 종합 검증",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/56-memory-integration-regression.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/56",
+    "issue_number": 56
   }
 ]

@@ -186,6 +186,43 @@ def test_desktop_workspace_fits_and_keeps_results_beside_evidence(local_dashboar
         browser.close()
 
 
+def test_loop_trace_shows_generated_work_and_independent_result(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        payload=page.request.get(local_dashboard+'/api/run/run-0').json()
+        observation_id='obs-trace-1'
+        payload['steps']=[{'step_id':1,'observation_id':observation_id,
+                           'next_observation_id':'obs-trace-2',
+                           'action':{'type':'click'},'result':{'ok':True},
+                           'verification':'unknown'}]
+        payload['brain_stages']=[{'record_id':'stage-1','stage':'perception',
+                                  'observation_id':observation_id,'text':'AI 화면 해석 <probe>',
+                                  'source_memory_ids':['memory-1']}]
+        payload['brain_tasks']=[{'task_id':'slow-1','kind':'reflection','status':'cancelled',
+                                 'observation_id':observation_id,'reason_code':'run_finished'}]
+        payload['memories']=[{'memory_id':'memory-1','text':'원본 관찰','content_status':'observed'}]
+        payload['memory_changes']=[{'memory_id':'memory-1','change':'evicted'}]
+        payload['trace']=[{'observation_id':observation_id,'next_observation_id':'obs-2',
+                           'stages':payload['brain_stages'],'tasks':payload['brain_tasks'],
+                           'memories':[{**payload['memories'][0],'removed':True}],
+                           'action':payload['steps'][0].get('action'),
+                           'result':payload['steps'][0].get('result'),'verification':'unknown'}]
+        page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        page.get_by_text('모델 호출과 비용',exact=True).first.click()
+        page.get_by_text('두 루프 단계·작업 근거',exact=True).click()
+        expect(page.locator('#loop-records')).to_contain_text('AI 생성 perception')
+        expect(page.locator('#loop-records')).to_contain_text('cancelled')
+        expect(page.locator('#loop-records')).to_contain_text('활성 목록에서 제거됨')
+        assert page.locator('probe').count()==0
+        page.locator('#steps button').first.click()
+        expect(page.locator('#loop-records')).to_contain_text('독립 판정')
+        browser.close()
+
+
 def test_scenario_wizard_has_registered_checks_and_no_key_or_generation(local_dashboard):
     with sync_playwright() as p:
         browser=p.chromium.launch()

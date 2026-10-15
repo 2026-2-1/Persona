@@ -11,13 +11,34 @@
 | `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | preview는 perception/plan/decision/importance를 `brain_stages.jsonl`에 기록; 성찰·계획 검토·Wonder의 새 생성 계약 연결은 후속 |
 | `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | importance 작업만 `brain_tasks.jsonl`에 기록; 나머지는 후속 이슈 |
 | `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
-| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 제거·중요도 갱신 사건을 `memory_changes.jsonl`에 기록 |
+| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 활성 메모리 제거와 1~10점 중요도 갱신을 `memory_changes.jsonl`에 기록 |
+| `WonderDrawRecord` | 1.0; 실행 seed·시작된 부모 Slow 작업 ID/종류·추첨 순번/값·당첨 시 Wonder 작업 ID | Wonder를 켠 실행에서 `wonder_draws.jsonl`에 작업별 한 건 기록 |
 
-`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 기억의 최근 10개를 보호하고, 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 중요도 미산정은 `null`이다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록과 `MemoryChangeEvent`의 중요도는 논문 Appendix C.7을 따라 1~10으로 제한한다. 현재 검색은 I/Q/R을 같은 가중치로 합치며 없는 요소는 합산에서 제외한다. Fast/Slow별 가중치 보완은 #54다. 현재 Runner는 행동 뒤 저장한 observation/plan/action 기억을 별도 비동기 중요도 LLM 작업으로 점수화한다. 점수 반영이 끝나기 전에는 기존 미산정 상태로 검색한다.
+`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 과업 기억의 최근 10개를 보호하고 Wonder를 먼저 제거한다. 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. 새 Wonder 때문에 과업 기억이 제거될 상황이면 생성 단계만 남기고 기억 채택은 폐기한다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록은 미산정 `null`로 생성한 뒤 Slow가 1~10점으로 산정한다. Fast는 점수를 기다리지 않으며 미산정 기억도 검색한다. 실패·예산 소진·취소는 점수를 `null`로 두고 작업 사건을 남긴다. #54 검색은 Fast에서 I/Q/R 동일 가중치를 유지하고 계획·행동 결정별 기억 종류 가중치를 적용한다. Slow는 I/Q/R을 0.2/0.2/0.6으로 합산한다. 없는 중요도는 다른 요소만으로 다시 정규화하며, 생성 시각 기준 최신성 반감기는 60초, 동점은 최신 순번 우선이다. [정책 근거](tasks/54-memory-search-policy.md)를 따른다.
+
+#55의 활성 기억 제거는 현재 Fast 단계 기억 → 최근 10개 과업 기억 → 중요도 산정 대기 → 진행 중 Slow snapshot 입력 → 그 밖의 중요도/최신성 순으로 보존한다. Wonder는 먼저 제거한다. N=10에서 보호가 충돌해도 활성 상한을 넘기지 않고 제거 이유를 사건으로 기록한다. [제거 경계](tasks/55-memory-retention-boundaries.md)를 따른다.
+
+#42의 성찰과 계획 검토는 각 작업 시작 시 활성 메모리를 깊은 복사하고 최대 snapshot 순번과 출처 ID를 기록한다. #43의 Brain은 Fast 각 단계 시작에서 완료 결과만 가져온다. Reflection은 같은 run의 유효한 snapshot provenance를 확인한 뒤 메모리에 채택한다. Plan review는 동일한 observation ID·plan ID·version의 decision 시작 전에 끝난 경우에만 generated memory로 채택하고, 그 외는 `discarded/stale_context`로 남긴다. plan review는 plan을 덮어쓰지 않으며 generated memory는 untrusted context로 Fast에 전달한다.
+
+Slow는 실행별 단일 worker, 사용자 결정에 따른 무제한 대기열이다. Fast와 브라우저 실행은 Slow를 기다리지 않는다. 실행 종료 시 active/pending 작업은 `cancelled/run_finished`로 기록한다. 모델 생성이 끝난 상태(completed)와 Brain이 결과를 채택한 상태(adopted)는 별도 사건이다. run 간 memory/task/result는 공유하지 않는다. `general` 비교 조건의 Slow context는 `constraints`·`intent`로 축소해 persona 배경/선호를 전달하지 않는다.
+
+모든 실제 AI 실행은 Slow를 활성화한다. 기존 `enable_slow_loop` 설정 필드는 이전 study 파일 호환용으로 받아들이며 입력값과 무관하게 `true`로 정규화한다. 요청/토큰 한도 기본값은 `null`(무제한)이다.
+
+#45 Wonder는 기본 활성화다. 실제 시작한 reflection/plan_review 작업마다 한 번 0.01을 추첨하며, `wonder_seed` 또는 실행 기록의 seed로 추첨을 재현한다. 당첨된 별도 비동기 요청은 persona의 배경·디지털 친숙도·선호·제약만 받으며 `intent`·과업·현재 화면·기억·평가 정답을 받지 않는다. 일반 AI 조건에는 공통 제약만 전달한다. `wonder_draws.jsonl`은 당첨되지 않은 추첨도 기록한다. 당첨 작업의 상태는 `brain_tasks.jsonl`, 생성 결과와 기억 출처는 `brain_stages.jsonl`·`memory.jsonl`에 남긴다. 출력은 생성된 가정이며 Fast 단계 경계의 우선 삽입 대상이 아니다. 1%는 인간 행동 확률이 아니다.
 
 요청 수와 총토큰 예산은 기본 `null`로 제한하지 않는다. 양의 정수를 지정하면 기존 예산 검사를 적용한다. 실행 시간·최대 행동 단계·요청별 출력 토큰 상한은 별도로 유지한다.
 
+#46에서 `run.json`의 `model_routes`는 설정된 단계별 제공자/모델 경로이고, `llm_calls.jsonl`의 `provider`·`model`은 각 실제 호출의 응답 또는 시도 대상이다. Jev의 `decision_choice`는 TypeSafe `jev-latest`, perception·plan·decision fallback·reflection·plan_review·Wonder는 선택한 Gemini 모델이다. 실패·취소·재시도 시도도 별도 호출 행으로 남긴다. 비용 단가/사용량을 알 수 없는 행과 이를 포함한 실행 총비용은 `null`이다. `summary.json`의 `budget`에는 요청·토큰 사용량, 설정 한도, 마지막 한도 초과 종류(`request_limit` 또는 `token_limit`)를 기록한다. `limits`에는 행동·실행 시간 상한을 기록한다. 예산 때문에 실행하지 못한 단계는 `steps.jsonl`의 `error.budget_reason`으로 구분한다.
+
+#47 실행 상세는 `brain_stages.jsonl`, `brain_tasks.jsonl`, `memory.jsonl`, `memory_changes.jsonl`의 원본 사건을 그대로 보존하고, 행동의 `observation_id`로 묶은 `trace`를 덧붙인다. 관찰 ID가 없는 Wonder는 `wonder_draws.jsonl`의 부모 작업 ID로 연결한다. 원본 기억이 활성 목록에서 제거돼도 ID·본문·제거 사건을 조회한다. 단계는 AI 생성물, `steps.action/result`는 제안과 도구 실행, `steps.evaluation`은 독립 평가다. 생성 단계나 Slow 완료를 과업 성공·사람의 생각으로 해석하지 않는다. 이전 실행에서 파일이 없거나 `action/result=null`이면 해당 근거를 빈 목록 또는 미확인 값으로 읽는다. CSV의 기존 카드 열 뒤에 `record_type` 등 근거 열을 추가한다.
+
+Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현재 mock/OpenAI에서만 제공한다. 미지원 조합은 run 폴더와 비교 세션 생성 전에 거부한다. 일반 AI 비교 조건에는 독립 실행별 기억을 사용하고, Fast/Slow 생성 입력의 persona 배경·선호·숙련도를 제외한다. Wonder에는 일반 조건 공통 제약만 전달한다.
+
 생성된 단계 기록은 `content_status=generated`만 허용한다. 행동 결정의 `action`/`finish`는 제안이며 실행 결과는 기존 `ActionResult`, 성공 판정은 evaluator, 사람 검토는 별도 기록이다. 기존 `steps.jsonl`·`memory.jsonl` 소비자는 새 선택 필드와 구버전 누락 필드를 허용한다. 출처 ID의 실제 존재 확인과 작업 상태 전이 검사는 이후 조율 코드에서 수행한다.
+
+#44 runner에서는 `observe()`의 JSON/PNG 저장과 registry 발행 뒤 Brain을 호출한다. 실제 행동 차례에는 `decision`의 제안, `action`·`result`의 실행, 새 `next_observation_id`, `evaluation`·`verification`의 독립 판정을 단계별로 기록한다. `finish`/`give_up`은 `action`·`result`가 null이고 현재 화면의 평가 결과를 별도로 기록한다. 평가하지 못한 모델·예산·시간 오류는 `unknown`이며, 행동 뒤 관찰 실패는 실행 결과를 보존하고 `post_observation_error`와 `unknown`을 남긴다. 초기 화면의 성공 조건은 Brain 전에 실행을 종료시키지 않는다.
+
+대시보드의 일괄·비교 실행 중지는 취소 요청 파일을 통해 전달한다. 상태는 `running` → `stopping` → `cancelled`로 바뀌며, runner는 진행 중인 행동과 후속 관찰·평가를 단계 기록에 남기고 `termination_reason=cancelled`로 끝낸다. 이후 세션은 `not_started`로 남는다. 협력적 중지는 행동 timeout까지 지연될 수 있다.
 
 ## 세션
 

@@ -12,6 +12,21 @@ GEMINI_OUTPUT_USD_PER_MILLION = 0.40
 JEV_INPUT_USD_PER_MILLION = 0.042
 
 
+def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
+    model = str(model or "")
+    if model.startswith("gemini-"):
+        return "gemini"
+    if model.startswith("jev-"):
+        return "typesafe"
+    if model.startswith("claude-"):
+        return "claude"
+    if model.startswith("gpt-"):
+        return "openai"
+    if model == "mock-v1":
+        return "mock"
+    return fallback
+
+
 def _transport_error(exc):
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
     if isinstance(reason, ssl.SSLCertVerificationError):
@@ -71,7 +86,8 @@ class JevProvider:
         return await asyncio.to_thread(self._choose, state, candidates)
 
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
-        return await GeminiProvider().complete(messages, model or GEMINI_MODEL, temperature, max_tokens)
+        content, usage = await GeminiProvider().complete(messages, model or GEMINI_MODEL, temperature, max_tokens)
+        return content, {**usage, "provider": "gemini"}
 
     def _choose(self, state, candidates):
         key = os.environ.get("TYPESAFE_API_KEY")
@@ -168,19 +184,27 @@ class ClaudeProvider:
                          "output_tokens": usage.get("output_tokens")}
 
 
-class BudgetExceeded(RuntimeError): pass
+class BudgetExceeded(RuntimeError):
+    def __init__(self, reason_code):
+        self.reason_code = reason_code
+        super().__init__(f"LLM budget exhausted: {reason_code}")
 
 
 class BudgetManager:
     def __init__(self, max_requests: int | None, max_tokens: int | None):
         self.max_requests, self.max_tokens = max_requests, max_tokens
         self.requests = self.tokens = self.reserved_tokens = 0
+        self.last_exceeded_reason = None
         self.lock = threading.Lock()
 
     def reserve(self, estimated_tokens: int):
         with self.lock:
-            if (self.max_requests is not None and self.requests >= self.max_requests) or (self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens):
-                raise BudgetExceeded("LLM request or token budget exhausted")
+            if self.max_requests is not None and self.requests >= self.max_requests:
+                self.last_exceeded_reason = "request_limit"
+                raise BudgetExceeded("request_limit")
+            if self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens:
+                self.last_exceeded_reason = "token_limit"
+                raise BudgetExceeded("token_limit")
             self.requests += 1
             self.reserved_tokens += estimated_tokens
 
@@ -192,7 +216,8 @@ class BudgetManager:
 
     def snapshot(self):
         return {"requests": self.requests, "tokens": self.tokens, "reserved_tokens": self.reserved_tokens,
-                "max_requests": self.max_requests, "max_tokens": self.max_tokens}
+                "max_requests": self.max_requests, "max_tokens": self.max_tokens,
+                "last_exceeded_reason": self.last_exceeded_reason}
 
 
 class MockProvider:
@@ -202,11 +227,15 @@ class MockProvider:
         system = messages[0]["content"]
         if "Rate the importance of one memory" in messages[0]["content"]:
             return json.dumps({"score":5,"reason":"Mock importance score for a saved memory."}),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "WONDER_PERSONA_ONLY" in system:
+            return json.dumps({"thought":"저녁에는 따뜻한 차를 마셔 볼까?"},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "Summarize up to three brief insights" in messages[0]["content"]:
             ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed"][-2:]
             insights=[]
             if ids:insights=[{"summary":"최근 관찰과 행동 기록을 바탕으로 다음 화면에서 조건 적용 여부를 확인합니다.","source_memory_ids":ids}]
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "Review whether the supplied plan" in messages[0]["content"]:
+            return json.dumps({"review":"현재 계획은 과업 의도와 일치합니다.","suggested_revisions":[]},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "FAST_STAGE:perception" in system:
             obs = payload["observation"]
             visible = [e.get("name") for e in obs.get("clickable_elements", []) + obs.get("input_elements", []) + obs.get("select_elements", [])]

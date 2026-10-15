@@ -28,6 +28,16 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [검증 기록](verification.md) | 이 저장소에서 실제 실행한 결과 |
 | [작업 목록](tasks/README.md) | 이슈와 연결되는 과업·완료 조건 |
 | [Fast Loop 단계 분리](tasks/41-fast-loop-stages.md) | #41 인식·계획·행동 결정의 단계별 생성과 기록 |
+| [Slow Loop 성찰·계획 검토](tasks/42-slow-reflection-review.md) | #42 비동기 작업, 고정 snapshot, 계획 검토 기록 |
+| [Brain 두 루프 조율](tasks/43-brain-coordination.md) | #43 실행별 Fast/Slow 조율, 결과 채택·stale 폐기·종료 취소 |
+| [Runner 관찰·실행·독립 평가](tasks/44-runner-evaluation-flow.md) | #44 관찰·Brain·행동·재관찰·평가 순서와 종료 선언 판정 |
+| [Persona 기반 1% Wonder](tasks/45-persona-wonder.md) | #45 Slow 작업별 추첨, 별도 생성, 기록·표시 |
+| [두 루프 제공자·예산·비교 호환](tasks/46-loop-provider-budget.md) | #46 실제 호출 모델·비용·한도와 Jev/일반 조건 계약 |
+| [두 루프 기록 소비](tasks/47-loop-record-consumers.md) | #47 단계·작업·기억 출처의 상세 화면과 출력 |
+| [기억 중요도 산정](tasks/40-memory-importance.md) | #40 미산정 기억의 Slow 1~10점 산정과 변경 기록 |
+| [기억 검색 정책](tasks/54-memory-search-policy.md) | #54 기준선과 Fast/Slow별 검색 가중치 |
+| [기억 제거 경계](tasks/55-memory-retention-boundaries.md) | #55 현재 단계·미산정·Slow snapshot 보호와 출처 |
+| [기억 종합 검증](tasks/56-memory-integration-regression.md) | #56 점수·상한·비동기 출처의 runner 회귀 |
 | [통합 기획](2026-10-09-persona-product-plan.md) | 제품·화면·기술 실험·출처에 대한 검토용 초안 |
 | [과거 명세](reference/legacy-plan/agent.md) | 초기 구현 설계; 현재 완료 상태의 기준이 아님 |
 | [과거 검증](reference/validation-2026-10-08.md) | 이전 macOS mock 검증 기록 |

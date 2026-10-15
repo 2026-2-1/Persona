@@ -251,3 +251,84 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 원본 기억의 source_observation_ids/source_step_ids/source_stage_record_id도 표시한다. 단일 단계의 observation_id만 읽어 관찰 출처를 미기록으로 보이던 경우를 브라우저 실패로 재현하고 수정했다. 최종 소비 전체 310개 검사를 다시 통과했다.
 
 최종 preview는 원본 기억 출처 보완 e20d7fb까지 포함해 전체 324개 검사를 다시 통과했다. 출처 화면 이동 보완 뒤 실제 브라우저의 선택 관찰도 viewport 안에서 확인했다. CI 결과는 각 PR의 현재 head 검사를 기준으로 읽는다.
+
+### #41 PR 코드 리뷰 보완
+
+형식이 틀린 첫 응답과 복구된 두 번째 응답을 fake provider로 재현했다. 수정 전에는 예산 요청 2회에 비해 Fast 호출 로그가 1건이었고, 수정 후 두 응답의 사용량을 각각 기록한다. `tests/test_fast_stages.py`: 3 passed, 전체 pytest: 200 passed (81.18s). 유료 API 호출 없음.
+
+Jev가 입력 후보를 고른 뒤 생성 모델이 `give_up`을 반환하는 경로에서 null action 검사가 실패하는 것을 재현했다. 종료 선언을 보존하도록 수정했고 Fast·Jev 관련 검사 9개, 전체 pytest 201개(81.56s)가 통과했다. 유료 API 호출 없음.
+
+## 2026-10-15 Slow 성찰·계획 검토 (#42)
+
+- 전체 pytest: **204 passed in 80.86s**. Slow 전용 테스트는 대기열 무제한 예약, 비동기 호출, 성찰/계획 검토 기록, 고정 snapshot, provider 실패·timeout 기록과 mock runner 연결을 확인했다.
+- `python3 -m compileall -q src tests/test_slow_loop.py tests/test_core.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 신규 메모리 중요도는 5로 고정되며 점수 산정 API/작업은 실행되지 않는다. Slow 결과는 기존 계획을 바꾸지 않고 기록·메모리 후보만 추가한다.
+- 네트워크 기반 유료 LLM 호출은 하지 않았다. 브라우저 통합 검사는 로컬 fixture와 mock provider를 사용했다.
+
+### #42 PR 코드 리뷰 보완
+
+Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입력·출력 토큰을 별도 호출 로그에 기록한다. 수정 전에는 예산 요청 1회에 사용량 로그 0건이었다. fake provider 기반 Slow/Fast 관련 검사 4개, 선행 #41 수정 병합 후 전체 pytest 207개(81.38s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Brain 두 루프 조율 (#43)
+
+- 전체 pytest: **212 passed in 82.28s**. fake provider 검사에서 stage 경계 reflection 채택, observation/plan ID/version이 맞는 plan review만 decision 문맥에 전달, stale 결과 폐기, 종료 시 실행 중·대기 작업 취소, general 조건 persona context 축소, run 메모리 격리를 확인했다.
+- mock runner에서는 legacy `enable_slow_loop=false` 입력에도 Fast/Slow가 구성되고, Fast stage task ID와 stage record 연결, reflection/plan review 예약·상태 기록을 확인했다.
+- `python3 -m compileall -q src tests/test_brain.py tests/test_brain_schema.py tests/test_slow_loop.py tests/test_fast_stages.py tests/test_model_selection.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 요청 수/총토큰 제한은 기본 `null`이며 대기열 상한을 추가하지 않았다. 테스트는 가짜 provider와 로컬 fixture를 사용했고 실제 유료 API는 호출하지 않았다.
+
+### #43 PR 코드 리뷰 보완
+
+채택한 reflection을 일반 검색 결과에서 제외해도 다음 Fast decision 입력에 전달되도록 경계 결과를 우선 삽입한다. 기존 계획 검토의 정확한 observation/plan/version 검사와 입력 개수 상한은 유지한다. fake provider 및 mock runner로 재현했다. 선행 #41·#42 수정 병합 후 전체 pytest 216개(83.73s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Runner 평가 순서 (#44)
+
+- 코드 변경: 초기 `evaluate()`의 조기 종료를 제거하고 행동 후 재관찰 또는 `finish` 선언 때 독립 평가한다. 단계 기록에 평가 근거와 관찰 시각을 연결한다.
+- 검증 상태: 초기 성공·종료 선언·실행기 차단·후속 관찰 실패·모델 시간 초과·행동 중 중지의 mock runner 검사 6개와 전체 pytest 225개(91.75s)가 통과했다. 후속 관찰 뒤 summary가 이전 관찰을 가리키는 문제는 실패 재현 후 수정했다. 중지 시 현재 행동 기록과 비교 실행의 미시작 세션 보존, 페르소나 생성 중지에서 다른 실행을 건드리지 않는 동작은 전용 테스트로 확인했다. 실제 대시보드 하위 프로세스 검증에서는 `stopping` → `cancelled`, 취소 요약과 행동 시도·단계 기록 각 1건을 확인했다. `python3 -m uxagent run --study configs/study.json --provider mock --headless`는 처음에 로컬 포트 바인딩이 샌드박스에서 거부되어 실패했고, 허용된 권한으로 최종 재실행해 6회 행동 뒤 `verified_success`·기록 완전성 6/6을 확인했다. `node --check src/uxagent/dashboard/app.js`, Python compileall, 저장소 검사도 통과했다. 실제 유료 API/공개 사이트 성공은 확인하지 않았다.
+
+## 2026-10-15 Persona 기반 Wonder (#45)
+
+- 먼저 Wonder 전용 실패 재현 테스트를 작성했고, 초기에는 새 생성자 인자가 없어 5개가 실패했다. 구현 후 `python3 -m pytest -q tests/test_wonder.py` **13 passed**, 전체 `python3 -m pytest -q` **238 passed in 90.84s**.
+- 고정 seed 139의 당첨·비당첨, 시작된 Slow 작업 ID별 1회 추첨, 일반 조건의 공통 제약만 전달, 제공자 내부 재시도, 요청 예산 부족, 활성 기억 N=10에서 과업 기억 보존과 기존 Wonder 우선 제거, 실행 종료 취소, 비밀 패턴 출력 거부, 대시보드·보고서 가정 표시를 확인했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture에서 행동 6회 후 `verified_success`, 기록 완전성 6/6, 시작된 Slow 작업 12개와 Wonder 추첨 12개. 무작위 seed 실행이라 이 실행에서는 당첨이 없었고, 고정 seed 139 당첨은 전용 mock runner 테스트로 확인했다.
+- `git diff --check`, `node --check src/uxagent/dashboard/app.js`, `python3 -m compileall -q src tests/test_wonder.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`: 통과. `python3 -m uxagent doctor --study configs/study.json`는 샌드박스의 Chromium 프로세스 등록 제한으로 첫 시도에 실패했고, 허용된 권한으로 재실행해 browser available·study_errors 없음으로 통과했다. 로컬 fixture와 mock/fake provider만 사용했고 유료 API·실제 사람 행동은 검증하지 않았다.
+
+## 2026-10-15 두 루프 제공자·예산·비교 호환 (#46)
+
+- 먼저 #46 전용 실패 재현 5개가 각각 예산 원인·Fast 재시도 로그·Slow 실제 provider·Jev 사전 차단·실행 모델 경로의 누락으로 실패했다. 구현 후 전용 검사는 14개가 통과했다.
+- mock runner: `python3 -m uxagent run --study configs/study.json --provider mock --headless`에서 6회 행동 후 `verified_success`, 기록 완전성 6/6, LLM 호출 30회, Slow 작업 12개. 기본 요청/총토큰 상한은 `null`, 실행 상한은 30회 행동·300초로 유지했다. 이 결과는 이후 30회 행동의 비용/성공을 예측하지 않는다.
+- 가짜 Jev/Gemini 제공자를 쓴 로컬 browser fixture에서 perception·plan·reflection·plan_review는 Gemini 모델, 후보 선택은 `jev-latest`로 기록되는 것을 확인했다. 키 누락·미지원 embedding은 실행 기록 또는 비교 세션 생성 전에 거부되는지 확인했다. 실제 유료 API 호출·계정별 모델 접근은 검증하지 않았다.
+- 일반 조건에서 Fast·Slow·Wonder 생성 입력 전체에 persona 배경·숙련도·선호가 전달되지 않는지 확인했다. 의도치 않은 Slow persona 필드가 들어오면 비교를 차단하는 검사도 통과했다.
+- `python3 -m pytest -q`: **252 passed in 96.24s**. `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `python3 -m compileall -q src tests/test_provider_budget.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`, `git diff --check`: 통과.
+
+## 2026-10-15 두 루프 기록 소비 (#47)
+
+- 새 기록 소비 실패를 먼저 재현했다. 단계·작업·기억 로그를 만든 실행 상세에 `brain_tasks`와 `trace`가 없어 전용 테스트 2개가 실패했다. 구현 후 로컬 기록 소비·보고서 관련 24개가 통과했고, 새 Chromium 표시 테스트 1개와 데스크톱 높이 회귀 검사 2개가 통과했다.
+- 첫 전체 검사에서는 새 최상위 기록 카드가 1365×768 화면 높이를 넘겨 **253 passed, 1 failed**였다. 기록 펼침을 기존 모델 호출 카드 안으로 옮겨 해당 브라우저 회귀를 수정했다. Wonder 부모 연결과 테스트 fixture 보완을 포함한 최종 `python3 -m pytest -q`는 **255 passed in 105.35s**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: `20261015T060054-5e8459e2`, 6회 행동·30회 모델 호출·12개 Slow 작업 뒤 `verified_success`, 기록 확보율 6/6. 해당 실제 로컬 기록의 상세 API에서 행동 trace 6건, 생성 단계 30건, 작업 사건 102건, 원본 기억 29건을 읽었고 JSON/CSV/Markdown/HTML 출력이 모두 열리는지 확인했다. 이는 로컬 fixture와 mock 모델의 동작 확인이며 실제 API/사이트 성과가 아니다.
+- `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `node --check src/uxagent/dashboard/app.js`, Python compileall, manifest JSON 파싱, `python3 scripts/check_repo.py`, `git diff --check`: 통과. 실제 유료 API·공개 사이트·인간 행동 유사성은 검증하지 않았다.
+
+## 2026-10-15 공유 기억 중요도 산정 (#40)
+
+- 원본 기억은 `null` 점수로 남기고 동일 ID·순번·생성 시각에 1~10점 변경을 적용하는 실패 재현 테스트를 작성했다. Slow의 비동기 점수 호출, 공통 예산, 제거된 기억의 늦은 응답 폐기, 잘못된 점수와 예산 소진 기록을 확인했다. 중요도 전용 5개 테스트가 통과했다.
+- 첫 전체 pytest는 이전의 5회 모델 호출을 고정한 모델 선택 테스트 때문에 **257 passed, 1 failed**였다. fake provider와 호출 단계 기대값에 importance를 추가했다. 실패·예산 테스트 2개를 포함한 최종 전체 pytest는 **260 passed in 99.54s**, 중요도 전용 검사는 **5 passed**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T061604-f58f1f64`에서 6회 행동 후 독립 판정 `verified_success`, 기록 확보율 6/6. 총 모델 요청 58회 중 중요도 요청 28회가 완료됐고, 원본 기억 29개는 모두 `null`로 남으며 28개 점수 변경 사건이 따로 기록됐다. 마지막 기억 1개는 종료 시 아직 산정 작업이 예약되지 않아 실행 요약 `importance_scoring_status=pending`이다. 이는 종료 시점의 미산정 상태를 숨기지 않는다.
+- `python3 scripts/check_repo.py`, `python3 -m compileall -q src tests/test_memory_importance.py tests/test_model_selection.py`, manifest JSON 파싱, `git diff --check`: 통과. 위 검사는 mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 모델의 점수 품질·추가 비용·공개 사이트 성공은 검증하지 않았다.
+
+## 2026-10-15 메모리 검색 정책 (#54)
+
+- 같은 입력에서 #40 동일 I/Q/R 기준선과 Fast 계획·행동 결정의 종류 가중치, Slow 최신성 가중 검색 순서를 비교했다. 미산정 기억과 점수 갱신, 60초 반감기, 알 수 없는 검색 mode를 전용 검사 5개로 확인했다.
+- 첫 전체 pytest는 Slow 검색이 현재 관찰 원본을 밀어내 성찰 채택 테스트가 **263 passed, 1 failed**였다. 현재 관찰을 Slow snapshot의 필수 기억으로 추가한 뒤 관련 Brain·Slow·검색 검사 18개가 통과했다.
+- 최종 전체 `python3 -m pytest -q`: **265 passed in 97.89s**. `python3 scripts/check_repo.py`, Python compileall, manifest JSON 파싱, `git diff --check`도 통과했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T062424-1aa372d6`에서 6회 행동, 총 58회 mock 모델 요청, 독립 판정 `verified_success`, 기록 확보율 6/6, reflection 채택 5건을 확인했다. 실제 유료 API나 공개 사이트의 성공·시간 가중치 품질은 검증하지 않았다.
+
+## 2026-10-15 활성 기억 제거 경계 (#55)
+
+- 먼저 N=10 현재 단계 보호, N=12 미산정 대기 보존, N=10 대기 제거 이유, 임베딩 요청 중 제거 테스트를 작성했다. 4개 중 3개가 보호 API·우선순위·이유 누락으로 실패했다. 구현 후 오래된 Slow snapshot의 원본 출처 테스트도 포함해 전용 **5 passed**였다.
+- 최종 `python3 -m pytest -q`: **270 passed in 97.54s**. 현재 단계·최근 10개가 충돌해도 활성 상한을 지키고, 제거 원본 ID와 Slow 출처, 제거 후 늦은 embedding 결과의 캐시 미복원을 확인했다. 최신 10개는 Wonder를 제외한 과업 기억에서 센다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T063224-537d7a15`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6. 기본 상한 64개에서 제거 경계는 발생하지 않았고 N=10/12 충돌은 전용 테스트로 확인했다. 실제 유료 API·공개 사이트·사람 행동은 검증하지 않았다.
+
+## 2026-10-15 기억 점수·상한·출처 종합 검증 (#56)
+
+- `tests/test_memory_integration.py`의 로컬 mock runner 2개(활성 상한 10·64)와 빈 기억·오래된 고점 제거/순번 테스트 1개를 추가했다. **3 passed in 6.84s**. 상한 10 실행에서는 제거 사건이 발생했고, 64 실행에서는 발생하지 않았다. 두 실행 모두 원본 기억 ID·점수 변경·Slow 작업/단계 출처·호출 수와 공통 예산을 대조했다. Fast 계획의 검색 기억 최대 6개와 별도 최근 행동 이력도 확인했다.
+- 전체 `python3 -m pytest -q`: **273 passed in 102.92s**. 여기에는 #40의 점수 실패·예산·늦은 응답, #47의 이전 JSONL·null 행동, #54 검색 순위, #55의 N=10/12·Slow snapshot·embedding 경합, 기존 Slow 취소 회귀가 포함된다.
+- mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 API·공개 사이트 성공·사람 행동 유사성은 검증하지 않았다.

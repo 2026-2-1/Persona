@@ -189,3 +189,12 @@ def test_active_memory_limit_accepts_configured_range():
         StudyConfig.model_validate({**base, "max_active_memories": 9})
     with pytest.raises(ValidationError):
         StudyConfig.model_validate({**base, "max_active_memories": 65})
+
+
+def test_slow_loop_is_normalized_on_for_legacy_study_files():
+    base = {
+        "study_id": "study-1", "start_url": "https://example.test",
+        "task": "상품 찾기", "allowed_origins": ["https://example.test"],
+    }
+    assert StudyConfig.model_validate(base).enable_slow_loop is True
+    assert StudyConfig.model_validate({**base, "enable_slow_loop": False}).enable_slow_loop is True

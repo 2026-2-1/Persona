@@ -36,7 +36,7 @@ def create_review(run_dir):
     parts=[]
     for s in steps:
         pre=(s.get("observation_id") or "");nxt=s.get("next_observation_id") or pre
-        reflections=[m for m in memories if m.get("kind") in ("reflection","wonder") and s.get("step_id") in m.get("source_step_ids",[])]
+        reflections=[m for m in memories if m.get("kind")=="reflection" and s.get("step_id") in m.get("source_step_ids",[])]
         imgs=[]
         for obs in dict.fromkeys([pre,nxt]):
             p=run/"observations"/f"{obs}.png"

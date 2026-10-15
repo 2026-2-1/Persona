@@ -15,12 +15,13 @@ from urllib.parse import unquote, urlsplit, parse_qs
 
 from .security import normalize_origin
 from .llm import load_env_file, BudgetExceeded
-from .runner import load_study
+from .runner import load_study, validate_provider_configuration
 from .schemas import Persona, StudyConfig
 from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
 from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
+from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
 
@@ -88,17 +89,38 @@ class Dashboard:
             if not self.job:
                 return None
             process = self.job["process"]
-            if process.poll() is not None and self.job["status"] == "running":
-                self.job["status"] = "completed" if process.returncode == 0 else "failed"
+            if process.poll() is not None and self.job["status"] in {"running", "stopping"}:
+                was_stopping=self.job["status"]=="stopping"
+                self.job["status"] = "cancelled" if was_stopping else "completed" if process.returncode == 0 else "failed"
                 self.job["finished_at"] = datetime.now(timezone.utc).isoformat()
-                if process.returncode == 0:
+                if was_stopping:
+                    self.job["message"]="사용자가 실행을 중지했습니다. 완료된 단계 기록을 보존했습니다."
+                    self._finalize_cancelled_records()
+                elif process.returncode == 0:
                     self.job["message"] = (f"페르소나 {self.job['persona_count']}명 생성 완료" if self.job["kind"] == "generate"
                                            else "시나리오 점검을 마쳤습니다. 과업 판정과 근거를 확인하세요." if self.job["kind"] == "scenario"
                                            else "AI 비교 실행을 마쳤습니다. 비교 결과를 확인하세요." if self.job["kind"] == "compare"
                                            else "순차 테스트 실행을 마쳤습니다. 각 페르소나의 결과를 확인하세요.")
                 else:
                     self.job["message"] = self._job_error(self.job["log_path"], process.returncode, self.job.get("study_id"))
-            return {key: value for key, value in self.job.items() if key not in {"process", "log_path"}}
+            return {key: value for key, value in self.job.items() if key not in {"process", "log_path", "stop_file"}}
+
+    def _finalize_cancelled_records(self):
+        study_id=self.job.get("study_id")
+        if not study_id: return
+        for folder in self._run_folders():
+            if _json_file(folder/"run.json",{}).get("study_id")==study_id and not (folder/"summary.json").exists():
+                write_json(folder/"summary.json",{"run_id":folder.name,"termination_reason":"cancelled","verification":"unknown","last_error":None})
+        from .metrics import aggregate_sessions
+        for path in self.runs_dir.rglob("experiment.json"):
+            if not path.resolve().is_relative_to(self.runs_dir): continue
+            item=_json_file(path,{})
+            if item.get("study_id")!=study_id: continue
+            for session in item.get("sessions",[]):
+                if session.get("status")=="running": session.update(status="cancelled",verification="unknown",termination_reason="cancelled")
+            item["groups"]=aggregate_sessions(item.get("sessions",[]))
+            item["finished_at"]=datetime.now(timezone.utc).isoformat()
+            write_json(path,item)
 
     def _job_error(self, path, returncode, study_id=None):
         try:
@@ -206,6 +228,14 @@ class Dashboard:
         if folder is None:
             return None
         self.review_store._path(folder)
+        brain = load_brain_trace(folder, run_id)
+        stages = brain['stages']
+        tasks = brain['task_events']
+        memories = brain['memories']
+        memory_changes = brain['memory_changes']
+        wonder_draws = brain['wonder_draws']
+        stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
+                            if entry.get("kind") == "wonder"}
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -221,16 +251,31 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "brain_stages": stages,
+            "brain_tasks": tasks,
+            "memories": memories,
+            "memory_changes": memory_changes,
+            "wonder": {
+                "draws": wonder_draws,
+                "thoughts": [{"task_id": record.get("task_id"),
+                              "record_id": record.get("record_id"),
+                              "text": record.get("text"),
+                              "stored": record.get("record_id") in stored_stage_ids,
+                              "source_type": "generated_assumption"}
+                             for record in stages if record.get("stage") == "wonder"],
+                "probability_unit": "started_slow_task",
+            },
             "observations": observations,
         }
         from .metrics import run_metrics
         if detail["run"].get("condition") == "general":
             persona=detail["persona"]
             detail["persona"]={"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
+        detail["trace"] = build_step_trace(detail["steps"], stages, tasks, memories, memory_changes, wonder_draws)
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
         if not detail["run"].get("run_id"):
             detail["run"]["run_id"] = folder.name
-        detail["brain"] = load_brain_trace(folder, run_id)
+        detail["brain"] = brain
         detail["reviews"] = self.review_store.read(folder, run_id)
         detail["cards"], detail["review_summary"] = overlay_reviews(build_cards(detail), detail["reviews"])
         return redact(detail)
@@ -331,6 +376,11 @@ class Dashboard:
         with self.job_lock:
             if not self.job or self.job["process"].poll() is not None: raise ValueError("실행 중인 작업이 없습니다")
             process=self.job["process"]
+            if self.job["status"]=="stopping": return self._job_state()
+            if self.job["kind"] in {"batch","compare"}:
+                Path(self.job["stop_file"]).touch()
+                self.job.update(status="stopping",message="현재 행동과 기록을 마친 뒤 실행을 중지합니다.")
+                return self._job_state()
             if os.name=="nt" and getattr(process,"pid",None):
                 subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],capture_output=True,check=False)
             elif os.name!="nt" and getattr(process,"pid",None):
@@ -338,19 +388,7 @@ class Dashboard:
                 os.killpg(process.pid,signal.SIGTERM)
             else: process.terminate()
             self.job.update(status="cancelled",message="사용자가 실행을 중지했습니다. 미실행 세션도 비교 분모에 남습니다.",finished_at=datetime.now(timezone.utc).isoformat())
-            for folder in self._run_folders():
-                if _json_file(folder/"run.json",{}).get("study_id")==self.job.get("study_id") and not (folder/"summary.json").exists():
-                    write_json(folder/"summary.json",{"run_id":folder.name,"termination_reason":"cancelled","verification":"unknown","last_error":None})
-            from .metrics import aggregate_sessions
-            for path in self.runs_dir.rglob("experiment.json"):
-                if not path.resolve().is_relative_to(self.runs_dir): continue
-                item=_json_file(path,{})
-                if item.get("study_id")!=self.job.get("study_id"): continue
-                for session in item.get("sessions",[]):
-                    if session.get("status")=="running": session.update(status="cancelled",verification="unknown",termination_reason="cancelled")
-                item["groups"]=aggregate_sessions(item.get("sessions",[]))
-                item["finished_at"]=datetime.now(timezone.utc).isoformat()
-                write_json(path,item)
+            self._finalize_cancelled_records()
             return self._job_state()
 
     def start_scenario(self, case='flow', defect=None):
@@ -413,6 +451,7 @@ class Dashboard:
                         "live": ("OPENAI_API_KEY",), "claude": ("ANTHROPIC_API_KEY",)}.get(provider, ())
             if any(not os.environ.get(name) for name in required):
                 raise ValueError(f"{provider} 실행에 필요한 API 키가 .env에 없습니다")
+            validate_provider_configuration(provider, config)
         with self.job_lock:
             if self.guide_busy or (self.job and self.job["process"].poll() is None):
                 raise RuntimeError("another dashboard job or guide request is already running")
@@ -465,6 +504,8 @@ class Dashboard:
                 study_path = job_dir / f"{job_id}-study.json"
                 study_path.write_text(json.dumps(study, ensure_ascii=False, indent=2), encoding="utf-8")
                 command = [sys.executable, "-m", "uxagent", "compare" if kind=="compare" else "batch", "--study", str(study_path), "--personas", str(personas_file), "--provider", provider, "--output", str(self.runs_dir)]
+                stop_file=job_dir / f"{job_id}.stop"
+                command.extend(["--stop-file",str(stop_file)])
                 if kind=="compare": command.extend(["--repetitions",str(repetitions)])
                 label = "일반 AI · 페르소나 AI 비교" if kind=="compare" else "순차 사용자 테스트"
             log_handle = log_path.open("ab")
@@ -478,6 +519,7 @@ class Dashboard:
                         "log_path": str(log_path), "process": process, "persona_count": count,
                         "study_id": f"dashboard-{job_id}" if kind in {"batch","compare"} else None,
                         "message": "페르소나를 생성하고 있습니다." if kind == "generate" else "첫 페르소나의 브라우저를 시작하고 있습니다."}
+            if kind in {"batch","compare"}: self.job["stop_file"]=str(stop_file)
             return self._job_state()
 
 

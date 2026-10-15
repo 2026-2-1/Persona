@@ -31,8 +31,9 @@ def test_trace_keeps_task_states_and_evicted_original_memory(brain_folder):
     detail=Dashboard(brain_folder.parent).run_detail(brain_folder.name)
     trace=detail['brain']
     assert trace['available']
-    assert set(trace['task_counts'])=={'scheduled','started','completed','skipped','failed','cancelled'}
-    assert all(v==1 for v in trace['task_counts'].values())
+    assert set(trace['task_counts'])=={'scheduled','started','completed','adopted','discarded','skipped','failed','cancelled'}
+    assert all(trace['task_counts'][state]==1 for state in ('scheduled','started','completed','skipped','failed','cancelled'))
+    assert trace['task_counts']['adopted']==trace['task_counts']['discarded']==0
     memory=trace['memories'][0]
     assert memory['text']=='원본 관찰' and memory['importance']==9 and memory['evicted']
     assert detail['summary']['verification']=='unknown'

@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .metrics import aggregate_sessions
-from .runner import load_study, run_study
+from .runner import load_study, run_study, validate_provider_configuration
+from .llm import load_env_file
 from .schemas import Persona
 from .storage import write_json
 
@@ -17,6 +18,9 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
     if repetitions not in (1, 2, 3):
         raise ValueError('repetitions must be between 1 and 3')
     config, _, _ = load_study(study_path)
+    load_env_file(Path(study_path).resolve().parent / ".env")
+    load_env_file()
+    validate_provider_configuration(provider_name, config)
     personas = [Persona.model_validate_json(line) for line in Path(personas_path).read_text(encoding='utf-8').splitlines() if line.strip()]
     if not personas:
         raise ValueError('comparison requires at least one persona')

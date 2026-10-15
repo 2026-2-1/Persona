@@ -268,3 +268,11 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 고정 seed 139의 당첨·비당첨, 시작된 Slow 작업 ID별 1회 추첨, 일반 조건의 공통 제약만 전달, 제공자 내부 재시도, 요청 예산 부족, 활성 기억 N=10에서 과업 기억 보존과 기존 Wonder 우선 제거, 실행 종료 취소, 비밀 패턴 출력 거부, 대시보드·보고서 가정 표시를 확인했다.
 - `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture에서 행동 6회 후 `verified_success`, 기록 완전성 6/6, 시작된 Slow 작업 12개와 Wonder 추첨 12개. 무작위 seed 실행이라 이 실행에서는 당첨이 없었고, 고정 seed 139 당첨은 전용 mock runner 테스트로 확인했다.
 - `git diff --check`, `node --check src/uxagent/dashboard/app.js`, `python3 -m compileall -q src tests/test_wonder.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`: 통과. `python3 -m uxagent doctor --study configs/study.json`는 샌드박스의 Chromium 프로세스 등록 제한으로 첫 시도에 실패했고, 허용된 권한으로 재실행해 browser available·study_errors 없음으로 통과했다. 로컬 fixture와 mock/fake provider만 사용했고 유료 API·실제 사람 행동은 검증하지 않았다.
+
+## 2026-10-15 두 루프 제공자·예산·비교 호환 (#46)
+
+- 먼저 #46 전용 실패 재현 5개가 각각 예산 원인·Fast 재시도 로그·Slow 실제 provider·Jev 사전 차단·실행 모델 경로의 누락으로 실패했다. 구현 후 전용 검사는 14개가 통과했다.
+- mock runner: `python3 -m uxagent run --study configs/study.json --provider mock --headless`에서 6회 행동 후 `verified_success`, 기록 완전성 6/6, LLM 호출 30회, Slow 작업 12개. 기본 요청/총토큰 상한은 `null`, 실행 상한은 30회 행동·300초로 유지했다. 이 결과는 이후 30회 행동의 비용/성공을 예측하지 않는다.
+- 가짜 Jev/Gemini 제공자를 쓴 로컬 browser fixture에서 perception·plan·reflection·plan_review는 Gemini 모델, 후보 선택은 `jev-latest`로 기록되는 것을 확인했다. 키 누락·미지원 embedding은 실행 기록 또는 비교 세션 생성 전에 거부되는지 확인했다. 실제 유료 API 호출·계정별 모델 접근은 검증하지 않았다.
+- 일반 조건에서 Fast·Slow·Wonder 생성 입력 전체에 persona 배경·숙련도·선호가 전달되지 않는지 확인했다. 의도치 않은 Slow persona 필드가 들어오면 비교를 차단하는 검사도 통과했다.
+- `python3 -m pytest -q`: **252 passed in 96.24s**. `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `python3 -m compileall -q src tests/test_provider_budget.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`, `git diff --check`: 통과.

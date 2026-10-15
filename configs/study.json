@@ -10,6 +10,6 @@
   "explicit_scroll": false,
   "max_steps": 30,
   "run_timeout_seconds": 300,
-  "max_llm_requests": 40,
-  "max_total_tokens": 50000
+  "max_llm_requests": null,
+  "max_total_tokens": null
 }

@@ -106,5 +106,14 @@
     "path": "docs/tasks/41-fast-loop-stages.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/41",
     "issue_number": 41
+  },
+  {
+    "slug": "42-slow-reflection-review",
+    "title": "[phase:1] Slow Loop 성찰·계획 검토",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/42-slow-reflection-review.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/42",
+    "issue_number": 42
   }
 ]

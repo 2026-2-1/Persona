@@ -85,15 +85,20 @@ def test_action_rejects_extra_or_missing_fields():
         Action.model_validate({"type":"type","observation_id":"o","tab_id":"t","target_id":"x"})
 
 
-def test_memory_retrieval_includes_unknown_importance_by_recency():
+def test_memory_retrieval_uses_fixed_importance_and_relevance():
     now=[100.0]
     store=MemoryStore("r",clock=lambda:now[0])
-    store.append("observation","검정 가방 가격 확인",importance=None)
+    first=store.append("observation","검정 가방 가격 확인",importance=None)
     now[0]+=1
-    store.append("action","검색 실행",importance=1)
+    second=store.append("action","검색 실행")
     results=store.retrieve("검정 가방",limit=1)
     assert results[0]["text"]=="검정 가방 가격 확인"
     assert "retrieval_score" in results[0]
+    assert first.importance==second.importance==5
+    with pytest.raises(ValueError,match="fixed at 5"):
+        store.append("action","가변 점수",importance=1)
+    with pytest.raises(RuntimeError,match="score updates are disabled"):
+        store.update_importance(first.memory_id,8,"stage-1")
 
 
 @pytest.mark.asyncio
@@ -136,9 +141,8 @@ async def test_slow_loop_uses_snapshot_and_appends_generated_memory():
     store.entries.remove(removed)
     budget=BudgetManager(5,10000);provider=MockProvider();persona=Persona.model_validate_json((ROOT/"configs/persona.json").read_text())
     slow=SlowLoop(provider,budget,"mock-v1",0.2,1000,store)
-    assert slow.schedule(persona,"상품을 찾는다") is True
-    assert slow.schedule(persona,"상품을 찾는다") is False
-    await slow.task
+    assert slow.schedule(persona,"상품을 찾는다")
+    await slow.worker
     assert slow.status=="completed"
     reflection=store.entries[-1]
     assert reflection.kind=="reflection" and reflection.content_status=="generated"

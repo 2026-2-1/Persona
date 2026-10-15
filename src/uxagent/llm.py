@@ -207,6 +207,8 @@ class MockProvider:
             insights=[]
             if ids:insights=[{"summary":"최근 관찰과 행동 기록을 바탕으로 다음 화면에서 조건 적용 여부를 확인합니다.","source_memory_ids":ids}]
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "Review whether the supplied plan" in messages[0]["content"]:
+            return json.dumps({"review":"현재 계획은 과업 의도와 일치합니다.","suggested_revisions":[]},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "FAST_STAGE:perception" in system:
             obs = payload["observation"]
             visible = [e.get("name") for e in obs.get("clickable_elements", []) + obs.get("input_elements", []) + obs.get("select_elements", [])]

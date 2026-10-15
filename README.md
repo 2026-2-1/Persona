@@ -76,7 +76,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)
-- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마를 정의했으며 실제 두 루프 실행 흐름은 구현 전
+- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — [#41](https://github.com/2026-2-1/Persona/issues/41)의 Fast 단계 생성과 [#42](https://github.com/2026-2-1/Persona/issues/42)의 선택형 비동기 성찰·계획 검토를 구현했다. 전체 Brain 조율과 Slow 필수 활성화는 후속 작업이다.
 - 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
 - 입출력·판정 기준: [계약](docs/contracts.md)
 - 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)
@@ -88,7 +88,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 모의 행동·응답은 실제 사용자 증언이나 인간 행동 재현의 증거가 아닙니다. 문제 후보는 사람 검토 전이며, 후보가 없다고 사이트에 문제가 없다는 뜻도 아닙니다. 비교의 mock 결과는 시스템 흐름 검증용이고 페르소나 효과 측정 결과가 아닙니다.
 
-viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력은 미지원입니다. 제한된 keypress와 명시적으로 활성화한 최대 ±900px scroll을 지원합니다. custom combobox는 관찰된 클릭/키보드/option 요소만 조작하며 native select와 같은 범용 지원을 보장하지 않습니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Slow Loop·Wonder는 기본 비활성이며 비교에서는 persona 정보 누출을 막기 위해 Slow Loop를 비활성으로 제한합니다.
+viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력은 미지원입니다. 제한된 keypress와 명시적으로 활성화한 최대 ±900px scroll을 지원합니다. custom combobox는 관찰된 클릭/키보드/option 요소만 조작하며 native select와 같은 범용 지원을 보장하지 않습니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Slow Loop·Wonder는 기본 비활성이며 비교에서는 persona 정보 누출을 막기 위해 Slow Loop를 비활성으로 제한합니다. 활성화하면 Fast perception/plan 저장 뒤 reflection/plan review를 비동기로 예약하고, 신규 중요도는 모두 5로 고정합니다.
 
 2026-10-11 공개 데카트론의 사전 지정 검색 결과 → 8만원 상한 → 킵코어 상세 79,900원 부분 점검을 실제 Python 실행기에서 확인했습니다. 홈페이지 한글 검색 폼 제출은 별도 시도에서 미확인이었습니다. 색상·사이즈·재고·픽업·전체 상품 목록은 성공 범위에 포함하지 않습니다. 상세 결과는 [검증 기록](docs/verification.md)에 남깁니다.
 

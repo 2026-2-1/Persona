@@ -52,6 +52,7 @@ def test_current_schema_fast_and_consumption_events_are_not_dropped(tmp_path):
     assert brain['task_counts']['discarded'] == 1
     assert brain['task_counts']['completed'] == 1
     assert brain['wonder_draws'] == [draw]
+    assert brain['wonder_seed_texts'] == ['139']
 
 
 def test_detail_and_exports_share_the_validated_brain_records(tmp_path):

@@ -212,3 +212,9 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `python3 -m pytest -q --tb=line`: **275 passed in 103.92s** (로컬 브라우저 서버 사용을 허용한 실행). 제한된 샌드박스 첫 시도는 소켓 생성 불가로 45 failed, 209 passed, 21 errors였으며 코드 회귀 판정에 사용하지 않았다.
 - `python3 scripts/check_repo.py`: 0 problems. 실제 API 호출은 `OPENAI_API_KEY`가 현재 실행 환경과 로컬 `.env`에 없어 수행하지 못했다. 모델 형식의 실호출 성공은 미검증이다.
 - `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T064911-78e45798`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6이었다. Python compileall과 `git diff --check`도 통과했다.
+
+## 2026-10-15 합성 데카트론 AI 평가 연결 (#59)
+
+- 평가 기대값을 설정에 넣은 실패 재현 3개가 기존 StudyConfig의 extra field 오류로 실패했다. 구현 후 가짜 단계별 제공자를 사용한 실제 로컬 브라우저 실행에서 일치 상세는 `verified_success`, 불일치 상세 2개는 `agent_finished`·`failure`였다. 정답 상품명은 모델 과업 문장에 넣지 않았다.
+- 첫 전체 pytest는 기존 runner의 평가기 mock에 새 인자를 넘겨 **277 passed, 2 failed**였다. 기대값이 없는 기존 study의 호출을 유지하도록 수정한 뒤 관련 **10 passed**, 최종 전체 **279 passed in 108.03s**였다.
+- `python3 scripts/check_repo.py`, Python compileall, study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 호출은 현재 로컬 키가 없어 수행하지 못했다. 제공자 실호출의 과업 성공은 미검증이다.

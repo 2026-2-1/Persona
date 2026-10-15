@@ -172,3 +172,14 @@
 - 두 PR의 현재 head에 두 성공 check가 연결됨을 확인했다. 각 환경 repo 검사, doctor study_errors=[], Mock verification=success.
 - D-04에 D-03 CI 변경을 병합하며 트러블슈팅 문서의 추가 문단 충돌을 해결했다. 양쪽 기록을 모두 보존했고 실행 코드 변경은 없다.
 - prototype 병합과 팀원 승인은 별도다. 다른 브랜치도 이 워크플로 변경을 포함해야 codex push 검사가 실행된다.
+
+## 2026-10-14 D-05 검토·내보내기 (작업 브랜치)
+
+- 브랜치: `codex/36-review-export-verification`, 선행: D-04 #50 / 공유 문서 #51.
+- 실제 합성 실행 `20261014T133938-52036475`: 후보 → 행동 6 화면/평가 근거 → valid 저장 → 새로고침 후 이력 1건 유지 → JSON/CSV/Markdown/HTML 대조 통과.
+- HTML은 앱 내 브라우저 다운로드 도구 시간 초과 후 별도 Chromium의 실제 링크 다운로드로 확인했다. 나머지 세 형식은 앱 내 브라우저에서 다운로드했다.
+- 신규 회귀 3개 포함 전체 pytest: **289 passed** (macOS, Python 3.13.13). 집중 검토·내보내기 검사: 30 passed.
+- doctor: study_errors=[]; Mock: `20261014T135237-026b2a38`, verified_success, 6 actions. 실제 사용자/유료 모델 검증 아님.
+- repo 검사 PASS. CI 결과는 해당 PR의 head 검사에서 확인한다.
+- 근거 변경 시 Markdown/HTML에 현재 카드 버전이 없는 문제를 실패 테스트로 재현한 뒤 수정했다.
+- 팀원 독립 재현, 전체 예외 상태 시연 및 prototype 통합 재검증은 남았다. [절차와 한계](tasks/d-review-export-verification.md).

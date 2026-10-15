@@ -144,3 +144,7 @@ AI의 `plan_review`는 사람 후보 검토와 분리한다. 관찰 사실·AI �
 - [C 검토·집계 작업](../tasks/c-review-data.md)
 - [데이터 계약](../contracts.md), [개발·검사 절차](../development.md)
 - [현재 구현 상태](../current-state.md), [검증 기록](../verification.md), [후속 일정](../roadmap.md)
+
+## D-05 후속 진행 (2026-10-14)
+
+작업 브랜치에서 실제 합성 후보의 근거 확인·저장·새로고침·네 형식 내보내기 대조를 확인했다. [D-05 기록](../tasks/d-review-export-verification.md)에 재현 절차와 제한을 정리했다. 위 D-05 체크리스트의 팀원 재현·통합 커밋 시연은 여전히 남아 있으며, 회의 결정으로 처리하지 않는다.

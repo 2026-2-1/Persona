@@ -169,7 +169,7 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
             return json.dumps(result,ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",FinishProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"false-finish")
-    assert summary["termination_reason"]=="agent_finished"
+    assert summary["termination_reason"]=="agent_finished", summary["last_error"]
     assert summary["verification"]=="failure"
 
     class RepeatingProvider:
@@ -199,7 +199,7 @@ def test_persona_quota_is_seeded_and_content_is_unique(tmp_path):
 @pytest.mark.asyncio
 async def test_mock_run_completes_and_review_artifacts_are_safe(tmp_path):
     run_dir,summary=await run_study(ROOT/"configs/study.json","mock",None,False,tmp_path)
-    assert summary["termination_reason"]=="verified_success"
+    assert summary["termination_reason"]=="verified_success", summary["last_error"]
     assert summary["verification"]=="success"
     steps=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text().splitlines()]
     assert len(steps)>=5

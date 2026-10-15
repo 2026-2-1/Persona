@@ -1,6 +1,6 @@
 # 현재 구현 상태
 
-기준: prototype 원본 e4dfa98 이후 작업, 2026-10-11 API 없는 과업 점검 추가. 실제 검사 결과는 verification.md를 따른다.
+기준: prototype 원본 e4dfa98 이후 작업, 2026-10-15 #43 Brain 조율 구현. 실제 검사 결과는 verification.md를 따른다.
 
 ## 구현됨
 
@@ -8,9 +8,9 @@
 - 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
 - Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
 - 요청·토큰 예산, 반복/시간/단계 제한, 허용 origin 검사.
-- 메모리 검색, 선택적인 embedding·Slow Loop·Wonder (기본 비활성).
-- #39에서 생성 결과·비동기 작업·메모리 점수/제거 사건의 스키마를 정의했다. `MemoryEntry`의 새 기록은 버전 2.0이며 현재 실행은 모든 중요도를 5로 고정한다. 구버전 1.0의 0~5점 로그는 구분해 읽는다. #41에서 `BrainStageRecord`의 perception·plan·decision, #42에서 reflection·plan_review 결과와 작업 상태를 기록한다.
-- #40에서 Fast 모델 입력의 검색 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 분리했다. 활성 기억은 기본 64개(설정 10~64개)로 제한하며 최근 10개를 보호한다. 중요도가 같은 현재 설정에서는 오래된 순으로 제거된다. I/Q/R 검색 가중치는 임시로 동일하다. 중요도 점수는 LLM으로 산정하지 않고 5로 고정한다.
+- 메모리 검색, 선택적인 embedding·Wonder, 실행별 Brain의 필수 Fast/Slow Loop.
+- #39에서 생성 결과·비동기 작업·메모리 점수/제거 사건의 스키마를 정의했다. `MemoryEntry`의 새 기록은 버전 2.0이며 현재 실행은 모든 중요도를 5로 고정한다. 구버전 1.0의 0~5점 로그는 구분해 읽는다. #41에서 perception·plan·decision, #42에서 reflection·plan_review 결과, #43에서 Brain 단계 경계 채택·stale 폐기·실행 취소 상태를 기록한다.
+- #40에서 Fast 모델 입력의 검색 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 분리했다. 활성 기억은 기본 64개(설정 10~64개)로 제한하며 최근 10개를 보호한다. 중요도가 같은 현재 설정에서는 오래된 순으로 제거된다. I/Q/R 검색 가중치는 임시로 동일하다. 중요도 점수는 LLM으로 산정하지 않고 5로 고정한다. #43의 Slow 대기열은 사용자 결정에 따라 상한을 두지 않는다.
 - 로컬 템플릿 persona 생성, 순차 격리 batch, 로그/PNG, 로컬 대시보드.
 - 로컬 가방 fixture의 독립 성공 판정, 규칙 기반 문제 후보·HTML review·기록 조합 설문/인터뷰.
 
@@ -25,7 +25,7 @@
 
 ## 미구현 또는 미검증
 
-- 2026-10-14 [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md): 전체 Brain 조율, 실행별 필수 Slow 활성화·완료 결과 채택, 활성 메모리 N개 상한 적용, persona-only 1% Wonder는 후속 구현이다. #42의 reflection·plan_review 작업은 기존 선택 설정을 통해 비동기 연결한다.
+- persona-only 1% Wonder, Slow 결과로 후속 계획을 자동 재작성하는 정책, 활성 메모리 N개 상한의 별도 재검토는 후속 구현이다. #43의 plan review는 동일한 observation·plan 버전의 decision 직전에만 채택되며 다음 계획을 덮어쓰지 않는다. 설정 파일의 구버전 `enable_slow_loop=false` 값은 호환을 위해 받아들이지만 실제 AI 실행은 두 루프를 사용한다.
 - 실제 대상 전체 4개 과업·환경의 독립 평가와 색상/사이즈/재고/픽업. 합성 네 시나리오와 공개 데카트론의 제한된 결과·가격·상세 점검은 아래 범위로 구분한다.
 - 근거 Q&A, ChatGPT 구독 OAuth/Responses 연동. 현재 설정은 목표 → 사용자 → 모델 → 실행의 안내형 4단계이며 생성과 실행은 자동으로 이어진다.
 - 2인 사람 판정·합의와 개선 전후 자동 재검증. 현재 카드는 미검토 후보다.

@@ -183,7 +183,8 @@ async def test_runner_schedules_reflection_after_perception_and_review_after_pla
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
     config["persona_file"] = str(root / "configs/persona.json")
-    config["enable_slow_loop"] = True
+    # Legacy opt-in remains false here: #43 makes Slow mandatory for AI runs.
+    config["enable_slow_loop"] = False
     config["max_steps"] = 1
     study_path = tmp_path / "study.json"
     study_path.write_text(json.dumps(config), encoding="utf-8")
@@ -191,9 +192,19 @@ async def test_runner_schedules_reflection_after_perception_and_review_after_pla
     run_dir, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
 
     events = [json.loads(line) for line in (run_dir / "brain_tasks.jsonl").read_text().splitlines()]
-    scheduled = [event for event in events if event["status"] == "scheduled"]
+    scheduled = [event for event in events
+                 if event["status"] == "scheduled" and event["kind"] in {"reflection", "plan_review"}]
     assert [event["kind"] for event in scheduled] == ["reflection", "plan_review"]
     assert all(any(event["task_id"] == task["task_id"] and
                    event["status"] in {"completed", "cancelled", "failed", "skipped"}
                    for event in events) for task in scheduled)
+    assert summary["brain"]["slow"]["events"]["scheduled"] == 2
+    assert summary["brain_status"] in {"completed", "incomplete"}
+    assert all(summary["brain"]["fast"][stage]["completed"] == 1
+               for stage in ("perception", "plan", "decision"))
+    fast_stage_records = [json.loads(line) for line in (run_dir / "brain_stages.jsonl").read_text().splitlines()
+                          if json.loads(line)["stage"] in {"perception", "plan", "decision"}]
+    assert all(record["task_id"] and any(event["task_id"] == record["task_id"] and
+               event["status"] == "completed" and event["output_record_ids"] == [record["record_id"]]
+               for event in events) for record in fast_stage_records)
     assert summary["importance_scoring_status"] == "fixed_equal_5"

@@ -228,3 +228,19 @@
 - 해결: 모델 응답과 사용량을 받은 직후 기록하고, 이후 파싱 오류는 기존 실패 사건으로 남긴다.
 - 함께 확인할 회귀: Fast 형식 복구 로그, Slow 실패 상태, 모델 요청 예산, mock runner.
 - 실제 검증: 잘못된 JSON으로 실패 재현 후 Slow/Fast 관련 검사 4개 통과. 전체 검사 결과는 verification.md를 따른다.
+
+## 2026-10-15 #43 Brain 두 루프 조율
+
+- 증상: Slow가 생성한 결과를 공유 메모리에 바로 추가해 늦게 끝난 plan review가 이후 관찰의 판단 입력에 섞일 수 있고, 실제 AI 실행의 Fast/Slow 활성 상태와 실행 종료 시 미완료 상태가 구분되지 않았다.
+- 원인: `runner.py`가 Fast와 optional Slow를 직접 호출했고, Slow 생성 완료와 Brain의 채택 경계가 분리되어 있지 않았다.
+- 해결: 실행별 `Brain`이 각 Fast stage 앞에서 완료 결과를 꺼내 provenance를 검사한다. Reflection은 다음 stage 메모리로, plan review는 동일 observation/plan/version decision에만 채택한다. stale 결과는 폐기 이력으로 남긴다. Fast 제안은 기존 ActionExecutor 최신 관찰/origin 검증을 유지한다. Slow는 항상 실행별 단일 worker로 동작하고, 대기열은 무제한이며 종료 때 active/pending을 취소한다.
+- 함께 확인할 회귀: 지연 결과가 현재 프롬프트를 바꾸지 않음, stale plan review 폐기, exact plan/observation만 decision context에 채택, general condition의 persona 배경/선호 차단, 두 실행의 memory 격리, 종료 시 active·queued 취소 기록.
+- 실제 검증 결과는 [검증 기록](verification.md)에 남긴다. 기본 요청/토큰 한도는 무제한이며 유료 API는 호출하지 않는다.
+
+### 리뷰 수정: 채택한 reflection이 Fast 입력에서 누락
+
+- 증상: Brain은 reflection을 메모리에 채택해도 다음 Fast 단계의 검색 결과가 이를 제외하면 모델 입력에는 전달되지 않았다.
+- 원인: 단계 경계 함수가 채택한 plan review만 반환하고 reflection은 검색 순위에만 맡겼다.
+- 해결: 경계에서 채택한 모든 Slow 메모리를 반환하고 해당 단계의 검색 결과 앞에 넣어 중복을 제거한다. 최근 채택 결과를 우선한다.
+- 함께 확인할 회귀: plan review의 observation/plan 일치 검사, 일반 조건 격리, Fast 입력 개수 상한, 기존 mock runner.
+- 실제 검증: reflection을 검색 결과에서 의도적으로 제외한 mock runner로 다음 decision 입력 누락을 재현하고 수정 후 통과했다. 전체 결과는 verification.md를 따른다.

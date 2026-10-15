@@ -10,7 +10,7 @@ GitHub: [#42](https://github.com/2026-2-1/Persona/issues/42)
 - 중요도는 모든 새 메모리에 5로 고정한다. 별도 LLM 점수 산정 및 점수 변경은 실행 경로에서 사용하지 않는다.
 - 계획 검토는 persona/intent와 현재 계획의 일관성, 텍스트 수정 제안만 기록한다. 계획을 직접 수정하거나 실행 권한·성공 여부를 판단하지 않는다.
 - 작업 이벤트는 scheduled/started/completed/failed/cancelled/skipped를 기록한다. 종료 시 남은 작업은 취소 사건으로 남긴다.
-- Slow 작업 스케줄 정책과 완료 결과의 채택은 #43, persona-only Wonder는 #45 범위다.
+- 실행별 조율과 유효 결과 채택은 #43에서 구현했다. persona-only Wonder는 #45 범위다.
 
 ## 검증
 

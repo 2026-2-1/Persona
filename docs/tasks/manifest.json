@@ -115,5 +115,14 @@
     "path": "docs/tasks/42-slow-reflection-review.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/42",
     "issue_number": 42
+  },
+  {
+    "slug": "43-brain-coordination",
+    "title": "[phase:1] Brain 모듈 신설과 두 루프 비동기 조율",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/43-brain-coordination.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/43",
+    "issue_number": 43
   }
 ]

@@ -14,7 +14,7 @@ class SlowLoop:
     def schedule(self, persona, task, error=None, wonder=False):
         if self.task and not self.task.done(): return False
         snapshot=list(self.memory.entries)
-        based_on=len(snapshot)
+        based_on=max((entry.seq for entry in snapshot),default=0)
         self.status="running"
         self.task=asyncio.create_task(self._reflect(persona,task,snapshot,based_on,error,wonder))
         return True
@@ -37,7 +37,7 @@ class SlowLoop:
             for insight in parsed.get("insights",[])[:3]:
                 sources=[x for x in insight.get("source_memory_ids",[]) if x in valid_ids]
                 if not sources: continue
-                self.memory.append("reflection",insight["summary"],source_step_ids=sorted({s for e in snapshot if e.memory_id in sources for s in e.source_step_ids}),content_status="generated",based_on_seq=based_on)
+                self.memory.append("reflection",insight["summary"],source_step_ids=sorted({s for e in snapshot if e.memory_id in sources for s in e.source_step_ids}),content_status="generated",based_on_seq=based_on,source_memory_ids=sources)
             if wonder and parsed.get("next_focus"):
                 self.memory.append("wonder",parsed["next_focus"],content_status="generated",based_on_seq=based_on)
             self.status="completed"

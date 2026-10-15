@@ -76,6 +76,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)
+- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마를 정의했으며 실제 두 루프 실행 흐름은 구현 전
 - 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
 - 입출력·판정 기준: [계약](docs/contracts.md)
 - 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)

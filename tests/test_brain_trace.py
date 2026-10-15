@@ -70,6 +70,7 @@ def test_legacy_without_brain_files_is_readable(tmp_path):
     detail=Dashboard(tmp_path).run_detail('old')
     assert not detail['brain']['available']
     assert detail['brain']['stages']==[]
+    assert detail['brain']['wonder_seed_texts']==[]
     assert 'brain_record' not in export_report(detail,'csv')
 
 

@@ -33,3 +33,7 @@ Brain 파일이 없는 기존 CSV는 카드 열 구성을 유지한다. Brain �
 A의 실제 생성 코드와 통합한 Mock 검증은 통합 기록에 남긴다. Slow 조율과 stale 폐기는 이 브랜치에서 검증됐으며 실제 Mock의 plan_review 6건은 모두 폐기됐다. 사람 행동 유사성·유료 API·실제 사이트 성공·실제 입력 소비율은 미검증이다. #47 전체 종료는 팀원 독립 재현과 확정 prototype 통합 검증 뒤 판단한다.
 
 긴 생성 기록을 읽다가 관찰 버튼을 누르면 해당 근거 화면의 설명 위치로 이동한다. 단순히 이미지 URL만 바꾸고 화면 밖에 남기지 않는 viewport 회귀도 확인한다.
+
+## 큰 Wonder seed의 화면 정밀도
+
+원본 `wonder_draws.seed` 정수·JSONL·네 형식 출력의 숫자 계약은 유지한다. 읽기 DTO는 검증한 draw 순서와 같은 `brain.wonder_seed_texts` 문자열 배열을 추가하며 화면은 이 값을 사용한다. JavaScript의 안전 정수 범위를 넘는 63비트 seed도 원본과 같은 값으로 복사할 수 있다. 기존 작은 seed API의 표시 fallback은 유지하고 원본 로그를 수정하지 않는다.

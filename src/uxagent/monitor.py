@@ -227,6 +227,11 @@ class Dashboard:
         if folder is None:
             return None
         self.review_store._path(folder)
+        brain = load_brain_trace(folder, run_id)
+        stages = brain["stages"]
+        memories = brain["memories"]
+        stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
+                            if entry.get("kind") == "wonder"}
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -242,6 +247,16 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "wonder": {
+                "draws": brain["wonder_draws"],
+                "thoughts": [{"task_id": record.get("task_id"),
+                              "record_id": record.get("record_id"),
+                              "text": record.get("text"),
+                              "stored": record.get("record_id") in stored_stage_ids,
+                              "source_type": "generated_assumption"}
+                             for record in stages if record.get("stage") == "wonder"],
+                "probability_unit": "started_slow_task",
+            },
             "observations": observations,
         }
         from .metrics import run_metrics
@@ -251,7 +266,7 @@ class Dashboard:
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
         if not detail["run"].get("run_id"):
             detail["run"]["run_id"] = folder.name
-        detail["brain"] = load_brain_trace(folder, run_id)
+        detail["brain"] = brain
         detail["reviews"] = self.review_store.read(folder, run_id)
         detail["cards"], detail["review_summary"] = overlay_reviews(build_cards(detail), detail["reviews"])
         return redact(detail)

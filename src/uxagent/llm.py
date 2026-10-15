@@ -202,6 +202,8 @@ class MockProvider:
         system = messages[0]["content"]
         if "Rate the importance of one memory" in messages[0]["content"]:
             return json.dumps({"score":5,"reason":"Mock importance score for a saved memory."}),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "WONDER_PERSONA_ONLY" in system:
+            return json.dumps({"thought":"저녁에는 따뜻한 차를 마셔 볼까?"},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "Summarize up to three brief insights" in messages[0]["content"]:
             ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed"][-2:]
             insights=[]

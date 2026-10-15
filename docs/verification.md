@@ -261,3 +261,10 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 
 - 코드 변경: 초기 `evaluate()`의 조기 종료를 제거하고 행동 후 재관찰 또는 `finish` 선언 때 독립 평가한다. 단계 기록에 평가 근거와 관찰 시각을 연결한다.
 - 검증 상태: 초기 성공·종료 선언·실행기 차단·후속 관찰 실패·모델 시간 초과·행동 중 중지의 mock runner 검사 6개와 전체 pytest 225개(91.75s)가 통과했다. 후속 관찰 뒤 summary가 이전 관찰을 가리키는 문제는 실패 재현 후 수정했다. 중지 시 현재 행동 기록과 비교 실행의 미시작 세션 보존, 페르소나 생성 중지에서 다른 실행을 건드리지 않는 동작은 전용 테스트로 확인했다. 실제 대시보드 하위 프로세스 검증에서는 `stopping` → `cancelled`, 취소 요약과 행동 시도·단계 기록 각 1건을 확인했다. `python3 -m uxagent run --study configs/study.json --provider mock --headless`는 처음에 로컬 포트 바인딩이 샌드박스에서 거부되어 실패했고, 허용된 권한으로 최종 재실행해 6회 행동 뒤 `verified_success`·기록 완전성 6/6을 확인했다. `node --check src/uxagent/dashboard/app.js`, Python compileall, 저장소 검사도 통과했다. 실제 유료 API/공개 사이트 성공은 확인하지 않았다.
+
+## 2026-10-15 Persona 기반 Wonder (#45)
+
+- 먼저 Wonder 전용 실패 재현 테스트를 작성했고, 초기에는 새 생성자 인자가 없어 5개가 실패했다. 구현 후 `python3 -m pytest -q tests/test_wonder.py` **13 passed**, 전체 `python3 -m pytest -q` **238 passed in 90.84s**.
+- 고정 seed 139의 당첨·비당첨, 시작된 Slow 작업 ID별 1회 추첨, 일반 조건의 공통 제약만 전달, 제공자 내부 재시도, 요청 예산 부족, 활성 기억 N=10에서 과업 기억 보존과 기존 Wonder 우선 제거, 실행 종료 취소, 비밀 패턴 출력 거부, 대시보드·보고서 가정 표시를 확인했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture에서 행동 6회 후 `verified_success`, 기록 완전성 6/6, 시작된 Slow 작업 12개와 Wonder 추첨 12개. 무작위 seed 실행이라 이 실행에서는 당첨이 없었고, 고정 seed 139 당첨은 전용 mock runner 테스트로 확인했다.
+- `git diff --check`, `node --check src/uxagent/dashboard/app.js`, `python3 -m compileall -q src tests/test_wonder.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`: 통과. `python3 -m uxagent doctor --study configs/study.json`는 샌드박스의 Chromium 프로세스 등록 제한으로 첫 시도에 실패했고, 허용된 권한으로 재실행해 browser available·study_errors 없음으로 통과했다. 로컬 fixture와 mock/fake provider만 사용했고 유료 API·실제 사람 행동은 검증하지 않았다.

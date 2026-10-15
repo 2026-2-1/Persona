@@ -9,6 +9,8 @@
 - Python 3.11+ / Playwright Chromium / Pydantic.
 - 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
 - Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
+- #57에서 단계별 Fast의 OpenAI 응답 형식을 문자열·행동 필드·종료 객체 단위로 명시하고, 알려진 `gpt-4o-mini` 응답 모델의 호출 비용 추정치를 기록한다. 실제 API 재검증은 로컬 키가 준비된 뒤 수행한다.
+- #59에서 합성 데카트론 AI 실행 설정과 독립 평가 기대값을 연결했다. 평가 정답은 과업 프롬프트와 분리하고 상세의 상품명·색상·가격이 일치할 때만 성공으로 판정한다. 현재 브랜치의 실제 OpenAI 호출은 키 준비 후 재검증한다.
 - 요청·토큰 예산, 반복/시간/단계 제한, 허용 origin 검사.
 - 메모리 검색, 선택적인 embedding, 실행별 Brain의 필수 Fast/Slow Loop와 기본 활성 Wonder.
 - #45에서 실제 시작된 reflection/plan_review마다 1%를 추첨한다. 당첨 시 과업·화면·기억·`intent` 없이 persona만으로 별도 비동기 요청을 보내 가정된 생각을 생성한다. 일반 AI 조건에는 공통 제약만 보낸다. 추첨과 작업 상태를 남기고 생성 생각을 실제 사용자 기억과 구분해 표시한다.

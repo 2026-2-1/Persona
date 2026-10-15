@@ -118,7 +118,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
     if not isinstance(run_id,str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
         raise ValueError("run_id_override must be a safe identifier")
-    is_fixture=urlsplit(config.start_url).path.endswith("shop.html") and urlsplit(config.start_url).hostname in ("localhost","127.0.0.1")
+    is_fixture=urlsplit(config.start_url).path.endswith(("shop.html","decathlon.html")) and urlsplit(config.start_url).hostname in ("localhost","127.0.0.1")
     server=FixtureServer(urlsplit(config.start_url).port or (443 if urlsplit(config.start_url).scheme=="https" else 80)) if is_fixture else None
     server_started=server.start() if server else False
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
@@ -162,7 +162,10 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         return selected
     async def evaluate_current(page):
         try:
-            return await evaluate(page,config.evaluator_id,getattr(config,"evaluation_checks",None))
+            if config.evaluation_expectations is not None:
+                return await evaluate(page,config.evaluator_id,config.evaluation_checks,
+                                      expectations=config.evaluation_expectations)
+            return await evaluate(page,config.evaluator_id,config.evaluation_checks)
         except Exception:
             return {"verification":"unknown","reason":"evaluator_error","feature_checks":[]}
     def write_unexecuted_step(step_id, observation, observed_at, code, message, *, decision=None, memory_ids=None):

@@ -16,3 +16,5 @@
 | 화면 | monitor.py, dashboard/ | 작업 시작·상태·최신 화면·API 키 비노출 |
 
 새 기능은 관찰/행동/평가/분석/UI 중 책임을 정하고 작은 모듈을 추가한다. 동일 변경에 전체 구조 재작성을 포함하지 않는다. 새 계약은 기존 로그도 읽을 수 있게 버전과 기본값을 정의한다.
+
+Brain 로그의 읽기 경계는 `brain_trace.py`다. monitor가 선택 실행의 선택적 JSONL을 읽고 reports/dashboard가 같은 brain 자료를 소비한다. 이 경계는 원본 파일을 변경하거나 평가/사람 검토 상태를 생성하지 않는다. 생성기 schemas 버전과 구버전 소비는 [D 계약](tasks/d-brain-trace-viewer.md)을 따른다.

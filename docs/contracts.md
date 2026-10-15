@@ -75,3 +75,7 @@ recording.complete/attempted와 rate는 전체 범위가 알려져 있을 때 �
 ## D 조회 상태와 새 AI 출처 (2026-10-15 작업 브랜치)
 
 상세 조회 실패는 정상 빈 후보와 다르다. 마지막 정상 상세를 보존할 때 실패와 시각을 표시하고 최신 조회가 회복될 때까지 저장·내보내기를 제공하지 않는다. 새 AI 실행은 execution_mode=ai를 기록하며 StudyConfig.source_kind는 unknown/synthetic_fixture/live_configured다. 내장 shop fixture만 알려진 synthetic_fixture로 기록한다. legacy 출처는 추정하지 않는다. 복구 null rate는 미확인, 명시적 episodes=[]는 대상 사건 없음으로 구분한다.
+
+## Brain 소비와 내보내기 (D #47 작업 브랜치)
+
+run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes/warnings를 제공한다. 작업별 마지막 append 상태와 전체 사건을 구분하고 원본 기억+변경 사건을 읽기 전용 overlay한다. Brain 없는 legacy CSV는 기존 열을 유지하고 Brain CSV는 record_type/record_id/brain_record 추가 열 및 타입별 행을 가진다. 생성물과 후보/독립 평가/사람 검토를 합산하지 않는다. [상세](tasks/d-brain-trace-viewer.md).

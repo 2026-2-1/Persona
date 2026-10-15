@@ -33,3 +33,5 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 - [D 조회 실패·출처·복구 표시](tasks/d-dashboard-hardening.md): #64/#65의 수정과 회귀.
 - [메모리 정책 실험 설계](research/2026-10-15-memory-policy-experiment.md): 최신 PR 근거·비교 조건·고정 변수·예산·한계.
+
+- [D Brain 기록 화면·출력](tasks/d-brain-trace-viewer.md): #47의 읽기 계약·구버전·상태·출처·CSV 행 구분.

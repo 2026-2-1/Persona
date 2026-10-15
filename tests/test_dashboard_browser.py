@@ -341,6 +341,7 @@ def test_wizard_validates_and_preserves_inputs(local_dashboard):
         browser=p.chromium.launch()
         page=browser.new_page()
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
         expect(page.locator('#wizard-step-1')).to_be_visible()
         expect(page.locator('#persona-background')).not_to_be_visible()
         page.locator('#target-url').fill('')

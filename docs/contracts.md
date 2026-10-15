@@ -14,6 +14,8 @@
 
 `StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 과업 기억의 최근 10개를 보호하고 Wonder를 먼저 제거한다. 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. 새 Wonder 때문에 과업 기억이 제거될 상황이면 생성 단계만 남기고 기억 채택은 폐기한다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록은 미산정 `null`로 생성한 뒤 Slow가 1~10점으로 산정한다. Fast는 점수를 기다리지 않으며 미산정 기억도 검색한다. 실패·예산 소진·취소는 점수를 `null`로 두고 작업 사건을 남긴다. #54 검색은 Fast에서 I/Q/R 동일 가중치를 유지하고 계획·행동 결정별 기억 종류 가중치를 적용한다. Slow는 I/Q/R을 0.2/0.2/0.6으로 합산한다. 없는 중요도는 다른 요소만으로 다시 정규화하며, 생성 시각 기준 최신성 반감기는 60초, 동점은 최신 순번 우선이다. [정책 근거](tasks/54-memory-search-policy.md)를 따른다.
 
+#55의 활성 기억 제거는 현재 Fast 단계 기억 → 최근 10개 과업 기억 → 중요도 산정 대기 → 진행 중 Slow snapshot 입력 → 그 밖의 중요도/최신성 순으로 보존한다. Wonder는 먼저 제거한다. N=10에서 보호가 충돌해도 활성 상한을 넘기지 않고 제거 이유를 사건으로 기록한다. [제거 경계](tasks/55-memory-retention-boundaries.md)를 따른다.
+
 #42의 성찰과 계획 검토는 각 작업 시작 시 활성 메모리를 깊은 복사하고 최대 snapshot 순번과 출처 ID를 기록한다. #43의 Brain은 Fast 각 단계 시작에서 완료 결과만 가져온다. Reflection은 같은 run의 유효한 snapshot provenance를 확인한 뒤 메모리에 채택한다. Plan review는 동일한 observation ID·plan ID·version의 decision 시작 전에 끝난 경우에만 generated memory로 채택하고, 그 외는 `discarded/stale_context`로 남긴다. plan review는 plan을 덮어쓰지 않으며 generated memory는 untrusted context로 Fast에 전달한다.
 
 Slow는 실행별 단일 worker, 사용자 결정에 따른 무제한 대기열이다. Fast와 브라우저 실행은 Slow를 기다리지 않는다. 실행 종료 시 active/pending 작업은 `cancelled/run_finished`로 기록한다. 모델 생성이 끝난 상태(completed)와 Brain이 결과를 채택한 상태(adopted)는 별도 사건이다. run 간 memory/task/result는 공유하지 않는다. `general` 비교 조건의 Slow context는 `constraints`·`intent`로 축소해 persona 배경/선호를 전달하지 않는다.

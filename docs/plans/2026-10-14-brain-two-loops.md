@@ -215,7 +215,7 @@ Jev는 행동 후보 분류용이다. 현재 `_decision()`의 perception·plan�
 - [ ] Fast: LLM perception → 저장 → LLM plan → 저장 → LLM decision을 분리하고 현재 요소 ID만 제안한다.
 - [x] Slow: snapshot 성찰·계획 검토 작업을 구분하고 비동기 상태와 결과를 기록한다.
 - [x] Brain: 두 루프를 실행별로 구성하고 작업·snapshot·기본 무제한 예산·취소·결과 채택/폐기를 조율한다.
-- [ ] runner: 첫 관찰 뒤 근거 저장 → Brain, 행동 실행 뒤 관찰·평가로 연결하고 불필요한 중복 관찰은 따로 검토한다.
+- [x] runner: #44에서 첫 관찰 뒤 근거 저장 → Brain, 행동 실행 뒤 관찰·평가와 협력적 중지를 연결했다. 불필요한 중복 관찰은 별도로 검토한다.
 - [ ] 소비 모듈: dashboard·review·reports·metrics가 새 기록과 실패/취소 상태를 읽도록 한다.
 - [x] #43 결정적 fake provider로 지연·실패·취소·stale 계획 검토·persona context 격리·실행별 메모리를 검증한다. 메모리 N 제거와 provider 예산 초과는 기존 전용 회귀로 확인한다.
 - [ ] 회귀: 최신 registry/허용 origin/password 차단, null action/result, 미확인 독립 평가, 페르소나 격리와 기록 확보를 확인한다.

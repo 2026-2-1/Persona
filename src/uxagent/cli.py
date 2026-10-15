@@ -26,8 +26,8 @@ def _parser():
     providers=["mock","jev","gemini","live","claude"]
     p=sub.add_parser("run");p.add_argument("--study",default="configs/study.json");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs")
     p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=["mock","live"],default="mock")
-    p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs")
-    p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs")
+    p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs");p.add_argument("--stop-file")
+    p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs");p.add_argument("--stop-file")
     p=sub.add_parser("scenario",help="Run a preregistered browser scenario without any LLM API");p.add_argument("--config",default="configs/scenarios/decathlon-flow.json");p.add_argument("--output",default="runs");p.add_argument("--headed",action="store_true");p.add_argument("--defect",choices=["search","filter","reset","detail"]);p.add_argument("--study-id")
     p=sub.add_parser("dashboard",help="Open the local UXAgent run dashboard");p.add_argument("--port",type=int,default=8765);p.add_argument("--runs",default="runs");p.add_argument("--personas-dir",default="runs/personas");p.add_argument("--study",default="configs/study.json")
     p=sub.add_parser("review");p.add_argument("--run",required=True)
@@ -86,6 +86,7 @@ async def _act(study_path, action_path, headless):
 
 async def _batch(args):
     path=Path(args.personas)
+    stop_file=getattr(args,"stop_file",None)
     personas=[]
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip(): personas.append(__import__("uxagent.schemas",fromlist=["Persona"]).Persona.model_validate_json(line))
@@ -94,11 +95,14 @@ async def _batch(args):
     request_cap=study_config.max_llm_requests*len(personas) if study_config.max_llm_requests is not None else None
     token_cap=study_config.max_total_tokens*len(personas) if study_config.max_total_tokens is not None else None
     for persona in personas:
+        if stop_file is not None and Path(stop_file).is_file():
+            break
         if (request_cap is not None and request_total>=request_cap) or (token_cap is not None and token_total>=token_cap):
             results.append({"persona_id":persona.persona_id,"error":"batch_budget_exceeded"})
             continue
         try:
-            run_dir,summary=await run_study(args.study,args.provider,persona,False,args.output)
+            stop_kwargs={"stop_file":stop_file} if stop_file is not None else {}
+            run_dir,summary=await run_study(args.study,args.provider,persona,False,args.output,**stop_kwargs)
             request_total+=summary["llm_request_count"];token_total+=summary["llm_tokens"]
             result={"persona_id":persona.persona_id,"run_id":summary["run_id"],"termination_reason":summary["termination_reason"],"verification":summary["verification"],"run_dir":str(run_dir)}
             if summary["termination_reason"] in ("browser_error","model_error"):
@@ -131,7 +135,7 @@ def main():
         if args.command=="batch":return asyncio.run(_batch(args))
         if args.command=="compare":
             from .experiments import run_comparison
-            directory,summary=asyncio.run(run_comparison(args.study,args.personas,args.provider,args.repetitions,args.output))
+            directory,summary=asyncio.run(run_comparison(args.study,args.personas,args.provider,args.repetitions,args.output,stop_file=args.stop_file))
             print(json.dumps({"experiment_dir":str(directory),"summary":summary},ensure_ascii=False,indent=2))
             return 1 if summary["system_errors"] else 0
         if args.command=="scenario":

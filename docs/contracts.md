@@ -23,6 +23,10 @@ Slow는 실행별 단일 worker, 사용자 결정에 따른 무제한 대기열�
 
 생성된 단계 기록은 `content_status=generated`만 허용한다. 행동 결정의 `action`/`finish`는 제안이며 실행 결과는 기존 `ActionResult`, 성공 판정은 evaluator, 사람 검토는 별도 기록이다. 기존 `steps.jsonl`·`memory.jsonl` 소비자는 새 선택 필드와 구버전 누락 필드를 허용한다. 출처 ID의 실제 존재 확인과 작업 상태 전이 검사는 이후 조율 코드에서 수행한다.
 
+#44 runner에서는 `observe()`의 JSON/PNG 저장과 registry 발행 뒤 Brain을 호출한다. 실제 행동 차례에는 `decision`의 제안, `action`·`result`의 실행, 새 `next_observation_id`, `evaluation`·`verification`의 독립 판정을 단계별로 기록한다. `finish`/`give_up`은 `action`·`result`가 null이고 현재 화면의 평가 결과를 별도로 기록한다. 평가하지 못한 모델·예산·시간 오류는 `unknown`이며, 행동 뒤 관찰 실패는 실행 결과를 보존하고 `post_observation_error`와 `unknown`을 남긴다. 초기 화면의 성공 조건은 Brain 전에 실행을 종료시키지 않는다.
+
+대시보드의 일괄·비교 실행 중지는 취소 요청 파일을 통해 전달한다. 상태는 `running` → `stopping` → `cancelled`로 바뀌며, runner는 진행 중인 행동과 후속 관찰·평가를 단계 기록에 남기고 `termination_reason=cancelled`로 끝낸다. 이후 세션은 `not_started`로 남는다. 협력적 중지는 행동 timeout까지 지연될 수 있다.
+
 ## 세션
 
 실행 전에 experiment_id, session_id, task_id, condition(general/persona), 구매 제약, persona_id(일반 조건은 없음), environment_id, site_version, model/provider/prompt_version, 예산·반복 수·예정 상태를 확정한다. 성공·실패·미확인은 평가 결과이고, timeout/error/blocked/cancelled/not_started는 종료·실행 상태다. 두 축을 혼합하지 않는다.

@@ -256,3 +256,8 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 ### #43 PR 코드 리뷰 보완
 
 채택한 reflection을 일반 검색 결과에서 제외해도 다음 Fast decision 입력에 전달되도록 경계 결과를 우선 삽입한다. 기존 계획 검토의 정확한 observation/plan/version 검사와 입력 개수 상한은 유지한다. fake provider 및 mock runner로 재현했다. 선행 #41·#42 수정 병합 후 전체 pytest 216개(83.73s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Runner 평가 순서 (#44)
+
+- 코드 변경: 초기 `evaluate()`의 조기 종료를 제거하고 행동 후 재관찰 또는 `finish` 선언 때 독립 평가한다. 단계 기록에 평가 근거와 관찰 시각을 연결한다.
+- 검증 상태: 초기 성공·종료 선언·실행기 차단·후속 관찰 실패·모델 시간 초과·행동 중 중지의 mock runner 검사 6개와 전체 pytest 225개(91.75s)가 통과했다. 후속 관찰 뒤 summary가 이전 관찰을 가리키는 문제는 실패 재현 후 수정했다. 중지 시 현재 행동 기록과 비교 실행의 미시작 세션 보존, 페르소나 생성 중지에서 다른 실행을 건드리지 않는 동작은 전용 테스트로 확인했다. 실제 대시보드 하위 프로세스 검증에서는 `stopping` → `cancelled`, 취소 요약과 행동 시도·단계 기록 각 1건을 확인했다. `python3 -m uxagent run --study configs/study.json --provider mock --headless`는 처음에 로컬 포트 바인딩이 샌드박스에서 거부되어 실패했고, 허용된 권한으로 최종 재실행해 6회 행동 뒤 `verified_success`·기록 완전성 6/6을 확인했다. `node --check src/uxagent/dashboard/app.js`, Python compileall, 저장소 검사도 통과했다. 실제 유료 API/공개 사이트 성공은 확인하지 않았다.

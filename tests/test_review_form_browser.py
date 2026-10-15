@@ -148,3 +148,168 @@ def test_review_form_small_screen_and_empty_verdict(review_dashboard, tmp_path):
         page.set_viewport_size({'width':1365, 'height':900})
         page.screenshot(path=str(tmp_path / 'review-desktop.png'), full_page=True)
         browser.close()
+
+
+# D-02: use identical candidate IDs across runs to detect draft cross-contamination.
+def add_review_run(tmp_path, run_id):
+    folder = tmp_path / 'runs' / run_id
+    folder.mkdir(exist_ok=True)
+    (folder / 'run.json').write_text(json.dumps({'run_id': run_id, 'execution_mode': 'scripted'}))
+    (folder / 'summary.json').write_text(json.dumps({'verification': 'failure', 'evaluator': {'feature_checks': [
+        {'id': '검색/a', 'label': '검색 결과', 'status': 'fail', 'reason': '결과 없음'},
+        {'id': '가격', 'label': '가격 조건', 'status': 'fail', 'reason': '가격 불일치'}]}}))
+
+
+def select_review_run(page, run_id):
+    page.locator('#tab-history').click()
+    page.locator('#run-select').select_option(run_id)
+    page.locator('#tab-board').click()
+    expect(page.locator('#board-run-label')).to_contain_text(run_id)
+    expect(page.locator('.review-form')).to_have_count(2)
+
+
+def test_drafts_survive_polling_and_round_trip_between_runs(review_dashboard, tmp_path):
+    add_review_run(tmp_path, 'review-run')
+    add_review_run(tmp_path, 'other-run')
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        open_form(page, review_dashboard)
+        select_review_run(page, 'review-run')
+        first, second = page.locator('.review-form').nth(0), page.locator('.review-form').nth(1)
+        fill_form(first, 'deferred')
+        second.get_by_label('검토 메모').fill('두 번째 카드 초안')
+        note = first.get_by_label('검토 메모')
+        note.focus()
+        note.press('Home')
+        note.press('Shift+ArrowRight')
+        selection = note.evaluate('(e)=>[e.selectionStart,e.selectionEnd]')
+        for _ in range(2):
+            with page.expect_response(lambda r: '/api/run/review-run' in r.url):
+                pass
+        expect(note).to_be_focused()
+        assert note.evaluate('(e)=>[e.selectionStart,e.selectionEnd]') == selection
+        select_review_run(page, 'other-run')
+        expect(first.get_by_label('검토 메모')).to_have_value('')
+        fill_form(first, 'invalid')
+        first.get_by_label('검토 메모').fill('다른 실행 초안')
+        select_review_run(page, 'review-run')
+        expect(first.get_by_label('판정', exact=True)).to_have_value('deferred')
+        expect(first.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        expect(second.get_by_label('검토 메모')).to_have_value('두 번째 카드 초안')
+        first.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(first.get_by_role('status')).to_contain_text('저장했습니다')
+        assert page.request.get(review_dashboard+'/api/reviews/other-run').json()['reviews'] == []
+        select_review_run(page, 'other-run')
+        expect(first.get_by_label('검토 메모')).to_have_value('다른 실행 초안')
+        assert page.evaluate('localStorage.length+sessionStorage.length') == 0
+        browser.close()
+
+
+def test_late_poll_cannot_undo_confirmed_review(review_dashboard):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        form = open_form(page, review_dashboard)
+        fill_form(form)
+        old = page.request.get(review_dashboard+'/api/run/review-run').json()
+        held = []
+        page.route('**/api/run/review-run', lambda route: held.append(route))
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            pass
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(form.get_by_role('status')).to_contain_text('저장했습니다')
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            held[0].fulfill(json=old)
+        expect(page.locator('#cards .badge')).to_have_text('유효 후보')
+        browser.close()
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure'])
+def test_delayed_save_stays_with_original_run_and_retry(review_dashboard, tmp_path, outcome):
+    add_review_run(tmp_path, 'review-run')
+    add_review_run(tmp_path, 'other-run')
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        open_form(page, review_dashboard)
+        select_review_run(page, 'review-run')
+        form = page.locator('.review-form').first
+        fill_form(form)
+        held = []
+        page.route('**/api/reviews/review-run', lambda route: held.append(route))
+        form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(form.get_by_role('button', name='저장 중')).to_be_disabled()
+        select_review_run(page, 'other-run')
+        form.get_by_label('검토 메모').fill('현재 실행 초안')
+        if outcome == 'success':
+            response = page.request.post(review_dashboard+'/api/reviews/review-run', data=held[0].request.post_data_json)
+            held[0].fulfill(status=response.status, json=response.json())
+        else:
+            held[0].fulfill(status=500, json={'error':'review_history_unavailable'})
+        expect(form.get_by_label('검토 메모')).to_have_value('현재 실행 초안')
+        expect(page.locator('#cards .badge').first).to_have_text('사람 검토 전')
+        select_review_run(page, 'review-run')
+        expect(form.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        if outcome == 'failure':
+            expect(form.get_by_role('status')).to_contain_text('저장하지 못했습니다')
+            page.unroute('**/api/reviews/review-run')
+            form.get_by_role('button', name='판정 저장', exact=True).click()
+        expect(form.get_by_role('status')).to_contain_text('저장했습니다')
+        assert len(page.request.get(review_dashboard+'/api/reviews/review-run').json()['reviews']) == 1
+        assert page.request.get(review_dashboard+'/api/reviews/other-run').json()['reviews'] == []
+        browser.close()
+
+
+@pytest.mark.parametrize('field', ['검토자 별칭', '검토 메모'])
+def test_poll_rerender_preserves_focused_selection(review_dashboard, field):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        form = open_form(page, review_dashboard)
+        fill_form(form)
+        control = form.get_by_label(field)
+        control.focus()
+        control.press('Home')
+        control.press('Shift+ArrowRight')
+        control.press('Shift+ArrowRight')
+        selection = control.evaluate('(e)=>[e.selectionStart,e.selectionEnd]')
+        card = page.request.get(review_dashboard+'/api/reviews/review-run').json()['cards'][0]
+        response = page.request.post(review_dashboard+'/api/reviews/review-run', data={
+            'card_id':card['card_id'],'card_version':card['card_version'],
+            'reviewer_id':'another-test-reviewer','verdict':'deferred','note':'외부 저장으로 카드 갱신'})
+        assert response.status == 201
+        expect(page.locator('#cards .badge')).to_have_text('판단 보류')
+        expect(control).to_be_focused()
+        assert control.evaluate('(e)=>[e.selectionStart,e.selectionEnd]') == selection
+        expect(form.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        expect(form.get_by_label('판정', exact=True)).to_have_value('valid')
+        browser.close()
+
+
+def test_round_trip_ignores_inflight_detail_from_previous_selection(review_dashboard, tmp_path):
+    add_review_run(tmp_path, 'review-run')
+    add_review_run(tmp_path, 'other-run')
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        open_form(page, review_dashboard)
+        select_review_run(page, 'review-run')
+        fill_form(page.locator('.review-form').first)
+        old = page.request.get(review_dashboard+'/api/run/review-run').json()
+        held = []
+        page.route('**/api/run/review-run', lambda route: held.append(route))
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            pass
+        page.locator('#tab-history').click()
+        page.locator('#run-select').select_option('other-run')
+        page.locator('#run-select').select_option('review-run')
+        with page.expect_request(lambda r: '/api/run/review-run' in r.url):
+            held[0].fulfill(json=old)
+        # No stale form may be mounted until the newly selected run is fetched.
+        expect(page.locator('.review-form')).to_have_count(0)
+        held[1].continue_()
+        page.unroute('**/api/run/review-run')
+        page.locator('#tab-board').click()
+        expect(page.locator('.review-form').first.get_by_label('검토 메모')).to_have_value('근거 확인 <b>테스트</b>')
+        browser.close()

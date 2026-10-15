@@ -94,3 +94,5 @@ viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력�
 `.env`, API 키, OAuth 토큰, 인증 상태, 원본 개인 문서와 고객 개인정보는 push하지 않습니다.
 
 D-01: 개선 보드의 사람 판정 입력·저장과 오류 처리는 [검토 화면 안내](docs/tasks/d-review-form.md)를 따릅니다. C PR #30 기반 작업이며 prototype 병합 여부는 연결 PR에서 확인합니다.
+
+D-02: 자동 갱신·실행 전환 시 검토 초안과 텍스트 선택을 보존하며, 지연 조회가 최신 판정을 덮어쓰지 않도록 보완했습니다. 범위와 병합 순서는 [검토 화면 안내](docs/tasks/d-review-form.md)를 참고하세요.

@@ -33,6 +33,7 @@ function evidenceButtons(card){return (card.evidence_step_ids||[]).map(id=>{cons
 function cardReviewLabel(c){const v=c.latest_review?.verdict;return ({valid:'유효 후보',invalid:'무효 후보',deferred:'판단 보류',tool_error:'도구 오류',environment_error:'환경 오류'}[v]||(c.review_status==='deferred'?'판단 보류':c.review_status==='reviewed'?'검토 완료':'사람 검토 전'));}
 // Drafts live only in this page and are scoped to the exact evidence version.
 const reviewForms = new Map();
+let detailRevision = 0, refreshQueued = false;
 const reviewVerdicts = {valid:'유효 후보', invalid:'무효 후보', deferred:'판단 보류', tool_error:'도구 오류', environment_error:'환경 오류'};
 function reviewKey(runId, card) { return JSON.stringify([runId, card.card_id, card.card_version]); }
 function reviewForm(runId, card) {
@@ -79,6 +80,7 @@ function reviewForm(runId, card) {
       message('판정을 저장했습니다.');
       // Use the server-confirmed record, never an optimistic success verdict.
       if (selectedRun===runId) {
+        detailRevision++; // Discard reads issued before this confirmed save.
         const target = detail?.cards?.find(c=>c.card_id===card.card_id && c.card_version===card.card_version);
         if (target) {
           target.latest_review = record;
@@ -103,10 +105,12 @@ function reviewForm(runId, card) {
   form.querySelector('[data-review-reload]').addEventListener('click', async () => {
     if (entry.pending || selectedRun!==runId) return;
     entry.pending = true;
+    const revision = ++detailRevision;
     updateReviewForm(entry);
     try {
       const fresh = await api('/api/run/'+encodeURIComponent(runId));
-      if (selectedRun!==runId) return;
+      if (selectedRun!==runId || revision!==detailRevision) return;
+      detailRevision++;
       detail = fresh;
       entry.blocked = false;
       message('최신 근거를 확인하고 다시 판정하세요.');
@@ -135,7 +139,7 @@ function mountReviewForms(cards, html) {
   const signature = JSON.stringify([selectedRun, cards.map(c=>[c.card_id,c.card_version]), html]);
   // Unchanged polling must not replace the user's in-progress form.
   const focused = document.activeElement;
-  const selection = focused?.tagName==='TEXTAREA' ? [focused.selectionStart, focused.selectionEnd] : null;
+  const selection = ['TEXTAREA','INPUT'].includes(focused?.tagName) && typeof focused.selectionStart==='number' ? [focused.selectionStart, focused.selectionEnd] : null;
   if (container.reviewSignature!==signature) {
     container.innerHTML = html;
     container.reviewSignature = signature;
@@ -160,9 +164,42 @@ function renderExperiments(){
  const body=e=>`<p class="help">${esc(providerName(e.settings?.provider||''))}${e.settings?.provider==='mock'?' — 동작 확인용 데모':''}</p><div class="table-wrap gap-top"><table><thead><tr><th>조건</th><th>성공 / 전체</th><th>성공률</th><th title="성공한 실행의 중앙값">행동 수</th><th title="성공한 실행의 중앙값">소요 시간</th><th>비용</th></tr></thead><tbody>${['general','persona'].map(k=>{const g=e.groups?.[k]||{};return `<tr><td>${k==='general'?'일반 AI':'페르소나 AI'}</td><td>${esc(g.success??'미확인')} / ${esc(g.requested??'미확인')}</td><td>${esc(rate(g))}</td><td>${esc(g.median_actions??'미확인')}</td><td>${g.median_ms==null?'미확인':`${(g.median_ms/1000).toFixed(1)}초`}</td><td>${g.cost==null?'미확인':esc(typeof g.cost==='number'?'$'+g.cost.toFixed(5):valueText(g.cost))}</td></tr>`;}).join('')}</tbody></table></div>${pairedSessions(e.sessions||[])}<p class="help">결과를 누르면 실행 기록을 볼 수 있습니다.</p><details><summary>실험 정보</summary><p class="help">${esc(e.experiment_id)}</p><p>행동 수와 소요 시간은 성공한 실행의 중앙값입니다.</p></details>`;
  $('experiments').innerHTML=experiments.length?experiments.map((e,i)=>i?`<details class="card"><summary>이전 비교 ${esc(e.started_at?new Date(e.started_at).toLocaleString('ko-KR'):e.experiment_id)}</summary>${body(e)}</details>`:`<article class="card"><h2>최근 비교</h2>${body(e)}</article>`).join(''):empty('비교 기록이 없습니다. 새 비교 시작을 눌러 진행하세요.');
 }
-async function refresh(){if(refreshing)return;refreshing=true;try{state=await api('/api/state');initialize();if($('follow-live').checked){const ids=state.job?.run_ids||[];const live=state.runs.find(r=>r.active&&(ids.length?ids.includes(r.run_id):true));if(live&&live.run_id!==selectedRun){selectedRun=live.run_id;selectedStep=null;}}if(!selectedRun&&state.runs.length)selectedRun=state.runs[0].run_id;const id=selectedRun;const results=await Promise.allSettled([id?api('/api/run/'+encodeURIComponent(id)):Promise.resolve(null),api('/api/experiments')]);if(results[0].status==='fulfilled'&&id===selectedRun)detail=results[0].value;if(results[1].status==='fulfilled'){const v=results[1].value;experiments=Array.isArray(v)?v:v.experiments||[];}renderStats();renderJob();renderRuns();renderDetail();renderExperiments();$('connection').textContent='연결됨';$('updated').textContent='마지막 갱신 '+new Date().toLocaleTimeString('ko-KR');}catch(error){$('connection').textContent='연결 오류';notify(error.name==='AbortError'?'서버 응답이 지연됩니다. 자동으로 다시 시도합니다.':error.message,true);}finally{refreshing=false;}}
+async function refresh() {
+  if (refreshing) { refreshQueued = true; return; }
+  refreshing = true;
+  try {
+    state = await api('/api/state');
+    initialize();
+    if ($('follow-live').checked) {
+      const ids = state.job?.run_ids || [];
+      const live = state.runs.find(r=>r.active && (ids.length?ids.includes(r.run_id):true));
+      if (live && live.run_id!==selectedRun) {
+        selectedRun=live.run_id; selectedStep=null; detail=null; detailRevision++;
+      }
+    }
+    if (!selectedRun && state.runs.length) { selectedRun=state.runs[0].run_id; detailRevision++; }
+    const id=selectedRun, revision=detailRevision;
+    const results=await Promise.allSettled([
+      id?api('/api/run/'+encodeURIComponent(id)):Promise.resolve(null), api('/api/experiments')
+    ]);
+    // Selection can return to the same run while a previous request is in flight.
+    if (results[0].status==='fulfilled' && id===selectedRun && revision===detailRevision) detail=results[0].value;
+    if (results[1].status==='fulfilled') {
+      const v=results[1].value; experiments=Array.isArray(v)?v:v.experiments||[];
+    }
+    renderStats(); renderJob(); renderRuns(); renderDetail(); renderExperiments();
+    $('connection').textContent='연결됨';
+    $('updated').textContent='마지막 갱신 '+new Date().toLocaleTimeString('ko-KR');
+  } catch(error) {
+    $('connection').textContent='연결 오류';
+    notify(error.name==='AbortError'?'서버 응답이 지연됩니다. 자동으로 다시 시도합니다.':error.message,true);
+  } finally {
+    refreshing=false;
+    if (refreshQueued) { refreshQueued=false; void refresh(); }
+  }
+}
 function checks(){const raw=$('evaluation-checks').value.trim();if(!raw){const goal=$('goal-text').value.trim();return goal?[{id:'goal-text',label:'완료 화면 문구',kind:'text_contains',selector:'body',expected:goal}]:[];}let value;try{value=JSON.parse(raw);}catch{throw new Error('기능 점검 JSON 형식을 확인하세요.');}if(!Array.isArray(value)||value.some(c=>!c||!c.id||!c.label||!['visible','text_contains','url_contains'].includes(c.kind)))throw new Error('기능 점검은 id, label, kind를 가진 배열이어야 합니다.');const goal=$('goal-text').value.trim();if(goal)value.push({id:'goal-text',label:'완료 화면 문구',kind:'text_contains',selector:'body',expected:goal});return value;}
-async function chooseRun(id){selectedRun=id||null;selectedStep=null;detail=null;$('follow-live').checked=false;navigate('history');await refresh();}
+async function chooseRun(id){detailRevision++;selectedRun=id||null;selectedStep=null;detail=null;$('follow-live').checked=false;navigate('history');renderCards();await refresh();}
 document.addEventListener('click',event=>{const run=event.target.closest('[data-run]');if(run)chooseRun(run.dataset.run);const evidence=event.target.closest('[data-evidence-step]');if(evidence){selectedStep=Number(evidence.dataset.evidenceStep);$('follow-live').checked=false;navigate('history');renderDetail();}const step=event.target.closest('[data-step]');if(step){selectedStep=Number(step.dataset.step);$('follow-live').checked=false;renderDetail();}const link=event.target.closest('[data-navigate]');if(link)navigate(link.dataset.navigate);});
 document.querySelectorAll('[data-view]').forEach((button,i,list)=>{button.onclick=()=>navigate(button.dataset.view);button.onkeydown=event=>{if(['ArrowRight','ArrowDown','ArrowLeft','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();let n=event.key==='Home'?0:event.key==='End'?list.length-1:(i+(event.key==='ArrowRight'||event.key==='ArrowDown'?1:-1)+list.length)%list.length;navigate(list[n].dataset.view);list[n].focus();}};});
 $('setup-form').onsubmit=e=>e.preventDefault();$('run-batch').onclick=startFlow;$('run-compare').onclick=()=>{document.querySelector('[name=execution-mode][value=compare]').checked=true;navigate('test');setWizardStep(1);};$('refresh').onclick=refresh;$('run-select').onchange=()=>chooseRun($('run-select').value);$('follow-live').onchange=()=>{selectedStep=null;refresh();};$('latest-shot').onclick=()=>{selectedStep=null;renderDetail();};['target-url','task-input','persona-count-input','persona-background','provider','evaluation-checks','repetitions','goal-text'].forEach(id=>$(id).addEventListener('input',plan));

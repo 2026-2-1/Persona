@@ -124,5 +124,14 @@
     "path": "docs/tasks/43-brain-coordination.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/43",
     "issue_number": 43
+  },
+  {
+    "slug": "44-runner-evaluation-flow",
+    "title": "[phase:1] Runner 관찰·Brain·실행·독립 평가 흐름 연결",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/44-runner-evaluation-flow.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/44",
+    "issue_number": 44
   }
 ]

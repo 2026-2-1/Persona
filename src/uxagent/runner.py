@@ -84,7 +84,7 @@ class FixtureServer:
         if self.server:self.server.shutdown();self.server.server_close()
 
 
-async def run_study(study_path, provider_name="mock", persona_override=None, headed=None, output_root="runs", *, persona_mode="persona", run_id_override=None):
+async def run_study(study_path, provider_name="mock", persona_override=None, headed=None, output_root="runs", *, persona_mode="persona", run_id_override=None, stop_file=None):
     if persona_mode not in ("general", "persona"):
         raise ValueError("persona_mode must be general or persona")
     load_env_file(Path(study_path).resolve().parent / ".env")
@@ -136,12 +136,29 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             selected.append(entry);seen.add(memory_id)
             if len(selected)>=limit:break
         return selected
+    async def evaluate_current(page):
+        try:
+            return await evaluate(page,config.evaluator_id,getattr(config,"evaluation_checks",None))
+        except Exception:
+            return {"verification":"unknown","reason":"evaluator_error","feature_checks":[]}
+    def write_unexecuted_step(step_id, observation, observed_at, code, message, *, decision=None, memory_ids=None):
+        steps.write({"step_id":step_id,"observation_id":observation.observation_id,
+                     "decision":decision.model_dump() if decision is not None else None,
+                     "action":None,"result":None,"next_observation_id":None,
+                     "pre_observed_at":observed_at,"post_observed_at":None,
+                     "recorded_at":datetime.now(timezone.utc).isoformat(),
+                     "memory_ids":memory_ids or [],"verification":"unknown",
+                     "evaluation":{"verification":"unknown","reason":"not_evaluated","feature_checks":[]},
+                     "error":{"code":code,"message":message}})
+    def stop_requested():
+        return stop_file is not None and Path(stop_file).is_file()
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
                   memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True)
     brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer)
+    evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
     actual_headed=config.headed if headed is None else headed
     try:
         async with BrowserSession(actual_headed,config.viewport.width,config.viewport.height) as browser:
@@ -157,15 +174,20 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     pass
             run_deadline=started+config.run_timeout_seconds
             for _ in range(config.max_steps):
+                if stop_requested():termination="cancelled";break
                 if time.monotonic()>=run_deadline:termination="run_timeout";break
                 observation,registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
                 pre_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=observation
                 executor.publish(registry)
-                evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None))
-                verification=evaluation["verification"]
-                if verification=="success":termination="verified_success";break
+                evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
+                verification="unknown"
                 step_id=step_count+1
+                if stop_requested():
+                    step_count+=1
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "cancelled","Run was stopped after observation.")
+                    termination="cancelled";break
                 observation_memory=memory.append("observation",observation.html[:600],
                     [step_id],[observation.observation_id])
                 perception_boundary=brain.begin_stage("perception",observation.observation_id)
@@ -175,6 +197,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     else:
                         memories=list(memory.retrieve(config.task,config.memory_limit))
                 except BudgetExceeded:
+                    step_count+=1
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "budget_exceeded","Model request budget was exhausted.")
                     termination="budget_exceeded";break
                 except Exception as exc:
                     memories=list(memory.retrieve(config.task,config.memory_limit))
@@ -187,7 +212,11 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 try:
                     decision_started=time.monotonic()
                     remaining=run_deadline-time.monotonic()
-                    if remaining<=0:termination="run_timeout";break
+                    if remaining<=0:
+                        step_count+=1
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            "run_timeout","Run deadline was reached before a model decision.")
+                        termination="run_timeout";break
                     async with asyncio.timeout(remaining):
                         perception=await brain.perceive(config.task,observation,memories)
                         perception_sources=[m["memory_id"] for m in memories if "memory_id" in m]
@@ -239,19 +268,37 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         brain.complete_fast("decision",decision_record)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
                 except BudgetExceeded:
+                    step_count+=1
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "budget_exceeded","Model request budget was exhausted.")
                     termination="budget_exceeded";break
                 except TimeoutError:
+                    step_count+=1
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "run_timeout","Run deadline was reached during model decision.")
                     termination="run_timeout";break
                 except Exception as exc:
                     step_count+=1
                     termination="model_error";previous_error={"code":"model_output_error","message":str(exc)[:400]}
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":None,"action":None,"result":None,"error":previous_error,"verification":verification})
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        previous_error["code"],previous_error["message"])
                     error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
                 step_count+=1
                 if decision.action is None:
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms}})
-                    termination="agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
+                    evaluation=await evaluate_current(browser.active);verification=evaluation["verification"]
+                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"memory_ids":decision_sources,"verification":verification,"evaluation":evaluation,"timing_ms":{"llm":decision_ms}})
+                    termination="cancelled" if stop_requested() else "agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
                     break
+                if stop_requested():
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "cancelled","Run was stopped before action execution.",
+                        decision=decision,memory_ids=decision_sources)
+                    termination="cancelled";break
+                if time.monotonic()>=run_deadline:
+                    write_unexecuted_step(step_id,observation,pre_observed_at,
+                        "run_timeout","Run deadline was reached before action execution.",
+                        decision=decision,memory_ids=decision_sources)
+                    termination="run_timeout";break
                 action_attempts+=1
                 if decision.action.type=="back": back_count+=1
                 action_result=await executor.execute(decision.action)
@@ -262,11 +309,15 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 try:
                     next_obs,next_registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
                 except Exception:
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":None,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"verification":verification,"error":{"code":"post_observation_error","message":"Post-action observation could not be captured."},"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms}})
-                    raise
+                    previous_error={"code":"post_observation_error","message":"Post-action observation could not be captured."}
+                    error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1
+                    evaluation={"verification":"unknown","reason":"post_observation_error","feature_checks":[]};verification="unknown"
+                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":None,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"verification":verification,"evaluation":evaluation,"error":previous_error,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms}})
+                    termination="browser_error";break
                 post_observed_at=datetime.now(timezone.utc).isoformat()
+                last_obs=next_obs
                 executor.publish(next_registry)
-                post_eval=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None));verification=post_eval["verification"];evaluation=post_eval
+                evaluation=await evaluate_current(browser.active);verification=evaluation["verification"]
                 fingerprint_state=next_obs.model_dump(exclude={"observation_id","capture","error","tabs"})
                 fingerprint=hashlib.sha256(json.dumps(fingerprint_state,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                 action_key=json.dumps({k:getattr(decision.action,k) for k in ("type","target_id","text","option_value","url","target_tab_id") if getattr(decision.action,k) is not None},sort_keys=True,ensure_ascii=False)
@@ -278,7 +329,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 # use semantic target to distinguish repeated select/click phases
                 if decision.action.type=="click" and decision.action.target_id and "필터" in decision.action.target_id:mock_stage="apply-filter"
                 step_history.append({"mock_stage":mock_stage,"summary":summary})
-                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
+                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"evaluation":evaluation,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
+                if stop_requested():termination="cancelled";break
                 if termination=="stuck":break
                 if verification=="success":termination="verified_success";break
             else:termination="max_steps"

@@ -261,4 +261,4 @@ async def test_mock_run_stops_when_request_budget_is_exhausted(tmp_path):
     _,summary=await run_study(study,"mock",None,False,tmp_path/"runs")
     assert summary["termination_reason"]=="budget_exceeded"
     assert summary["llm_request_count"]==1
-    assert summary["verification"]=="failure"
+    assert summary["verification"]=="unknown"

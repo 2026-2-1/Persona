@@ -6,13 +6,13 @@
 
 | 기록 | 버전·내용 | 현재 생성 여부 |
 |---|---|---|
-| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | Fast 단계와 Slow reflection/plan_review/wonder 결과를 `brain_stages.jsonl`에 기록. 중요도는 5 고정이라 importance stage는 생성하지 않음 |
+| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | Fast와 Slow 결과, 중요도 산정 결과를 `brain_stages.jsonl`에 기록 |
 | `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·생성 완료·채택·폐기·실패·취소 사건과 snapshot 출처 | Slow lifecycle 및 Brain 결과 채택/폐기를 `brain_tasks.jsonl`에 기록 |
 | `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
-| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 활성 메모리 제거를 `memory_changes.jsonl`에 기록. importance 갱신 형식은 호환용이며 실행 경로에서 쓰지 않음 |
+| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 활성 메모리 제거와 1~10점 중요도 갱신을 `memory_changes.jsonl`에 기록 |
 | `WonderDrawRecord` | 1.0; 실행 seed·시작된 부모 Slow 작업 ID/종류·추첨 순번/값·당첨 시 Wonder 작업 ID | Wonder를 켠 실행에서 `wonder_draws.jsonl`에 작업별 한 건 기록 |
 
-`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 과업 기억의 최근 10개를 보호하고 Wonder를 먼저 제거한다. 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. 새 Wonder 때문에 과업 기억이 제거될 상황이면 생성 단계만 남기고 기억 채택은 폐기한다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록의 중요도는 5로 고정한다. 중요도 점수 갱신 API와 LLM 산정은 현재 실행 흐름에서 사용하지 않는다. 현재 검색은 I/Q/R을 같은 가중치로 합치며 없는 요소는 합산에서 제외한다. Fast/Slow별 가중치 보완은 #54다.
+`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 과업 기억의 최근 10개를 보호하고 Wonder를 먼저 제거한다. 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. 새 Wonder 때문에 과업 기억이 제거될 상황이면 생성 단계만 남기고 기억 채택은 폐기한다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록은 미산정 `null`로 생성한 뒤 Slow가 1~10점으로 산정한다. Fast는 점수를 기다리지 않으며 미산정 기억도 검색한다. 실패·예산 소진·취소는 점수를 `null`로 두고 작업 사건을 남긴다. 현재 검색은 I/Q/R을 같은 가중치로 합치며 없는 요소는 합산에서 제외한다. Fast/Slow별 가중치 보완은 #54다.
 
 #42의 성찰과 계획 검토는 각 작업 시작 시 활성 메모리를 깊은 복사하고 최대 snapshot 순번과 출처 ID를 기록한다. #43의 Brain은 Fast 각 단계 시작에서 완료 결과만 가져온다. Reflection은 같은 run의 유효한 snapshot provenance를 확인한 뒤 메모리에 채택한다. Plan review는 동일한 observation ID·plan ID·version의 decision 시작 전에 끝난 경우에만 generated memory로 채택하고, 그 외는 `discarded/stale_context`로 남긴다. plan review는 plan을 덮어쓰지 않으며 generated memory는 untrusted context로 Fast에 전달한다.
 

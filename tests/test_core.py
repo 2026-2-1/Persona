@@ -85,7 +85,7 @@ def test_action_rejects_extra_or_missing_fields():
         Action.model_validate({"type":"type","observation_id":"o","tab_id":"t","target_id":"x"})
 
 
-def test_memory_retrieval_uses_fixed_importance_and_relevance():
+def test_memory_retrieval_accepts_unscored_and_updated_importance():
     now=[100.0]
     store=MemoryStore("r",clock=lambda:now[0])
     first=store.append("observation","검정 가방 가격 확인",importance=None)
@@ -94,11 +94,10 @@ def test_memory_retrieval_uses_fixed_importance_and_relevance():
     results=store.retrieve("검정 가방",limit=1)
     assert results[0]["text"]=="검정 가방 가격 확인"
     assert "retrieval_score" in results[0]
-    assert first.importance==second.importance==5
-    with pytest.raises(ValueError,match="fixed at 5"):
-        store.append("action","가변 점수",importance=1)
-    with pytest.raises(RuntimeError,match="score updates are disabled"):
-        store.update_importance(first.memory_id,8,"stage-1")
+    assert first.importance is None and second.importance is None
+    assert store.append("action", "명시적 점수", importance=1).importance == 1
+    assert store.update_importance(first.memory_id, 8, "stage-1")
+    assert first.importance == 8
 
 
 @pytest.mark.asyncio

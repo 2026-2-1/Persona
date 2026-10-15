@@ -7,7 +7,7 @@ GitHub: [#42](https://github.com/2026-2-1/Persona/issues/42)
 - Fast perception 메모리 저장 직후 성찰을 비동기로 예약하고, plan 저장 직후 별도 계획 검토를 예약한다.
 - Slow 작업은 순차 처리하고 대기열 상한을 두지 않는다. Fast와 브라우저 실행은 Slow 완료를 기다리지 않는다.
 - 작업 시작 시 활성 메모리의 깊은 복사 snapshot을 만들며 값·중요도·출처 ID·기준 순번을 보존한다.
-- 중요도는 모든 새 메모리에 5로 고정한다. 별도 LLM 점수 산정 및 점수 변경은 실행 경로에서 사용하지 않는다.
+- #42 구현 당시에는 중요도를 모든 새 메모리에 5로 고정했다. 이후 [#40](40-memory-importance.md)에서 새 기억을 미산정으로 저장하고 Slow가 1~10점으로 산정하도록 변경했다.
 - 계획 검토는 persona/intent와 현재 계획의 일관성, 텍스트 수정 제안만 기록한다. 계획을 직접 수정하거나 실행 권한·성공 여부를 판단하지 않는다.
 - 작업 이벤트는 scheduled/started/completed/failed/cancelled/skipped를 기록한다. 종료 시 남은 작업은 취소 사건으로 남긴다.
 - 실행별 조율과 유효 결과 채택은 #43에서 구현했다. persona-only Wonder는 #45 범위다.

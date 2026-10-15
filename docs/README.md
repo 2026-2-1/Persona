@@ -27,6 +27,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [Persona 기반 1% Wonder](tasks/45-persona-wonder.md) | #45 Slow 작업별 추첨, 별도 생성, 기록·표시 |
 | [두 루프 제공자·예산·비교 호환](tasks/46-loop-provider-budget.md) | #46 실제 호출 모델·비용·한도와 Jev/일반 조건 계약 |
 | [두 루프 기록 소비](tasks/47-loop-record-consumers.md) | #47 단계·작업·기억 출처의 상세 화면과 출력 |
+| [기억 중요도 산정](tasks/40-memory-importance.md) | #40 미산정 기억의 Slow 1~10점 산정과 변경 기록 |
 | [통합 기획](2026-10-09-persona-product-plan.md) | 제품·화면·기술 실험·출처에 대한 검토용 초안 |
 | [과거 명세](reference/legacy-plan/agent.md) | 초기 구현 설계; 현재 완료 상태의 기준이 아님 |
 | [과거 검증](reference/validation-2026-10-08.md) | 이전 macOS mock 검증 기록 |

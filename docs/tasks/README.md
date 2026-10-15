@@ -15,6 +15,7 @@
 | 09 | [[phase:2] 4개 과업·환경 편차·2인 검토·개선 전후 실험](09-human-ab.md) | [#10](https://github.com/2026-2-1/Persona/issues/10) | phase:2 |
 | 10 | [[phase:2] Jev·Slow Loop·MiroFish·프롬프트 기술 비교](10-technology-experiments.md) | [#11](https://github.com/2026-2-1/Persona/issues/11) | phase:2 |
 | 11 | [[phase:3] 논문·기술백서·재현 자료와 선택 MCP 연동](11-research-mcp.md) | [#12](https://github.com/2026-2-1/Persona/issues/12) | phase:3 |
+| 40 | [[phase:1] 기억 중요도 비동기 산정](40-memory-importance.md) | [#40](https://github.com/2026-2-1/Persona/issues/40) | phase:1 |
 | 41 | [[phase:1] Fast Loop의 인식·계획·행동 결정 분리](41-fast-loop-stages.md) | [#41](https://github.com/2026-2-1/Persona/issues/41) | phase:1 |
 | 42 | [[phase:1] Slow Loop 성찰·계획 검토](42-slow-reflection-review.md) | [#42](https://github.com/2026-2-1/Persona/issues/42) | phase:1 |
 | 43 | [[phase:1] Brain 모듈 신설과 두 루프 비동기 조율](43-brain-coordination.md) | [#43](https://github.com/2026-2-1/Persona/issues/43) | phase:1 |

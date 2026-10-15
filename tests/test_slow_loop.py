@@ -80,8 +80,8 @@ async def test_reflection_and_plan_review_queue_without_limit_and_keep_plan_immu
     assert any(call["task_id"] == review_task_id and call["model"] == "provider-actual-v2"
                for call in calls)
     assert next(entry for entry in store.entries if entry.memory_id == plan_memory.memory_id).text == "상품을 검색하고 조건을 확인"
-    assert source.importance == 5
-    assert all(entry.importance == 5 for entry in store.entries)
+    assert source.importance is None
+    assert all(entry.importance is None for entry in store.entries)
 
 
 @pytest.mark.asyncio
@@ -129,7 +129,7 @@ async def test_slow_snapshot_keeps_score_and_memory_values_when_live_entry_chang
 
     prompt_memory = json.loads(provider.calls[0][0][-1]["content"])["memories"][0]
     assert prompt_memory["text"] == "초기 화면"
-    assert prompt_memory["importance"] == 5
+    assert prompt_memory["importance"] is None
 
 
 @pytest.mark.asyncio
@@ -198,7 +198,8 @@ async def test_runner_schedules_reflection_after_perception_and_review_after_pla
     assert all(any(event["task_id"] == task["task_id"] and
                    event["status"] in {"completed", "cancelled", "failed", "skipped"}
                    for event in events) for task in scheduled)
-    assert summary["brain"]["slow"]["events"]["scheduled"] == 2
+    assert summary["brain"]["slow"]["events"]["scheduled"] >= 2
+    assert any(event["kind"] == "importance" and event["status"] == "completed" for event in events)
     assert summary["brain_status"] in {"completed", "incomplete"}
     assert all(summary["brain"]["fast"][stage]["completed"] == 1
                for stage in ("perception", "plan", "decision"))
@@ -207,4 +208,4 @@ async def test_runner_schedules_reflection_after_perception_and_review_after_pla
     assert all(record["task_id"] and any(event["task_id"] == record["task_id"] and
                event["status"] == "completed" and event["output_record_ids"] == [record["record_id"]]
                for event in events) for record in fast_stage_records)
-    assert summary["importance_scoring_status"] == "fixed_equal_5"
+    assert summary["importance_scoring_status"] in {"pending", "scored"}

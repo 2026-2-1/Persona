@@ -172,3 +172,10 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 가짜 Jev/Gemini 제공자를 쓴 로컬 browser fixture에서 perception·plan·reflection·plan_review는 Gemini 모델, 후보 선택은 `jev-latest`로 기록되는 것을 확인했다. 키 누락·미지원 embedding은 실행 기록 또는 비교 세션 생성 전에 거부되는지 확인했다. 실제 유료 API 호출·계정별 모델 접근은 검증하지 않았다.
 - 일반 조건에서 Fast·Slow·Wonder 생성 입력 전체에 persona 배경·숙련도·선호가 전달되지 않는지 확인했다. 의도치 않은 Slow persona 필드가 들어오면 비교를 차단하는 검사도 통과했다.
 - `python3 -m pytest -q`: **252 passed in 96.24s**. `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `python3 -m compileall -q src tests/test_provider_budget.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`, `git diff --check`: 통과.
+
+## 2026-10-15 두 루프 기록 소비 (#47)
+
+- 새 기록 소비 실패를 먼저 재현했다. 단계·작업·기억 로그를 만든 실행 상세에 `brain_tasks`와 `trace`가 없어 전용 테스트 2개가 실패했다. 구현 후 로컬 기록 소비·보고서 관련 24개가 통과했고, 새 Chromium 표시 테스트 1개와 데스크톱 높이 회귀 검사 2개가 통과했다.
+- 첫 전체 검사에서는 새 최상위 기록 카드가 1365×768 화면 높이를 넘겨 **253 passed, 1 failed**였다. 기록 펼침을 기존 모델 호출 카드 안으로 옮겨 해당 브라우저 회귀를 수정했다. Wonder 부모 연결과 테스트 fixture 보완을 포함한 최종 `python3 -m pytest -q`는 **255 passed in 105.35s**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: `20261015T060054-5e8459e2`, 6회 행동·30회 모델 호출·12개 Slow 작업 뒤 `verified_success`, 기록 확보율 6/6. 해당 실제 로컬 기록의 상세 API에서 행동 trace 6건, 생성 단계 30건, 작업 사건 102건, 원본 기억 29건을 읽었고 JSON/CSV/Markdown/HTML 출력이 모두 열리는지 확인했다. 이는 로컬 fixture와 mock 모델의 동작 확인이며 실제 API/사이트 성과가 아니다.
+- `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `node --check src/uxagent/dashboard/app.js`, Python compileall, manifest JSON 파싱, `python3 scripts/check_repo.py`, `git diff --check`: 통과. 실제 유료 API·공개 사이트·인간 행동 유사성은 검증하지 않았다.

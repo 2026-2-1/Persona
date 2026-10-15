@@ -20,6 +20,7 @@ from .schemas import Persona, StudyConfig
 from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
+from .trace import build_step_trace
 from .storage import write_json
 
 
@@ -224,7 +225,10 @@ class Dashboard:
         if folder is None:
             return None
         stages = _jsonl_file(folder / "brain_stages.jsonl")
+        tasks = _jsonl_file(folder / "brain_tasks.jsonl")
         memories = _jsonl_file(folder / "memory.jsonl")
+        memory_changes = _jsonl_file(folder / "memory_changes.jsonl")
+        wonder_draws = _jsonl_file(folder / "wonder_draws.jsonl")
         stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
                             if entry.get("kind") == "wonder"}
         observations = {}
@@ -242,8 +246,12 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "brain_stages": stages,
+            "brain_tasks": tasks,
+            "memories": memories,
+            "memory_changes": memory_changes,
             "wonder": {
-                "draws": _jsonl_file(folder / "wonder_draws.jsonl"),
+                "draws": wonder_draws,
                 "thoughts": [{"task_id": record.get("task_id"),
                               "record_id": record.get("record_id"),
                               "text": record.get("text"),
@@ -258,6 +266,7 @@ class Dashboard:
         if detail["run"].get("condition") == "general":
             persona=detail["persona"]
             detail["persona"]={"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
+        detail["trace"] = build_step_trace(detail["steps"], stages, tasks, memories, memory_changes, wonder_draws)
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
         detail["cards"] = build_cards(detail)
         return redact(detail)

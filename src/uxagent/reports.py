@@ -74,6 +74,11 @@ def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
                    "wonder":detail.get("wonder",{}),
+                   "trace":detail.get("trace",[]),
+                   "brain_stages":detail.get("brain_stages",[]),
+                   "brain_tasks":detail.get("brain_tasks",[]),
+                   "memories":detail.get("memories",[]),
+                   "memory_changes":detail.get("memory_changes",[]),
                    "cards":detail.get("cards",build_cards(detail)),
                    "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "AI가 제안한 미검토 후보입니다. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
@@ -81,15 +86,66 @@ def export_report(detail, kind):
     if kind == "csv":
         out=io.StringIO(newline="")
         writer=csv.writer(out)
-        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids"])
+        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids",
+                         "record_type","record_id","stage_or_kind","status","text","observation_id","source_memory_ids","run_id"])
+        def safe_cell(value):
+            value = str(value if value is not None else "")
+            return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value
         for card in safe["cards"]:
             values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids")]
             # Spreadsheet import must treat untrusted text as data, not a formula.
-            writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values])
+            writer.writerow([safe_cell(v) for v in [*values, "card", "", "", "", "", "", "", safe["run"].get("run_id")]])
+        for row in safe["brain_stages"]:
+            writer.writerow([safe_cell(v) for v in ["", "", "", "", "", "", "", "brain_stage", row.get("record_id"),
+                row.get("stage"), row.get("content_status", "generated"), row.get("text"), row.get("observation_id"),
+                json.dumps(row.get("source_memory_ids") or [], ensure_ascii=False), safe["run"].get("run_id")]])
+        for row in safe["brain_tasks"]:
+            writer.writerow([safe_cell(v) for v in ["", "", "", "", "", "", "", "brain_task", row.get("task_id"),
+                row.get("kind"), row.get("status"), row.get("reason_code"), row.get("observation_id"),
+                json.dumps(row.get("source_memory_ids") or [], ensure_ascii=False), safe["run"].get("run_id")]])
+        for row in safe["memories"]:
+            writer.writerow([safe_cell(v) for v in ["", "", "", "", "", "", "", "memory", row.get("memory_id"),
+                row.get("kind"), row.get("content_status"), row.get("text"),
+                json.dumps(row.get("source_observation_ids") or [], ensure_ascii=False),
+                json.dumps(row.get("source_memory_ids") or [], ensure_ascii=False), safe["run"].get("run_id")]])
+        for row in safe["memory_changes"]:
+            writer.writerow([safe_cell(v) for v in ["", "", "", "", "", "", "", "memory_change", row.get("memory_id"),
+                row.get("change"), row.get("reason_code"), "", "", "", safe["run"].get("run_id")]])
+        for row in safe["trace"]:
+            outcome = {"proposal": row.get("action"), "execution": row.get("result"),
+                       "next_observation_id": row.get("next_observation_id"), "evaluation": row.get("evaluation"),
+                       "verification": row.get("verification", "unknown")}
+            writer.writerow([safe_cell(v) for v in ["", "", "", "", "", "", "", "step", row.get("step_id"),
+                "observation_action_evaluation", row.get("verification", "unknown"),
+                json.dumps(outcome, ensure_ascii=False), row.get("observation_id"),
+                json.dumps([memory.get("memory_id") for memory in row.get("memories", [])], ensure_ascii=False),
+                safe["run"].get("run_id")]])
         return out.getvalue()
-    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], "",
+    source = (f"사전 정의 시나리오 ({safe['run'].get('source_kind') or '출처 미확인'})"
+              if safe["run"].get("execution_mode") == "scripted" else "mock 모델 실행"
+              if safe["run"].get("provider") == "mock" else
+              f"설정 제공자 {safe['run'].get('provider') or '미확인'} (실제 호출은 모델 로그 확인)")
+    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], f"실행 출처: {source}", "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    if safe["trace"]:
+        lines.extend(["", "## 행동별 관찰·제안·실행·독립 평가", ""])
+        for row in safe["trace"]:
+            result = row.get("result") or {}
+            execution = "실행됨" if result.get("ok") is True else "실패" if result.get("ok") is False else "미실행/미확인"
+            lines.append(f"- 단계 {row.get('step_id','?')}: 관찰 {row.get('observation_id') or '없음'} → AI 제안 {json.dumps(row.get('action'), ensure_ascii=False)} → 도구 {execution} → 재관찰 {row.get('next_observation_id') or '없음'} → 독립 판정 {row.get('verification') or 'unknown'} ({(row.get('evaluation') or {}).get('reason') or '사유 미확인'})")
+    if safe["brain_stages"] or safe["brain_tasks"]:
+        lines.extend(["", "## 두 루프 생성·작업 기록", "",
+                      "아래 단계는 AI 생성물이고, 작업 상태는 예약·완료·채택·실패·취소를 구분합니다. 과업 성공은 독립 평가를 확인하세요."])
+        for row in safe["brain_stages"]:
+            lines.append(f"- 생성 {row.get('stage','unknown')} [{row.get('record_id','')}], 관찰 {row.get('observation_id') or '없음'}, 기억 {row.get('source_memory_ids') or []}: {row.get('text','')}")
+        for row in safe["brain_tasks"]:
+            lines.append(f"- 작업 {row.get('kind','unknown')} [{row.get('task_id','')}]: {row.get('status','unknown')} ({row.get('reason_code') or '사유 없음'})")
+    if safe["memories"]:
+        removed = {row.get("memory_id") for row in safe["memory_changes"] if row.get("change") == "evicted"}
+        lines.extend(["", "## 원본 기억 기록", "", "활성 목록에서 제거된 기억도 원본 기록으로 보존합니다."])
+        for row in safe["memories"]:
+            lines.append(f"- {row.get('memory_id','')} ({row.get('content_status','observed')}, {'활성 제거' if row.get('memory_id') in removed else '제거 기록 없음'}): {row.get('text','')}")
     thoughts=(safe.get("wonder") or {}).get("thoughts",[])
     if thoughts:
         lines.extend(["", "## AI가 생성한 가정된 생각", "",

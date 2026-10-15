@@ -178,5 +178,14 @@
     "path": "docs/tasks/54-memory-search-policy.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/54",
     "issue_number": 54
+  },
+  {
+    "slug": "55-memory-retention-boundaries",
+    "title": "[phase:1] 활성 메모리 제거 경계와 비동기 출처 보호",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/55-memory-retention-boundaries.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/55",
+    "issue_number": 55
   }
 ]

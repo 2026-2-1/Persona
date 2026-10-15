@@ -24,6 +24,7 @@
 | 46 | [[phase:1] 두 루프 LLM 제공자·예산·비교 조건 호환](46-loop-provider-budget.md) | [#46](https://github.com/2026-2-1/Persona/issues/46) | phase:1 |
 | 47 | [[phase:1] 두 루프 기록의 대시보드·보고서 연결](47-loop-record-consumers.md) | [#47](https://github.com/2026-2-1/Persona/issues/47) | phase:1 |
 | 54 | [[phase:1] 메모리 검색 점수·가중치 수정 보완](54-memory-search-policy.md) | [#54](https://github.com/2026-2-1/Persona/issues/54) | phase:1 |
+| 55 | [[phase:1] 활성 메모리 제거 경계와 비동기 출처 보호](55-memory-retention-boundaries.md) | [#55](https://github.com/2026-2-1/Persona/issues/55) | phase:1 |
 
 - [#25 모델·발급 안내와 설정 도우미](setup-guide.md): 무료 예시와 요청형 AI 추천, 모델별 연결 확인.
 

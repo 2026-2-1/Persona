@@ -11,7 +11,7 @@ GitHub: [#43](https://github.com/2026-2-1/Persona/issues/43)
 - Plan review는 같은 observation ID, plan ID, plan version을 가진 decision 시작 전에 완료된 경우에만 해당 decision 문맥에 채택한다. plan을 수정하지 않고 행동은 최신 observation과 ActionExecutor의 검사를 통과해야 한다.
 - LLM 요청·토큰 예산은 기본 무제한 설정을 유지한다. 활성 task 한도도 새로 추가하지 않는다.
 - 실행이 끝나면 진행 중·대기 작업을 취소하고 각각 취소 상태를 기록한다. 취소·실패·생략을 두 루프 정상 완료로 표시하지 않는다.
-- 새/기존 메모리와 작업은 run 경계를 넘지 않는다. 중요도는 5로 고정한다.
+- 새/기존 메모리와 작업은 run 경계를 넘지 않는다. #43 구현 당시 5점 고정 정책은 [#40](40-memory-importance.md)의 1~10점 Slow 산정으로 변경됐다.
 
 ## 완료 조건
 

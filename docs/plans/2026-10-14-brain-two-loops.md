@@ -6,7 +6,7 @@
 
 ## 1. 목표와 이번에 정한 내용
 
-페르소나별 실행에 `brain.py`를 두고 Fast Loop, Slow Loop, 공유 메모리를 조율한다. Fast Loop는 perception → planning → action decision을 단계별로 수행한다. Slow Loop는 비동기 성찰·계획 검토를 수행하고, 드물게 과업과 무관한 persona 기반 생각을 생성한다. #42 결정에 따라 현재 신규 메모리 중요도는 5로 고정하며 LLM 점수 산정은 실행하지 않는다.
+페르소나별 실행에 `brain.py`를 두고 Fast Loop, Slow Loop, 공유 메모리를 조율한다. Fast Loop는 perception → planning → action decision을 단계별로 수행한다. Slow Loop는 비동기 성찰·계획 검토를 수행하고, 드물게 과업과 무관한 persona 기반 생각을 생성한다. 이 문서의 5점 고정 정책은 #42 당시 결정 기록이며, #40에서 새 기억을 미산정으로 저장하고 Slow가 1~10점으로 산정하도록 변경했다. 현재 계약은 [#40 작업](../tasks/40-memory-importance.md)을 따른다.
 
 사용자가 확정한 방향:
 

@@ -72,7 +72,7 @@ def load_study(path: str | Path):
 def model_routes(provider_name: str, model: str):
     generator = "gemini" if provider_name == "jev" else "openai" if provider_name == "live" else provider_for_model(model, provider_name)
     routes = {stage: {"provider": generator, "model": model} for stage in
-              ("perception", "plan", "decision", "reflection", "plan_review", "wonder")}
+              ("perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder")}
     if provider_name == "jev":
         routes["decision"] = {"provider": "typesafe", "model": "jev-latest"}
         routes["decision_choice"] = routes["decision"]
@@ -183,7 +183,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
                   memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True,
                   wonder_enabled=config.enable_wonder,wonder_seed=wonder_seed,
-                  wonder_draw_writer=wonder_draw_writer)
+                  wonder_draw_writer=wonder_draw_writer,importance_enabled=True)
     brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer)
     evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
     actual_headed=config.headed if headed is None else headed
@@ -398,7 +398,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
              "limits":{"max_steps":config.max_steps,"run_timeout_seconds":config.run_timeout_seconds},
              "cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
              "provider_usage":provider_usage,"elapsed_ms":elapsed,"llm_ms":llm_elapsed_total,"back_count":back_count,"error_counts":error_counts,"last_error":previous_error,
-             "provider":provider_name,"model":model,"condition":persona_mode,"brain_status":brain_summary["status"],"brain":brain_summary,"slow_loop_status":slow.status if slow else "not_started","importance_scoring_status":"fixed_equal_5","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
+             "provider":provider_name,"model":model,"condition":persona_mode,"brain_status":brain_summary["status"],"brain":brain_summary,"slow_loop_status":slow.status if slow else "not_started","importance_scoring_status":"pending" if any(entry.importance is None for entry in memory.entries) else "scored","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
     from .metrics import run_metrics
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     summary.update(measured)

@@ -283,3 +283,10 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 첫 전체 검사에서는 새 최상위 기록 카드가 1365×768 화면 높이를 넘겨 **253 passed, 1 failed**였다. 기록 펼침을 기존 모델 호출 카드 안으로 옮겨 해당 브라우저 회귀를 수정했다. Wonder 부모 연결과 테스트 fixture 보완을 포함한 최종 `python3 -m pytest -q`는 **255 passed in 105.35s**였다.
 - `python3 -m uxagent run --study configs/study.json --provider mock --headless`: `20261015T060054-5e8459e2`, 6회 행동·30회 모델 호출·12개 Slow 작업 뒤 `verified_success`, 기록 확보율 6/6. 해당 실제 로컬 기록의 상세 API에서 행동 trace 6건, 생성 단계 30건, 작업 사건 102건, 원본 기억 29건을 읽었고 JSON/CSV/Markdown/HTML 출력이 모두 열리는지 확인했다. 이는 로컬 fixture와 mock 모델의 동작 확인이며 실제 API/사이트 성과가 아니다.
 - `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `node --check src/uxagent/dashboard/app.js`, Python compileall, manifest JSON 파싱, `python3 scripts/check_repo.py`, `git diff --check`: 통과. 실제 유료 API·공개 사이트·인간 행동 유사성은 검증하지 않았다.
+
+## 2026-10-15 공유 기억 중요도 산정 (#40)
+
+- 원본 기억은 `null` 점수로 남기고 동일 ID·순번·생성 시각에 1~10점 변경을 적용하는 실패 재현 테스트를 작성했다. Slow의 비동기 점수 호출, 공통 예산, 제거된 기억의 늦은 응답 폐기, 잘못된 점수와 예산 소진 기록을 확인했다. 중요도 전용 5개 테스트가 통과했다.
+- 첫 전체 pytest는 이전의 5회 모델 호출을 고정한 모델 선택 테스트 때문에 **257 passed, 1 failed**였다. fake provider와 호출 단계 기대값에 importance를 추가했다. 실패·예산 테스트 2개를 포함한 최종 전체 pytest는 **260 passed in 99.54s**, 중요도 전용 검사는 **5 passed**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T061604-f58f1f64`에서 6회 행동 후 독립 판정 `verified_success`, 기록 확보율 6/6. 총 모델 요청 58회 중 중요도 요청 28회가 완료됐고, 원본 기억 29개는 모두 `null`로 남으며 28개 점수 변경 사건이 따로 기록됐다. 마지막 기억 1개는 종료 시 아직 산정 작업이 예약되지 않아 실행 요약 `importance_scoring_status=pending`이다. 이는 종료 시점의 미산정 상태를 숨기지 않는다.
+- `python3 scripts/check_repo.py`, `python3 -m compileall -q src tests/test_memory_importance.py tests/test_model_selection.py`, manifest JSON 파싱, `git diff --check`: 통과. 위 검사는 mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 모델의 점수 품질·추가 비용·공개 사이트 성공은 검증하지 않았다.

@@ -2,7 +2,7 @@
 
 `cli.py` 또는 `monitor.py` → `runner.run_study` → BrowserSession → observe → Brain(FastLoop + SlowLoop + MemoryStore) → ActionExecutor → 새 observe와 evaluate → JSON/JSONL/PNG.
 
-2026-10-15 구현: #39의 기록 계약, #41의 Fast 단계별 생성, #42의 Slow reflection/plan review, #43의 실행별 조율은 코드에 연결됐다. Brain은 stage 경계의 완료 결과를 provenance로 검사해 채택하고, plan review는 observation/plan/version이 정확히 일치하는 decision에만 전달한다. 세부 정책과 남은 평가 범위는 [설계 초안](plans/2026-10-14-brain-two-loops.md)에 기록했다.
+2026-10-15 구현: #39의 기록 계약, #41의 Fast 단계별 생성, #42의 Slow reflection/plan review, #43의 실행별 조율은 코드에 연결됐다. #40에서 새 기억은 미산정으로 저장하고 Slow가 공통 예산으로 1~10점 중요도를 산정해 원본과 변경 사건을 분리한다. Brain은 stage 경계의 완료 결과를 provenance로 검사해 채택하고, plan review는 observation/plan/version이 정확히 일치하는 decision에만 전달한다. 세부 정책과 남은 평가 범위는 [설계 초안](plans/2026-10-14-brain-two-loops.md)에 기록했다.
 
 | 영역 | 파일 | 책임·회귀 영향 |
 |---|---|---|

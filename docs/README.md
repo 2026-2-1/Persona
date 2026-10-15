@@ -4,6 +4,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
+| [최신 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 10/15 23:27 원격 #66/#71~#79 구현·preview 차이·분기·D 계약 통합 대기 |
 | [연구·데이터 회의 안건](meetings/2026-10-15-research-and-data-agenda.md) | Slow 정의·실험 조건·데이터·Novelty·담당/기한 결정표 |
 | [Slow 실행·검색 실험 계획](research/2026-10-15-slow-loop-experiment-plan.md) | 빈도와 검색 정책의 단계별 비교·실제 입력 소비·예산·평가 분리 |
 | [제출 초안 3항목](research/2026-10-15-project-submission-draft.md) | 기업 데이터 미수령 0건·시스템 구조도/구현 범위·핵심 논문 주제 |

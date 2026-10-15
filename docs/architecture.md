@@ -1,5 +1,7 @@
 # 구조와 변경 영향
 
+아래 현재 코드는 D 검증 preview의 구조다. 최신 원격 #66/#71~#79의 Brain·성찰/검토·검색 구현은 존재하며 이 preview와 통합 대기다. [최신 원격 확인](handoffs/2026-10-15-latest-github-review.md)과 [제출 구조도](research/2026-10-15-project-submission-draft.md)를 함께 읽는다.
+
 `cli.py` 또는 `monitor.py` → `runner.run_study` → BrowserSession → observe → FastLoop(perception → plan → decision, 단계별 기억 저장/재검색) → ActionExecutor → 새 observe와 evaluate → JSON/JSONL/PNG. 비동기 중요도 산정은 별도 작업으로 생성되며 고수준 성찰·계획 검토 조율과 구분한다.
 
 2026-10-14 변경 논의: [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md)은 위 현재 구조와 신규 Brain 조율·단계별 생성·필수 비동기 Slow Loop를 대조한다. #39에서 단계 결과·비동기 작업·메모리 변경 사건의 기록 스키마를 정의했으며 `brain.py`와 해당 실행 동작은 아직 구현되지 않았다.

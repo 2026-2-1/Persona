@@ -100,7 +100,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"fast-2","condition":persona_mode})
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"prompt_version":"fast-2","condition":persona_mode,
+        "execution_mode":"ai", "source_kind":"synthetic_fixture" if is_fixture else config.source_kind})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)

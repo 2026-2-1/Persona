@@ -71,3 +71,7 @@ recording.complete/attempted와 rate는 전체 범위가 알려져 있을 때 �
 새 실행은 llm_tokens_complete/llm_tokens_measured_total/llm_tokens_known_calls/llm_tokens_unknown_calls와 cost_complete/cost_measured_total/provider_usage_complete를 저장한다. provider_usage는 요청·입력·출력·추정비용 각각 complete/measured_total과 토큰 known_calls/unknown_calls를 제공한다. 알려진 일부 입력만 있고 출력이 없으면 입력 측정값은 보존하되 전체 토큰은 미확인이다. 요청 수보다 호출 기록이 적으면 제공자별 전체 요청/사용량/비용을 확인됐다고 처리하지 않는다.
 
 기존 summary.llm_tokens 예산 계수와 provider의 기존 합산 필드는 호환 목적으로 유지한다. 제한 검사는 기존 BudgetManager를 사용하고 실제 집계는 completeness와 측정값을 우선한다. 따라서 group의 known_total은 완전한 세션 외에 확인된 호출의 부분 합계도 포함할 수 있고 known_sessions는 완전한 측정 세션 수다. 과거 completeness 없는 값은 제공된 수치로 호환 조회되며 정확한 호출 측정인지 사후 재구성할 수 없다는 제한을 가진다.
+
+## D 조회 상태와 새 AI 출처 (2026-10-15 작업 브랜치)
+
+상세 조회 실패는 정상 빈 후보와 다르다. 마지막 정상 상세를 보존할 때 실패와 시각을 표시하고 최신 조회가 회복될 때까지 저장·내보내기를 제공하지 않는다. 새 AI 실행은 execution_mode=ai를 기록하며 StudyConfig.source_kind는 unknown/synthetic_fixture/live_configured다. 내장 shop fixture만 알려진 synthetic_fixture로 기록한다. legacy 출처는 추정하지 않는다. 복구 null rate는 미확인, 명시적 episodes=[]는 대상 사건 없음으로 구분한다.

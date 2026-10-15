@@ -80,3 +80,36 @@ def test_changed_evidence_exports_current_identity_without_old_verdict(review_da
             assert '판정: valid' not in reports[kind]
             assert '상태: 사람 검토 전' in reports[kind]
         browser.close()
+
+
+@pytest.mark.parametrize('verification,termination,checks', [
+    ('success','scenario_completed',[{'id':'ok','label':'정상 점검','status':'pass'}]),
+    ('unknown','interrupted',[]),
+    ('failure','scenario_failed',[{'id':'missing','label':'근거 누락 후보','status':'fail','step_id':6}]),
+    ('unknown','scenario_unverified',[]),
+])
+def test_demo_states_keep_verification_termination_and_missing_evidence(review_dashboard,tmp_path,verification,termination,checks):
+    path=tmp_path/'runs/review-run/summary.json'
+    path.write_text(json.dumps({'verification':verification,'termination_reason':termination,
+                               'evaluator':{'feature_checks':checks}}),encoding='utf-8')
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page(accept_downloads=True,viewport={'width':390,'height':844})
+        page.goto(review_dashboard)
+        page.locator('#tab-history').click()
+        expect(page.locator('#run-status')).to_contain_text({'success':'성공 확인','failure':'실패 확인','unknown':'미확인'}[verification])
+        expect(page.locator('#shot-wrap')).to_contain_text('저장된 관찰 화면이 없습니다')
+        page.locator('#tab-board').click()
+        if checks and verification=='failure':
+            expect(page.locator('#cards')).to_contain_text('근거 누락 후보')
+            expect(page.locator('#cards [data-evidence-step]')).to_have_count(0)
+        else:
+            expect(page.locator('#cards')).to_contain_text('개선 후보가 없습니다')
+        reports=download_reports(page,tmp_path)
+        exported=json.loads(reports['json'])
+        assert exported['summary']['verification']==verification
+        assert exported['summary']['termination_reason']==termination
+        for kind in ('md','html'):
+            assert termination in reports[kind]
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        browser.close()

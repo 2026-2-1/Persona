@@ -183,3 +183,12 @@
 - repo 검사 PASS. CI 결과는 해당 PR의 head 검사에서 확인한다.
 - 근거 변경 시 Markdown/HTML에 현재 카드 버전이 없는 문제를 실패 테스트로 재현한 뒤 수정했다.
 - 팀원 독립 재현, 전체 예외 상태 시연 및 prototype 통합 재검증은 남았다. [절차와 한계](tasks/d-review-export-verification.md).
+
+## 2026-10-15 D 조회·출처·복구·예외 상태
+
+- 선행 PR #52의 최종 CI [38575931790](https://github.com/2026-2-1/Persona/actions/runs/38575931790): Ubuntu 3.11/Windows 3.13 모두 success.
+- `codex/d-dashboard-hardening`, #64/#65: 실패 테스트(조회/복구 4건, 출처 2건) 재현 후 수정. 집중 조회/검토 31 passed, 출처 3 passed, D-05/비교 12 passed.
+- 전체 pytest **303 passed** (macOS Python 3.13.13). doctor 정상, repo 검사 PASS.
+- 실제 Mock `20261014T165640-9f1f7163` verified_success. 새 run.json의 AI 실행/합성 출처 기록 확인.
+- 실제 합성 실패 `20261014T165643-1173dceb`: 별도 임시 검토 이력 파일을 손상시켜 실제 API 오류 유발 → 마지막 정상 시각·초안 유지·저장 비활성 화면 확인 → 테스트 파일 복구 후 자동 재조회 회복 → 보존된 초안으로 deferred 저장 → 새로고침 후 이력 1건 확인. 개인/기존 실행 파일은 변경하지 않았다.
+- 390px 정상/중단/빈 결과/근거 누락과 네 형식 내보내기 회귀를 추가했다. 독립 팀원 재현·prototype 통합은 남아 있다.

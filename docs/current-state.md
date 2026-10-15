@@ -84,3 +84,5 @@
 2026-10-14 팀 공유 상태: D-01~D-04는 작업 브랜치에서 검증됐으며 PR #37/#38/#49/#50은 미병합이다. D-05(#36)와 prototype 통합 검증은 남아 있다. [회의 안건과 결정표](meetings/2026-10-14-d-progress-and-decisions.md)에 PR 의존 관계 및 codex 브랜치 CI 실행 조건을 정리했다.
 
 D-05(#36) 작업 브랜치에서 합성 후보의 근거 확인·판정 저장·새로고침·JSON/CSV/Markdown/HTML 대조를 통과했다. 현재 카드 ID·버전의 문서 내보내기 누락을 수정했다. 팀원 독립 재현과 prototype 통합 재검증은 남아 있다. [상세](tasks/d-review-export-verification.md).
+
+2026-10-15 D 후속 작업 브랜치: 상세/비교 조회 실패·마지막 정상 자료와 재시도, 실패 중 저장/내보내기 차단, 새 AI 실행 출처와 복구 측정 미확인 표시를 보완했다. 과거 출처는 unknown을 유지한다. [상세](tasks/d-dashboard-hardening.md).

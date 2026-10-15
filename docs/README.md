@@ -30,3 +30,6 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 - [D-04 비교표 측정 범위·누락](tasks/d-comparison-coverage.md): #35의 표시 계약과 가상 데이터 검증.
 
 - [D-05 검토·내보내기 통합 검증](tasks/d-review-export-verification.md): 실제 시연 결과, 수정 사항과 팀원 재현 절차.
+
+- [D 조회 실패·출처·복구 표시](tasks/d-dashboard-hardening.md): #64/#65의 수정과 회귀.
+- [메모리 정책 실험 설계](research/2026-10-15-memory-policy-experiment.md): 최신 PR 근거·비교 조건·고정 변수·예산·한계.

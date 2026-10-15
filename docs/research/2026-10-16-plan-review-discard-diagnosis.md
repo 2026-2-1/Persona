@@ -10,10 +10,10 @@
 
 ## 코드에서 확인한 순서
 
-1. [runner.py 282–285행](../../src/uxagent/runner.py#L282-L285)은 `schedule_plan_review()` 다음에 `begin_stage("decision")`을 호출한다. 두 호출 사이에 `await`가 없다.
-2. [SlowLoop 예약 56–72행](../../src/uxagent/slow_loop.py#L56-L72)은 대기열에 넣고 필요하면 `asyncio.create_task()`로 worker를 예약한 뒤 즉시 반환한다. 실행 중인 runner가 제어를 넘기기 전에는 새 작업이 시작될 수 없다. 기존 worker도 같은 이벤트 루프에서 진행된다.
-3. [Brain의 소비 조건 132–158행](../../src/uxagent/brain.py#L132-L158)은 **완료된 결과만** 가져온다. 계획 검토는 `decision`이며 observation ID·plan ID·version이 모두 같아야 채택된다. 한 번 지나간 해당 경계에서는 다시 확인하지 않는다. 뒤의 embedding 검색이 `await`하더라도 경계 검사는 이미 끝난 상태다.
-4. 다음 단계의 `perception`은 새 observation으로 시작한다. 이때 완료 결과를 꺼내면서 검토를 `stale_context`로 폐기한다. [종료 처리 103–108행](../../src/uxagent/brain.py#L103-L108)은 남은 완료 결과를 `run_finished_unconsumed`로 기록한다.
+1. [runner.py 282–285행](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/runner.py#L282-L285)은 `schedule_plan_review()` 다음에 `begin_stage("decision")`을 호출한다. 두 호출 사이에 `await`가 없다.
+2. [SlowLoop 예약 56–72행](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/slow_loop.py#L56-L72)은 대기열에 넣고 필요하면 `asyncio.create_task()`로 worker를 예약한 뒤 즉시 반환한다. 실행 중인 runner가 제어를 넘기기 전에는 새 작업이 시작될 수 없다. 기존 worker도 같은 이벤트 루프에서 진행된다.
+3. [Brain의 소비 조건 132–158행](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/brain.py#L132-L158)은 **완료된 결과만** 가져온다. 계획 검토는 `decision`이며 observation ID·plan ID·version이 모두 같아야 채택된다. 한 번 지나간 해당 경계에서는 다시 확인하지 않는다. 뒤의 embedding 검색이 `await`하더라도 경계 검사는 이미 끝난 상태다.
+4. 다음 단계의 `perception`은 새 observation으로 시작한다. 이때 완료 결과를 꺼내면서 검토를 `stale_context`로 폐기한다. [종료 처리 103–108행](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/brain.py#L103-L108)은 남은 완료 결과를 `run_finished_unconsumed`로 기록한다.
 
 이 보호 조건은 오래된 계획·화면의 조언을 새 행동에 무조건 적용하지 않게 한다. 문제는 보호 조건 자체보다 **현재 호출 순서가 그 조건을 만족시킬 실행 기회를 제공하지 않는다는 것**이다.
 
@@ -32,7 +32,7 @@
 
 원본은 로컬의 `runs/latest-pr-integration-20261015/20261015T145603-83f78314/brain_tasks.jsonl`, `brain_stages.jsonl`, `memory.jsonl`이다. 검토 결과를 원본 기억에 넣은 기록은 6건 모두 0건이었다. 모든 검토의 run ID는 일치하고 참조 기억 ID도 원본 로그에서 확인됐으며, 참조 기억 순번은 snapshot 순번 이하였다. 생성 실패·교차 실행·출처 누락 때문에 폐기된 사례가 아니다.
 
-계획 검토의 생성 stage는 `plan_review`지만, 메모리에 전달할 출력 kind는 의도적으로 `reflection`이다. [SlowLoop 356–380행](../../src/uxagent/slow_loop.py#L356-L380)의 반환과 Brain의 허용 kind가 맞는다. 이 이름 차이로 결과를 버린 것이 아니다.
+계획 검토의 생성 stage는 `plan_review`지만, 메모리에 전달할 출력 kind는 의도적으로 `reflection`이다. [SlowLoop 356–380행](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/slow_loop.py#L356-L380)의 반환과 Brain의 허용 kind가 맞는다. 이 이름 차이로 결과를 버린 것이 아니다.
 
 ## 실제 runner를 통과한 재현과 대조
 
@@ -84,6 +84,6 @@ baseline의 첫 검토는 예약 반환 665.984ms, decision 경계 665.986ms, �
 
 ## 별도로 발견한 집계 후속
 
-원본 실행의 `summary.brain.slow.events.discarded`는 7건(계획 검토 6 + 성찰 1)인데 `summary.brain.adoption.discarded`는 5건이다. [경계 소비](../../src/uxagent/brain.py#L153-L157)는 누계를 더하지만 [종료 미소비 처리](../../src/uxagent/brain.py#L103-L108)는 사건만 기록하고 이 누계에는 더하지 않는다. 종료 미소비 2건이 차이를 만든다.
+원본 실행의 `summary.brain.slow.events.discarded`는 7건(계획 검토 6 + 성찰 1)인데 `summary.brain.adoption.discarded`는 5건이다. [경계 소비](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/brain.py#L153-L157)는 누계를 더하지만 [종료 미소비 처리](https://github.com/2026-2-1/Persona/blob/a031932fd1b0d11bf40f6fb7f13a7bf7c2653f6a/src/uxagent/brain.py#L103-L108)는 사건만 기록하고 이 누계에는 더하지 않는다. 종료 미소비 2건이 차이를 만든다.
 
 이는 계획 검토 0/6의 원인과 별개인 **요약 집계 불일치**다. 수정하지 않았으며, 후속에서 지표 정의와 함께 정리해야 한다. 현재 폐기 사유별 집계는 원본 `brain_tasks.jsonl`의 작업별 최신 상태를 기준으로 읽는다.

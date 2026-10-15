@@ -1,6 +1,19 @@
 # 평가·기록·결과 계약
 
-이 문서의 새 필드는 목표 계약이다. 현재 schemas.py에 모두 존재하지 않는다. 구현 이슈에서 schema_version과 읽기 호환성을 추가한다.
+이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
+
+## Brain 기록 계약 (#39)
+
+| 기록 | 버전·내용 | 현재 생성 여부 |
+|---|---|---|
+| `BrainStageRecord` | 1.0; 생성된 perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | 미생성; 후속 Fast/Slow/Brain 이슈에서 연결 |
+| `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | 미생성; 후속 Brain 이슈에서 기록 |
+| `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
+| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 미생성; 점수 산정·N개 상한 구현 시 연결 |
+
+`StudyConfig.max_active_memories`는 향후 양의 정수 N을 받을 예약 필드다. 현재는 `null`만 허용하고 양의 정수를 지정하면 미지원 오류를 낸다. 실제 상한과 기본값은 #40에서 구현한다. 기존 `memory_limit`은 검색 반환 개수다. 중요도 미산정은 `null`이다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록과 `MemoryChangeEvent`의 중요도는 논문 Appendix C.7을 따라 1~10으로 제한한다. 현재 검색기는 각 버전의 최댓값으로 나누어 기존 가중합에 넣는다. Slow의 실제 중요도 산정과 논문식 검색 계산은 #40에서 구현한다.
+
+생성된 단계 기록은 `content_status=generated`만 허용한다. 행동 결정의 `action`/`finish`는 제안이며 실행 결과는 기존 `ActionResult`, 성공 판정은 evaluator, 사람 검토는 별도 기록이다. 기존 `steps.jsonl`·`memory.jsonl` 소비자는 새 선택 필드와 구버전 누락 필드를 허용한다. 출처 ID의 실제 존재 확인과 작업 상태 전이 검사는 이후 조율 코드에서 수행한다.
 
 ## 세션
 

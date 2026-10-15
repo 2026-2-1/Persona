@@ -115,3 +115,7 @@ recording.complete/attempted와 rate는 전체 범위가 알려져 있을 때 �
 ## Brain 소비와 내보내기 (D #47 작업 브랜치)
 
 run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes/warnings를 제공한다. 작업별 마지막 append 상태와 전체 사건을 구분하고 원본 기억+변경 사건을 읽기 전용 overlay한다. Brain 없는 legacy CSV는 기존 열을 유지하고 Brain CSV는 record_type/record_id/brain_record 추가 열 및 타입별 행을 가진다. 생성물과 후보/독립 평가/사람 검토를 합산하지 않는다. [상세](tasks/d-brain-trace-viewer.md).
+
+## Wonder seed 표시용 DTO
+
+`brain.wonder_seed_texts`는 검증된 `wonder_draws`와 순서가 같은 10진 문자열 배열이다. 원본 draw의 `seed` 정수 및 로그 스키마는 바꾸지 않는다. 화면은 JavaScript Number 반올림을 피하기 위해 이 문자열을 사용한다. 파일이 없거나 유효 draw가 없으면 빈 배열이며, 저장·재실행에 쓸 seed는 원본 값과 같아야 한다.

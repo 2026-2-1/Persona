@@ -14,6 +14,7 @@ class MemoryStore:
         self.run_id, self.writer, self.clock = run_id, writer, clock
         self.max_active_memories, self.change_writer = max_active_memories, change_writer
         self.entries: list[MemoryEntry] = []
+        self.known_memory_ids: set[str] = set()
         self.started = clock()
         self._next_seq = 1
         self.embedding_cache: dict[str, list[float]] = {}
@@ -33,6 +34,7 @@ class MemoryStore:
             based_on_seq=based_on_seq,importance=importance,content_status=content_status)
         self._next_seq += 1
         self.entries.append(entry)
+        self.known_memory_ids.add(entry.memory_id)
         if self.writer: self.writer.write(entry.model_dump())
         self._enforce_active_limit()
         return entry

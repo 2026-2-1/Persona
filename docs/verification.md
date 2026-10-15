@@ -245,3 +245,14 @@ Jev가 입력 후보를 고른 뒤 생성 모델이 `give_up`을 반환하는 �
 ### #42 PR 코드 리뷰 보완
 
 Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입력·출력 토큰을 별도 호출 로그에 기록한다. 수정 전에는 예산 요청 1회에 사용량 로그 0건이었다. fake provider 기반 Slow/Fast 관련 검사 4개, 선행 #41 수정 병합 후 전체 pytest 207개(81.38s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Brain 두 루프 조율 (#43)
+
+- 전체 pytest: **212 passed in 82.28s**. fake provider 검사에서 stage 경계 reflection 채택, observation/plan ID/version이 맞는 plan review만 decision 문맥에 전달, stale 결과 폐기, 종료 시 실행 중·대기 작업 취소, general 조건 persona context 축소, run 메모리 격리를 확인했다.
+- mock runner에서는 legacy `enable_slow_loop=false` 입력에도 Fast/Slow가 구성되고, Fast stage task ID와 stage record 연결, reflection/plan review 예약·상태 기록을 확인했다.
+- `python3 -m compileall -q src tests/test_brain.py tests/test_brain_schema.py tests/test_slow_loop.py tests/test_fast_stages.py tests/test_model_selection.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 요청 수/총토큰 제한은 기본 `null`이며 대기열 상한을 추가하지 않았다. 테스트는 가짜 provider와 로컬 fixture를 사용했고 실제 유료 API는 호출하지 않았다.
+
+### #43 PR 코드 리뷰 보완
+
+채택한 reflection을 일반 검색 결과에서 제외해도 다음 Fast decision 입력에 전달되도록 경계 결과를 우선 삽입한다. 기존 계획 검토의 정확한 observation/plan/version 검사와 입력 개수 상한은 유지한다. fake provider 및 mock runner로 재현했다. 선행 #41·#42 수정 병합 후 전체 pytest 216개(83.73s) 통과. 유료 API 호출 없음.

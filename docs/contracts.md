@@ -6,12 +6,14 @@
 
 | 기록 | 버전·내용 | 현재 생성 여부 |
 |---|---|---|
-| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | importance 결과만 `brain_stages.jsonl`에 기록; 나머지는 후속 이슈 |
-| `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | importance 작업만 `brain_tasks.jsonl`에 기록; 나머지는 후속 이슈 |
+| `BrainStageRecord` | 1.0; 생성된 importance/perception/plan/decision/reflection/plan_review/wonder, 관찰·계획 버전·참조 기억과 시간 | Fast 단계와 Slow reflection/plan_review 결과를 `brain_stages.jsonl`에 기록. 중요도는 5 고정이라 importance stage는 생성하지 않음 |
+| `BrainTaskEvent` | 1.0; 실제 비동기 작업의 예약·시작·생략·완료·실패·취소 사건과 snapshot 출처 | Slow reflection/plan_review 작업 상태를 `brain_tasks.jsonl`에 기록 |
 | `MemoryEntry` | 구버전 입력은 1.0으로 읽음. 새 기록은 2.0이며 생성 단계·원본 기억 ID를 선택적으로 연결 | `MemoryStore`가 2.0 기록 생성 |
-| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 제거·중요도 갱신 사건을 `memory_changes.jsonl`에 기록 |
+| `MemoryChangeEvent` | 1.0; 중요도 점수 갱신 또는 활성 메모리 제거의 원본 ID·점수·사유 | 활성 메모리 제거를 `memory_changes.jsonl`에 기록. importance 갱신 형식은 호환용이며 실행 경로에서 쓰지 않음 |
 
-`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 기억의 최근 10개를 보호하고, 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 중요도 미산정은 `null`이다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록과 `MemoryChangeEvent`의 중요도는 논문 Appendix C.7을 따라 1~10으로 제한한다. 현재 검색은 I/Q/R을 같은 가중치로 합치며 없는 요소는 합산에서 제외한다. Fast/Slow별 가중치 보완은 #54다. 현재 Runner는 행동 뒤 저장한 observation/plan/action 기억을 별도 비동기 중요도 LLM 작업으로 점수화한다. 점수 반영이 끝나기 전에는 기존 미산정 상태로 검색한다.
+`StudyConfig.max_active_memories`는 기본 64, 허용 범위 10~64다. 활성 기억의 최근 10개를 보호하고, 나머지는 중요도 우선·동점일 때 생성 순번이 최신인 순서로 남긴다. `memory_limit`은 별도의 검색 반환 개수다. 원본 `memory.jsonl`은 제거·점수 갱신 시에도 보존하고, 제거 ID·사유·보존 점수 또는 1~10점 갱신은 `memory_changes.jsonl`에 기록한다. 구버전 `MemoryEntry` 1.0의 중요도는 0~5로 읽고, 새 2.0 기록의 중요도는 5로 고정한다. 중요도 점수 갱신 API와 LLM 산정은 현재 실행 흐름에서 사용하지 않는다. 현재 검색은 I/Q/R을 같은 가중치로 합치며 없는 요소는 합산에서 제외한다. Fast/Slow별 가중치 보완은 #54다.
+
+#42의 성찰과 계획 검토는 각 작업 시작 시 활성 메모리를 깊은 복사하고 최대 snapshot 순번과 출처 ID를 기록한다. 두 작업은 비동기 단일 worker에서 순차 처리하며 대기열 상한을 두지 않는다. 브라우저/ Fast 단계는 Slow 완료를 기다리지 않는다. 계획 검토는 `plan_review` 기록과 생성 메모리만 추가하며 기존 plan이나 행동 제안을 직접 바꾸지 않는다.
 
 요청 수와 총토큰 예산은 기본 `null`로 제한하지 않는다. 양의 정수를 지정하면 기존 예산 검사를 적용한다. 실행 시간·최대 행동 단계·요청별 출력 토큰 상한은 별도로 유지한다.
 

@@ -218,3 +218,9 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 평가 기대값을 설정에 넣은 실패 재현 3개가 기존 StudyConfig의 extra field 오류로 실패했다. 구현 후 가짜 단계별 제공자를 사용한 실제 로컬 브라우저 실행에서 일치 상세는 `verified_success`, 불일치 상세 2개는 `agent_finished`·`failure`였다. 정답 상품명은 모델 과업 문장에 넣지 않았다.
 - 첫 전체 pytest는 기존 runner의 평가기 mock에 새 인자를 넘겨 **277 passed, 2 failed**였다. 기대값이 없는 기존 study의 호출을 유지하도록 수정한 뒤 관련 **10 passed**, 최종 전체 **279 passed in 108.03s**였다.
 - `python3 scripts/check_repo.py`, Python compileall, study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 호출은 현재 로컬 키가 없어 수행하지 못했다. 제공자 실호출의 과업 성공은 미검증이다.
+
+## 2026-10-15 공개 데카트론 AI 부분 평가 연결 (#61)
+
+- 프로필 설정 수용·공개 설정 파일·상품명 키워드 판정의 실패 재현 3개가 수정 전 실패했다. 수정 후 데카트론 AI/평가기 관련 **28 passed in 16.12s**, 전체 **282 passed in 107.54s**였다.
+- 로컬 Playwright DOM에서 다른 적합 러닝화 2개는 이름·8만원 이하 가격으로 성공하고, 신발 종류가 다르거나 가격이 99,900원이면 실패했다. 이 판정은 표시 상품명·가격의 부분 범위에 한정된다.
+- `python3 scripts/check_repo.py`, Python compileall, live study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 키를 사용할 수 없어 공개 사이트 AI 실행은 수행하지 않았다. 이전 브랜치의 공개 사이트 기록을 현재 단계별 Fast 구현의 실호출 결과로 간주하지 않는다.

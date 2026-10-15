@@ -79,6 +79,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     load_env_file(Path(study_path).resolve().parent / ".env")
     load_env_file()
     config,persona,config_path=load_study(study_path)
+    profile=json.loads((config_path.parent/config.evaluation_profile_file).read_text(encoding="utf-8")) if config.evaluation_profile_file else None
     model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
     validate_provider_configuration(provider_name, config)
     routes = model_routes(provider_name, model)
@@ -129,9 +130,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         return selected
     async def evaluate_current(page):
         try:
-            if config.evaluation_expectations is not None:
+            if config.evaluation_expectations is not None or profile is not None:
                 return await evaluate(page,config.evaluator_id,config.evaluation_checks,
-                                      expectations=config.evaluation_expectations)
+                                      expectations=config.evaluation_expectations,profile=profile)
             return await evaluate(page,config.evaluator_id,config.evaluation_checks)
         except Exception:
             return {"verification":"unknown","reason":"evaluator_error","feature_checks":[]}

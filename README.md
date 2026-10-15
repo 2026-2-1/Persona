@@ -24,6 +24,7 @@ macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 �
 - **API 없는 점검:** 검색→필터→상세, 빈 결과와 검색어 변경, 필터 초기화, 스크롤 안내의 사전 정의된 단계를 실행하고 단계별 코드 판정·PNG·URL·미검토 카드를 기록합니다. AI/페르소나 비교 결과와 구분합니다.
 - **외부 사이트:** visible / text_contains / url_contains 확인 조건을 등록할 수 있습니다. 조건이 없으면 성공 미확인입니다.
 - **합성 데카트론 AI 실행:** `configs/study-decathlon.json`에서 과업과 평가 기대값을 분리합니다. `python3 -m uxagent run --study configs/study-decathlon.json --provider live --headless`로 실행할 수 있으며 OpenAI API 키와 사용 요금이 필요합니다. 상세 상품명·색상·가격 조건이 모두 맞아야 독립 평가가 성공합니다.
+- **공개 데카트론 AI 부분 실행:** `configs/study-decathlon-live.json`은 공개 검색 결과에서 러닝화 상세의 표시 이름·가격만 확인합니다. `python3 -m uxagent run --study configs/study-decathlon-live.json --provider live --headless`는 OpenAI API 키가 필요하며, 검색 폼 제출·색상·사이즈·재고·픽업 성공을 판정하지 않습니다.
 - **AI 비교:** 같은 구매 제약·모델·환경에서 인물 배경·탐색 성향만 제외한 일반 AI와 페르소나 AI를 비교합니다. 두 조건 모두 실행별 Brain/Fast/Slow를 사용하고, 일반 조건 Slow에는 개인 배경·선호를 전달하지 않습니다. 예정 세션·중지·오류도 분모에 남깁니다.
 - **실행 기록:** 검색(사용자·모델·ID)과 결과 필터로 12건 이후 기록까지 접근할 수 있습니다. 전후 화면·URL·행동·판정·모델 호출과 기록 확보율을 봅니다. 복구는 '오류 후 3행동 내 도구 실행 성공'이라는 보조 지표이며 과업 성공과 구분합니다.
 - **개선 보드:** 원시 근거는 접고, 분류·수정 제안·근거 버튼을 먼저 보여줍니다. 관찰·원인 가설·제안·완료 조건·근거를 구분한 미검토 후보를 제공합니다. JSON·CSV·Markdown·HTML로 내보냅니다.

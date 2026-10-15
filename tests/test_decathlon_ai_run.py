@@ -77,3 +77,26 @@ async def test_staged_ai_run_uses_independent_decathlon_expectations(monkeypatch
 def test_decathlon_study_keeps_expected_answer_out_of_task_prompt():
     raw = json.loads((ROOT / "configs/study-decathlon.json").read_text(encoding="utf-8"))
     assert raw["evaluation_expectations"]["product_name"] not in raw["task"]
+
+
+@pytest.mark.asyncio
+async def test_runner_passes_configured_evaluation_profile(monkeypatch, tmp_path):
+    profile = json.loads((ROOT / "configs/decathlon_profile.json").read_text(encoding="utf-8"))
+    profile["selectors"]["detail"] = "#missing-detail"
+    (tmp_path / "broken_profile.json").write_text(json.dumps(profile, ensure_ascii=False), encoding="utf-8")
+    study = _study(tmp_path)
+    raw = json.loads(study.read_text(encoding="utf-8"))
+    raw["evaluation_profile_file"] = "broken_profile.json"
+    study.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(runner_module, "MockProvider", _provider_opening("러닝 가방 블랙"))
+    _, summary = await run_study(study, "mock", None, False, tmp_path / "profile")
+    assert summary["verification"] != "success"
+    assert summary["evaluator"]["reason"] == "detail_evidence_unavailable"
+
+
+def test_live_decathlon_study_uses_public_profile_without_fixed_answer():
+    raw = json.loads((ROOT / "configs/study-decathlon-live.json").read_text(encoding="utf-8"))
+    assert raw["evaluator_id"] == "decathlon-detail_basic-v1"
+    assert raw["evaluation_profile_file"] == "decathlon_live_profile.json"
+    assert "product_name" not in raw["evaluation_expectations"]
+    assert raw["evaluation_expectations"]["product_name_contains"] in raw["task"]

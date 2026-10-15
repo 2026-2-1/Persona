@@ -5,6 +5,19 @@ from datetime import datetime, timezone
 from .llm import MockProvider, OpenAIProvider, provider_for_model
 from .schemas import MemoryChangeEvent, MemoryEntry
 
+SEARCH_PROFILES = {
+    # I, Q, R. The baseline matches the reference's equal sum after normalization.
+    "fast": (1 / 3, 1 / 3, 1 / 3),
+    "fast_plan": (1 / 3, 1 / 3, 1 / 3),
+    "fast_decision": (1 / 3, 1 / 3, 1 / 3),
+    # The reference reflects over newly created memories; recency leads here.
+    "slow": (0.2, 0.2, 0.6),
+}
+KIND_WEIGHTS = {
+    "fast_plan": {"action": 10, "plan": 10, "reflection": 10},
+    "fast_decision": {"observation": 0, "action": 10, "reflection": 10},
+}
+
 class MemoryStore:
     def __init__(self, run_id, writer=None, clock=time.monotonic, *, max_active_memories=64, change_writer=None):
         if not 10 <= max_active_memories <= 64:
@@ -97,9 +110,12 @@ class MemoryStore:
         return True
 
     def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):
+        if mode not in SEARCH_PROFILES:
+            raise ValueError(f"unknown memory search mode: {mode}")
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms
-        # Equal I/Q/R weights are the temporary #40 baseline; module tuning is #54.
-        weights=(1/3,1/3,1/3)
+        weights = SEARCH_PROFILES[mode]
+        kind_weights = KIND_WEIGHTS.get(mode, {})
+        maximum_kind_weight = max(kind_weights.values(), default=1)
         qtokens=set(query.lower().split())
         scored=[]
         for e in self.entries:
@@ -116,7 +132,8 @@ class MemoryStore:
             components=[(weights[0],e.importance/importance_max if e.importance is not None else None),
                         (weights[1],relevance),(weights[2],recency)]
             used=[(w,v) for w,v in components if v is not None]
-            score=sum(w*v for w,v in used)/sum(w for w,_ in used) if used else recency
+            base_score=sum(w*v for w,v in used)/sum(w for w,_ in used) if used else recency
+            score = base_score * kind_weights.get(e.kind, 1) / maximum_kind_weight
             scored.append((score,e))
         scored.sort(key=lambda x:(x[0],x[1].seq),reverse=True)
         chosen=[]; source_steps=set()
@@ -127,7 +144,8 @@ class MemoryStore:
             if len(chosen)>=limit: break
         return chosen
 
-    async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None):
+    async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None,
+                                       mode="fast"):
         if not self.entries:return []
         provider_name = "openai" if isinstance(provider, OpenAIProvider) else "mock" if isinstance(provider, MockProvider) else provider_for_model(model)
         query_key="query:"+query
@@ -155,4 +173,4 @@ class MemoryStore:
                     budget.settle(reservation,None)
                     if call_log:call_log({"module":"embedding","provider":provider_name,"model":model,"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":None,"output_tokens":None,"estimated":True,"estimated_cost_usd":None,"error":type(exc).__name__})
                 raise
-        return self.retrieve(query,limit,embeddings=self.embedding_cache)
+        return self.retrieve(query,limit,embeddings=self.embedding_cache,mode=mode)

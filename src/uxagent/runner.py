@@ -225,9 +225,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                                                   error=previous_error)
                         plan_boundary=brain.begin_stage("plan",observation.observation_id)
                         if config.embedding_model:
-                            plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                            plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call,mode="fast_plan")
                         else:
-                            plan_memories=list(memory.retrieve(config.task,config.memory_limit))
+                            plan_memories=list(memory.retrieve(config.task,config.memory_limit,mode="fast_plan"))
                         plan_memories=with_boundary_memories(plan_memories,plan_boundary,
                             4 if hasattr(provider,"choose") else 6)
                         plan=await brain.plan(config.task,observation,plan_memories,perception,
@@ -245,9 +245,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         decision_boundary=brain.begin_stage("decision",observation.observation_id,
                             plan_id=plan_record.plan_id,plan_version=plan_record.plan_version)
                         if config.embedding_model:
-                            decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                            decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call,mode="fast_decision")
                         else:
-                            decision_memories=list(memory.retrieve(config.task,config.memory_limit))
+                            decision_memories=list(memory.retrieve(config.task,config.memory_limit,mode="fast_decision"))
                         decision_memories=with_boundary_memories(decision_memories,decision_boundary,
                             4 if hasattr(provider,"choose") else 6)
                         decision=await brain.decide_action(config.task,observation,

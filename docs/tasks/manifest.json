@@ -169,5 +169,14 @@
     "path": "docs/tasks/47-loop-record-consumers.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/47",
     "issue_number": 47
+  },
+  {
+    "slug": "54-memory-search-policy",
+    "title": "[phase:1] 메모리 검색 점수·가중치 수정 보완",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/54-memory-search-policy.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/54",
+    "issue_number": 54
   }
 ]

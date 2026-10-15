@@ -21,6 +21,7 @@ from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
 from .reports import build_cards, export_report, redact
 from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
+from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
 
@@ -228,8 +229,11 @@ class Dashboard:
             return None
         self.review_store._path(folder)
         brain = load_brain_trace(folder, run_id)
-        stages = brain["stages"]
-        memories = brain["memories"]
+        stages = brain['stages']
+        tasks = brain['task_events']
+        memories = brain['memories']
+        memory_changes = brain['memory_changes']
+        wonder_draws = brain['wonder_draws']
         stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
                             if entry.get("kind") == "wonder"}
         observations = {}
@@ -247,8 +251,12 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "brain_stages": stages,
+            "brain_tasks": tasks,
+            "memories": memories,
+            "memory_changes": memory_changes,
             "wonder": {
-                "draws": brain["wonder_draws"],
+                "draws": wonder_draws,
                 "thoughts": [{"task_id": record.get("task_id"),
                               "record_id": record.get("record_id"),
                               "text": record.get("text"),
@@ -263,6 +271,7 @@ class Dashboard:
         if detail["run"].get("condition") == "general":
             persona=detail["persona"]
             detail["persona"]={"constraints":persona.get("constraints",{}),"intent":persona.get("intent",""),"condition":"general"}
+        detail["trace"] = build_step_trace(detail["steps"], stages, tasks, memories, memory_changes, wonder_draws)
         detail["metrics"] = (detail["summary"] or {}).get("metrics") or run_metrics(folder, detail["steps"])
         if not detail["run"].get("run_id"):
             detail["run"]["run_id"] = folder.name

@@ -117,6 +117,11 @@ def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
                    "wonder":detail.get("wonder",{}),
+                   "trace":detail.get("trace",[]),
+                   "brain_stages":detail.get("brain_stages",[]),
+                   "brain_tasks":detail.get("brain_tasks",[]),
+                   "memories":detail.get("memories",[]),
+                   "memory_changes":detail.get("memory_changes",[]),
                    "cards":detail.get("cards",build_cards(detail)),
                    "reviews":detail.get("reviews", []), "review_summary":detail.get("review_summary"),
                    "brain":detail.get("brain", {}),
@@ -129,20 +134,45 @@ def export_report(detail, kind):
         fields=["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"]
         brain=safe["brain"]
         include_brain=bool(brain.get("available"))
-        writer.writerow(fields + (["record_type","record_id","brain_record"] if include_brain else []))
+        evidence_fields=["record_type","record_id","brain_record","stage_or_kind","status","text","observation_id","source_memory_ids"]
+        columns=fields + (evidence_fields if include_brain else [])
+        def safe_cell(value):
+            value=str(value if value is not None else "")
+            return "'"+value if value.lstrip().startswith(("=","+","-","@")) else value
+        writer.writerow(columns)
         for card in safe["cards"]:
-            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version")]
-            # Spreadsheet import must treat untrusted text as data, not a formula.
-            writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values] + (["candidate","",""] if include_brain else []))
+            row={**card,"record_type":"candidate","run_id":safe["run"].get("run_id","")}
+            writer.writerow([safe_cell(row.get(key,"")) for key in columns])
         if include_brain:
-            for group,record_type in (("stages","brain_stage"),("task_events","brain_task_event"),("memories","memory"),("memory_changes","memory_change"),("warnings","brain_warning")):
-                for record in brain.get(group,[]):
-                    row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,"record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or "", "brain_record":json.dumps(record,ensure_ascii=False)}
-                    writer.writerow(["'"+str(row.get(k,"")) if str(row.get(k,"")).lstrip().startswith(("=","+","-","@")) else str(row.get(k,"")) for k in fields+["record_type","record_id","brain_record"]])
+            groups=[("stages","brain_stage"),("task_events","brain_task_event"),
+                    ("memories","memory"),("memory_changes","memory_change"),
+                    ("wonder_draws","wonder_draw"),("warnings","brain_warning")]
+            evidence=[(record_type,record) for group,record_type in groups for record in brain.get(group,[])]
+            evidence.extend(("step",record) for record in safe["trace"])
+            for record_type,record in evidence:
+                row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,
+                     "record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or record.get("draw_index") or record.get("step_id") or "",
+                     "brain_record":json.dumps(record,ensure_ascii=False),
+                     "stage_or_kind":record.get("stage") or record.get("kind") or record.get("change") or "",
+                     "status":record.get("status") or record.get("content_status") or "",
+                     "text":record.get("text") or record.get("reason_code") or "",
+                     "observation_id":record.get("observation_id") or "",
+                     "source_memory_ids":json.dumps(record.get("source_memory_ids",[]),ensure_ascii=False)}
+                writer.writerow([safe_cell(row.get(key,"")) for key in columns])
         return out.getvalue()
-    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], "",
+    source = (f"사전 정의 시나리오 ({safe['run'].get('source_kind') or '출처 미확인'})"
+              if safe["run"].get("execution_mode") == "scripted" else "mock 모델 실행"
+              if safe["run"].get("provider") == "mock" else
+              f"설정 제공자 {safe['run'].get('provider') or '미확인'} (실제 호출은 모델 로그 확인)")
+    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], f"실행 출처: {source}", "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    if safe["trace"]:
+        lines.extend(["", "## 행동별 관찰·제안·실행·독립 평가", ""])
+        for row in safe["trace"]:
+            result = row.get("result") or {}
+            execution = "실행됨" if result.get("ok") is True else "실패" if result.get("ok") is False else "미실행/미확인"
+            lines.append(f"- 단계 {row.get('step_id','?')}: 관찰 {row.get('observation_id') or '없음'} → AI 제안 {json.dumps(row.get('action'), ensure_ascii=False)} → 도구 {execution} → 재관찰 {row.get('next_observation_id') or '없음'} → 독립 판정 {row.get('verification') or 'unknown'} ({(row.get('evaluation') or {}).get('reason') or '사유 미확인'})")
     thoughts=(safe.get("wonder") or {}).get("thoughts",[])
     if thoughts:
         lines.extend(["", "## AI가 생성한 가정된 생각", "",

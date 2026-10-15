@@ -120,6 +120,7 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
         page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
         page.goto(local_dashboard)
         page.get_by_role('tab',name='실행 기록',exact=True).click()
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
         page.locator('#run-select').select_option('run-0')
         expect(page.locator('#feature-checks details.feature')).to_have_count(3)
         for status,label in [('pass','통과'),('fail','실패'),('unknown','미확인')]:

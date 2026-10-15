@@ -32,6 +32,7 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [기억 중요도 산정](tasks/40-memory-importance.md) | #40 미산정 기억의 Slow 1~10점 산정과 변경 기록 |
 | [기억 검색 정책](tasks/54-memory-search-policy.md) | #54 기준선과 Fast/Slow별 검색 가중치 |
 | [기억 제거 경계](tasks/55-memory-retention-boundaries.md) | #55 현재 단계·미산정·Slow snapshot 보호와 출처 |
+| [기억 종합 검증](tasks/56-memory-integration-regression.md) | #56 점수·상한·비동기 출처의 runner 회귀 |
 | [통합 기획](2026-10-09-persona-product-plan.md) | 제품·화면·기술 실험·출처에 대한 검토용 초안 |
 | [과거 명세](reference/legacy-plan/agent.md) | 초기 구현 설계; 현재 완료 상태의 기준이 아님 |
 | [과거 검증](reference/validation-2026-10-08.md) | 이전 macOS mock 검증 기록 |

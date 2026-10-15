@@ -6,7 +6,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit
 from pydantic import ValidationError
-from .schemas import StudyConfig, Persona
+from .schemas import BrainStageRecord, StudyConfig, Persona
 from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
@@ -117,6 +117,16 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"),model=record.get("model"))
         record.setdefault("fallback_reason",None)
         calls.write(record)
+    def write_fast_stage(stage, observation, text, source_memory_ids, *, plan_id=None,
+                         action=None, finish=None):
+        record_id=f"stage-{stage}-{uuid.uuid4().hex}"
+        record=BrainStageRecord(record_id=record_id,run_id=run_id,stage=stage,
+            observation_id=observation.observation_id,
+            plan_id=plan_id,plan_version=1 if plan_id else None,
+            source_memory_ids=source_memory_ids,text=text,action=action,finish=finish,
+            recorded_at=datetime.now(timezone.utc))
+        brain_stage_writer.write(record.model_dump())
+        return record
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     importance_scorer=ImportanceScorer(provider,budget,model,config.max_output_tokens,memory,brain_task_writer,brain_stage_writer,log_call)
@@ -144,6 +154,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 evaluation=await evaluate(browser.active,config.evaluator_id,getattr(config,"evaluation_checks",None))
                 verification=evaluation["verification"]
                 if verification=="success":termination="verified_success";break
+                step_id=step_count+1
+                observation_memory=memory.append("observation",observation.html[:600],
+                    [step_id],[observation.observation_id])
                 try:
                     if config.embedding_model:
                         memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
@@ -158,13 +171,43 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 memories=memories[:(4 if hasattr(provider,"choose") else 6)]
                 history_tail=step_history[-config.recent_step_count:] if config.recent_step_count else []
                 recent_actions=[{"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail]
-                step_id=step_count+1
                 try:
                     decision_started=time.monotonic()
                     remaining=run_deadline-time.monotonic()
                     if remaining<=0:termination="run_timeout";break
                     async with asyncio.timeout(remaining):
-                        decision=await fast.decide(persona,config.task,observation,memories,previous_error,config.max_steps-step_count,persona_mode=persona_mode,recent_actions=recent_actions)
+                        perception=await fast.perceive(persona,config.task,observation,memories,persona_mode)
+                        perception_sources=[m["memory_id"] for m in memories if "memory_id" in m]
+                        perception_record=write_fast_stage("perception",observation,perception,
+                            perception_sources)
+                        perception_memory=memory.append("observation",perception,[step_id],
+                            [observation.observation_id],"generated",source_memory_ids=perception_sources,
+                            source_stage_record_id=perception_record.record_id)
+                        if config.embedding_model:
+                            plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                        else:
+                            plan_memories=list(memory.retrieve(config.task,config.memory_limit))
+                        plan_memories=plan_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        plan=await fast.plan(persona,config.task,observation,plan_memories,perception,
+                            previous_error,persona_mode,recent_actions,config.max_steps-step_count)
+                        plan_sources=[m["memory_id"] for m in plan_memories if "memory_id" in m]
+                        plan_record=write_fast_stage("plan",observation,plan,plan_sources,
+                            plan_id=f"plan-{uuid.uuid4().hex}")
+                        plan_memory=memory.append("plan",plan,[step_id],[observation.observation_id],
+                            "generated",source_memory_ids=plan_sources,
+                            source_stage_record_id=plan_record.record_id)
+                        if config.embedding_model:
+                            decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
+                        else:
+                            decision_memories=list(memory.retrieve(config.task,config.memory_limit))
+                        decision_memories=decision_memories[:(4 if hasattr(provider,"choose") else 6)]
+                        decision=await fast.decide_action(persona,config.task,observation,
+                            decision_memories,perception,plan,previous_error,
+                            config.max_steps-step_count,persona_mode,recent_actions=recent_actions)
+                        decision_sources=[m["memory_id"] for m in decision_memories if "memory_id" in m]
+                        write_fast_stage("decision",observation,decision.rationale_summary,
+                            decision_sources,plan_id=plan_record.plan_id,
+                            action=decision.action,finish=decision.finish)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
                 except BudgetExceeded:
                     termination="budget_exceeded";break
@@ -177,9 +220,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
                 step_count+=1
                 if decision.action is None:
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"memory_ids":[m["memory_id"] for m in memories if "memory_id" in m],"verification":verification,"timing_ms":{"llm":decision_ms}})
+                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms}})
                     termination="agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
-                    memory.append("plan",decision.plan,[step_id],[observation.observation_id],"generated")
                     break
                 action_attempts+=1
                 if decision.action.type=="back": back_count+=1
@@ -203,8 +245,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 if seen[repeated_key]>=config.repeated_state_action_limit:termination="stuck"
                 summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
                 new_memories=[
-                    memory.append("observation",observation.html[:600],[step_id],[observation.observation_id]),
-                    memory.append("plan",decision.plan,[step_id],[observation.observation_id],"generated"),
+                    observation_memory,
+                    perception_memory,
+                    plan_memory,
                     memory.append("action",summary,[step_id],[observation.observation_id],"observed"),
                 ]
                 persona_context=persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent}
@@ -214,7 +257,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 # use semantic target to distinguish repeated select/click phases
                 if decision.action.type=="click" and decision.action.target_id and "필터" in decision.action.target_id:mock_stage="apply-filter"
                 step_history.append({"mock_stage":mock_stage,"summary":summary})
-                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":[m["memory_id"] for m in memories if "memory_id" in m],"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
+                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
                 if config.enable_slow_loop:
                     if slow is None:slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,memory,log_call)
                     if action_attempts%config.reflection_every_actions==0 or action_result.error:

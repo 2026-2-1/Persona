@@ -20,7 +20,11 @@ async def test_select_candidate_choice_preserves_each_option():
             return ids[1], .9, {ids[1]: .9}, {"input_tokens": 10, "output_tokens": 2}
 
         async def complete(self, *args):
-            raise AssertionError("valid high-confidence choice must not fall back")
+            messages=args[0]
+            stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
+            if stage=="perception":return json.dumps({"perception":"색상 옵션을 확인합니다."}),{"input_tokens":1,"output_tokens":1}
+            if stage=="plan":return json.dumps({"plan":"선호하는 색상을 선택합니다."}),{"input_tokens":1,"output_tokens":1}
+            raise AssertionError("valid high-confidence action choice must not fall back")
 
     persona = Persona.model_validate_json((Path(__file__).resolve().parents[1] / "configs/persona.json").read_text(encoding="utf-8"))
     obs = Observation(observation_id="o1", tab_id="t1", url="https://shop.test", title="", html="",
@@ -53,7 +57,7 @@ async def test_general_prompt_keeps_constraints_without_persona_background():
                       preferences=["SECRET PREFERENCE"], constraints={"budget":30000}, intent="find bag")
     obs = Observation(observation_id="o", tab_id="t", url="https://shop.test", title="", html="")
     provider = Capture()
-    await FastLoop(provider, BudgetManager(2, 10000), "test", .2, 100).decide(persona,"find bag",obs,[],persona_mode="general")
+    await FastLoop(provider, BudgetManager(3, 10000), "test", .2, 100).decide(persona,"find bag",obs,[],persona_mode="general")
     assert provider.payload["persona"] == {"constraints":{"budget":30000},"intent":"find bag"}
 
 
@@ -69,7 +73,7 @@ async def test_jev_generates_real_query_instead_of_typing_entire_task():
     persona = Persona(persona_id="p1",background="student",digital_familiarity="normal",preferences=["black"],intent="bag")
     obs = Observation(observation_id="o",tab_id="t",url="https://shop.test",title="",html="",
                       input_elements=[ElementInfo(id="search",name="상품 검색",role="textbox",value="")])
-    result = await FastLoop(InputProvider(),BudgetManager(2,10000),"test",.2,100).decide(persona,"3만원 이하 검은 가방 상세 확인",obs,[])
+    result = await FastLoop(InputProvider(),BudgetManager(3,10000),"test",.2,100).decide(persona,"3만원 이하 검은 가방 상세 확인",obs,[])
     assert result.action.text == "가방"
 
 
@@ -87,5 +91,5 @@ async def test_jev_can_replace_a_prefilled_search_query():
     obs=Observation(observation_id="o",tab_id="t",url="https://shop.test",title="",html="",
         input_elements=[ElementInfo(id="search",name="검색",role="textbox",value="wrong")],
         clickable_elements=[ElementInfo(id="button",name="검색",role="button")])
-    result=await FastLoop(CorrectQuery(),BudgetManager(3,10000),"test",.2,100).decide(persona,"가방 찾기",obs,[])
+    result=await FastLoop(CorrectQuery(),BudgetManager(4,10000),"test",.2,100).decide(persona,"가방 찾기",obs,[])
     assert result.action.text=="가방"

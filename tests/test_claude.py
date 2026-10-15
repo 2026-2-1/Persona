@@ -134,6 +134,6 @@ async def test_actual_fast_loop_labels_claude_usage():
     persona=Persona(persona_id="p",background="student",digital_familiarity="normal",preferences=["black"],intent="bag")
     observation=Observation(observation_id="o",tab_id="t",url="https://example.test",title="",html="")
     calls=[]
-    await FastLoop(Provider(),BudgetManager(2,10000),Provider.model,.2,100,calls.append).decide(persona,"bag",observation,[])
+    await FastLoop(Provider(),BudgetManager(3,10000),Provider.model,.2,100,calls.append).decide(persona,"bag",observation,[])
     assert calls[0]["provider"] == "claude"
     assert calls[0]["estimated_cost_usd"] is None

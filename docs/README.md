@@ -4,16 +4,22 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
-| [D 진행 현황과 회의 안건](meetings/2026-10-14-d-progress-and-decisions.md) | D-01~D-04 결과·D-05·통합/추가 수정·회의 결정표 |
 | [브랜치·커밋](collaboration.md) | prototype 통합과 실험 브랜치 운영 |
 | [PR·리뷰](pull-requests.md) | 작성 규칙과 작성자 외 승인 1명 |
 | [브랜치 보호](branch-protection.md) | GitHub 원격 적용값과 확인 방법 |
 | [디스코드 알림](discord-notifications.md) | 채널 확정 후 웹훅 연결과 알림 확장 |
+| [최신 PR 통합 검증](handoffs/2026-10-16-latest-pr-integration.md) | #79 + #78 후속 + D/C 통합·403개 검사·실제 화면/네 형식 출력·남은 범위 |
+| [10/15 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 통합 전 원격 #66/#71~#79 구현·preview 차이·분기 확인 이력 |
+| [연구·데이터 회의 안건](meetings/2026-10-15-research-and-data-agenda.md) | Slow 정의·실험 조건·데이터·Novelty·담당/기한 결정표 |
+| [Slow 실행·검색 실험 계획](research/2026-10-15-slow-loop-experiment-plan.md) | 빈도와 검색 정책의 단계별 비교·실제 입력 소비·예산·평가 분리 |
+| [제출 초안 3항목](research/2026-10-15-project-submission-draft.md) | 기업 데이터 미수령 0건·시스템 구조도/구현 범위·핵심 논문 주제 |
+| [관련 연구·Novelty 근거](research/2026-10-15-novelty-evidence.md) | 원문 기반 선행과 차별화 후보·주장 한계 |
+| [D 진행 현황과 회의 안건](meetings/2026-10-14-d-progress-and-decisions.md) | D-01~D-04 결과·D-05·통합/추가 수정·회의 결정표 |
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [C 담당 검토·집계](tasks/c-review-data.md) | 공통 계약·검토 저장 API·예정 분모와 누락 |
 | [현재 상태](current-state.md) | 구현됨·미구현·기존 제한 |
-| [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md) | 현재 코드·논문·사용자 요구 대조; #39 기록, #41 Fast, #42 Slow, #43 조율 구현 상태 |
+| [Brain·두 루프 설계 초안](plans/2026-10-14-brain-two-loops.md) | 설계 당시 코드·논문·사용자 요구 대조; 현재 구현은 통합 검증/현재 상태 문서 기준 |
 | [구버전 run 기록 호환 계획](plans/2026-10-14-brain-legacy-run-compatibility.md) | #39 구버전 로그를 새 기록과 함께 읽기 위한 원칙·검증 항목; 구현 전 |
 | [점검 상태 표시 계획](plans/2026-10-11-check-status.md) | 상태 체크리스트·근거 펼침 유지 |
 | [한 화면 배치 계획](plans/2026-10-11-compact-dashboard.md) | 중복 제목 제거·좌우 배치·화면 검사 |
@@ -49,6 +55,8 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 - [D-05 검토·내보내기 통합 검증](tasks/d-review-export-verification.md): 실제 시연 결과, 수정 사항과 팀원 재현 절차.
 
 - [D 조회 실패·출처·복구 표시](tasks/d-dashboard-hardening.md): #64/#65의 수정과 회귀.
-- [메모리 정책 실험 설계](research/2026-10-15-memory-policy-experiment.md): 최신 PR 근거·비교 조건·고정 변수·예산·한계.
+- [메모리 정책 실험 상세](research/2026-10-15-memory-policy-experiment.md): 고정 PR 근거·2차 검색 비교 조건·고정 변수·예산·한계. 팀 대화 반영 상위 계획은 위 Slow 실행·검색 실험 계획을 따른다.
 
 - [D Brain 기록 화면·출력](tasks/d-brain-trace-viewer.md): #47의 읽기 계약·구버전·상태·출처·CSV 행 구분.
+
+- [2026-10-15 아침 인수인계](handoffs/2026-10-15-morning.md): 완료 결과·검증·재현·선행 PR·팀 논의.

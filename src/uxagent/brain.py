@@ -172,7 +172,10 @@ class Brain:
         )
 
     def _slow_persona(self):
-        return FastLoop._persona_context(self.persona, self.persona_mode)
+        context = FastLoop._persona_context(self.persona, self.persona_mode)
+        if self.persona_mode == "general" and set(context) != {"constraints", "intent"}:
+            raise ValueError("general condition Slow context must contain only shared constraints and intent")
+        return context
 
     def _start_fast(self, stage, observation_id, memories):
         task_id = f"fast-{stage}-{uuid.uuid4().hex}"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math, time, uuid
 from datetime import datetime, timezone
+from .llm import MockProvider, OpenAIProvider, provider_for_model
 from .schemas import MemoryChangeEvent, MemoryEntry
 
 FIXED_IMPORTANCE = 5
@@ -112,6 +113,7 @@ class MemoryStore:
 
     async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None):
         if not self.entries:return []
+        provider_name = "openai" if isinstance(provider, OpenAIProvider) else "mock" if isinstance(provider, MockProvider) else provider_for_model(model)
         query_key="query:"+query
         missing=[entry for entry in self.entries if entry.memory_id not in self.embedding_cache]
         texts=[]
@@ -131,9 +133,10 @@ class MemoryStore:
                 active_ids={entry.memory_id for entry in self.entries}
                 for entry,vector in zip(missing,vectors[offset:]):
                     if entry.memory_id in active_ids:self.embedding_cache[entry.memory_id]=vector
-                if call_log:call_log({"module":"embedding","model":usage.get("model",model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":actual,"estimated":actual is None,"cached_embeddings":len(missing)})
+                if call_log:call_log({"module":"embedding","provider":provider_name,"model":usage.get("model",model),"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":actual,"output_tokens":0,"estimated":actual is None,"estimated_cost_usd":0.0 if provider_name=="mock" else None,"cached_embeddings":len(missing)})
             except BaseException as exc:
-                if not settled:budget.settle(reservation,None)
-                if call_log:call_log({"module":"embedding","model":model,"elapsed_ms":int((time.monotonic()-started)*1000),"error":str(exc)[:300]})
+                if not settled:
+                    budget.settle(reservation,None)
+                    if call_log:call_log({"module":"embedding","provider":provider_name,"model":model,"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":None,"output_tokens":None,"estimated":True,"estimated_cost_usd":None,"error":type(exc).__name__})
                 raise
         return self.retrieve(query,limit,embeddings=self.embedding_cache)

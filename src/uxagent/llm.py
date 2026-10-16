@@ -12,6 +12,21 @@ GEMINI_OUTPUT_USD_PER_MILLION = 0.40
 JEV_INPUT_USD_PER_MILLION = 0.042
 
 
+def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
+    model = str(model or "")
+    if model.startswith("gemini-"):
+        return "gemini"
+    if model.startswith("jev-"):
+        return "typesafe"
+    if model.startswith("claude-"):
+        return "claude"
+    if model.startswith("gpt-"):
+        return "openai"
+    if model == "mock-v1":
+        return "mock"
+    return fallback
+
+
 def _transport_error(exc):
     reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
     if isinstance(reason, ssl.SSLCertVerificationError):
@@ -71,7 +86,8 @@ class JevProvider:
         return await asyncio.to_thread(self._choose, state, candidates)
 
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
-        return await GeminiProvider().complete(messages, model or GEMINI_MODEL, temperature, max_tokens)
+        content, usage = await GeminiProvider().complete(messages, model or GEMINI_MODEL, temperature, max_tokens)
+        return content, {**usage, "provider": "gemini"}
 
     def _choose(self, state, candidates):
         key = os.environ.get("TYPESAFE_API_KEY")
@@ -168,19 +184,27 @@ class ClaudeProvider:
                          "output_tokens": usage.get("output_tokens")}
 
 
-class BudgetExceeded(RuntimeError): pass
+class BudgetExceeded(RuntimeError):
+    def __init__(self, reason_code):
+        self.reason_code = reason_code
+        super().__init__(f"LLM budget exhausted: {reason_code}")
 
 
 class BudgetManager:
     def __init__(self, max_requests: int | None, max_tokens: int | None):
         self.max_requests, self.max_tokens = max_requests, max_tokens
         self.requests = self.tokens = self.reserved_tokens = 0
+        self.last_exceeded_reason = None
         self.lock = threading.Lock()
 
     def reserve(self, estimated_tokens: int):
         with self.lock:
-            if (self.max_requests is not None and self.requests >= self.max_requests) or (self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens):
-                raise BudgetExceeded("LLM request or token budget exhausted")
+            if self.max_requests is not None and self.requests >= self.max_requests:
+                self.last_exceeded_reason = "request_limit"
+                raise BudgetExceeded("request_limit")
+            if self.max_tokens is not None and self.tokens + self.reserved_tokens + estimated_tokens > self.max_tokens:
+                self.last_exceeded_reason = "token_limit"
+                raise BudgetExceeded("token_limit")
             self.requests += 1
             self.reserved_tokens += estimated_tokens
 
@@ -192,7 +216,8 @@ class BudgetManager:
 
     def snapshot(self):
         return {"requests": self.requests, "tokens": self.tokens, "reserved_tokens": self.reserved_tokens,
-                "max_requests": self.max_requests, "max_tokens": self.max_tokens}
+                "max_requests": self.max_requests, "max_tokens": self.max_tokens,
+                "last_exceeded_reason": self.last_exceeded_reason}
 
 
 class MockProvider:

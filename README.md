@@ -1,8 +1,10 @@
 # Persona / UXAgent Prototype
 
+개발 통합 기준은 `prototype`입니다. C/D 검토·출력과 A Brain·Slow·메모리 변경, 협업 문서와 B OpenAI 형식 호환을 원본 PR 단위로 squash 통합합니다. [병합 절차·검증·남은 제한](docs/handoffs/2026-10-16-prototype-merge-queue.md)을 따릅니다.
+
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.
 
-이 브랜치 `codex/latest-pr-integration-20261015`는 최신 Brain 누적 PR #79와 #78 후속 수정, D 검토·내보내기와 C 측정 범위를 통합한 검토용 브랜치입니다. 전체 테스트 **403개**와 실제 무료 Mock·결함 시나리오를 확인했습니다. [통합 범위·재현·한계](docs/handoffs/2026-10-16-latest-pr-integration.md)를 먼저 읽으세요. prototype/main 병합, B의 실제 사이트 PR #58/#60/#62 검증은 별도입니다.
+A/D 통합 로컬 검사는 403개, OpenAI 형식 호환을 포함한 준비본은 406개를 통과했습니다. [기존 통합 검증 기록](docs/handoffs/2026-10-16-latest-pr-integration.md)은 당시 범위이며, 각 원격 병합의 CI 결과는 해당 PR을 기준으로 확인합니다. 데카트론 AI 실행 #60/#62는 후속 호환 검증 대상으로 구분합니다.
 
 ## 빠른 시작 (Windows)
 
@@ -76,10 +78,10 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 ## 개발 진입점
 
+- 연구·회의 자료: [실험 계획](docs/research/2026-10-15-slow-loop-experiment-plan.md), [회의 안건](docs/meetings/2026-10-15-research-and-data-agenda.md), [기업 데이터·시스템·Novelty 제출 초안](docs/research/2026-10-15-project-submission-draft.md). 기업 데이터는 사용자 확인 기준 미수령 0건이며 조건·목표 수량은 제안입니다.
 - 협업: [브랜치·커밋](docs/collaboration.md), [PR·리뷰](docs/pull-requests.md)
 - 운영: [브랜치 보호](docs/branch-protection.md), [디스코드 알림 연결 준비](docs/discord-notifications.md)
 
-- 연구·회의 자료: [실험 계획](docs/research/2026-10-15-slow-loop-experiment-plan.md), [회의 안건](docs/meetings/2026-10-15-research-and-data-agenda.md), [기업 데이터·시스템·Novelty 제출 초안](docs/research/2026-10-15-project-submission-draft.md). 기업 데이터는 사용자 확인 기준 미수령 0건이며 조건·목표 수량은 제안입니다.
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)

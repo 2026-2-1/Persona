@@ -4,10 +4,9 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
-| [브랜치·커밋](collaboration.md) | prototype 통합과 실험 브랜치 운영 |
-| [PR·리뷰](pull-requests.md) | 작성 규칙과 작성자 외 승인 1명 |
-| [브랜치 보호](branch-protection.md) | GitHub 원격 적용값과 확인 방법 |
-| [디스코드 알림](discord-notifications.md) | 채널 확정 후 웹훅 연결과 알림 확장 |
+| [prototype squash 병합 준비](handoffs/2026-10-16-prototype-merge-queue.md) | 병합 순서·중복/충돌·보호 설정 허용 대기·준비본 검증 |
+| [계획 검토 폐기 진단](research/2026-10-16-plan-review-discard-diagnosis.md) | 실제 호출 순서·0/2 재현·2/2 대조·입력 도달·후속 정책 |
+| [제출 3항목과 긴급 결정](research/2026-10-16-submission-decision-brief.md) | 데이터 0건·시스템·논문 기여 후보·회의 우선순위 |
 | [최신 PR 통합 검증](handoffs/2026-10-16-latest-pr-integration.md) | #79 + #78 후속 + D/C 통합·403개 검사·실제 화면/네 형식 출력·남은 범위 |
 | [10/15 GitHub 확인](handoffs/2026-10-15-latest-github-review.md) | 통합 전 원격 #66/#71~#79 구현·preview 차이·분기 확인 이력 |
 | [연구·데이터 회의 안건](meetings/2026-10-15-research-and-data-agenda.md) | Slow 정의·실험 조건·데이터·Novelty·담당/기한 결정표 |
@@ -15,6 +14,10 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 | [제출 초안 3항목](research/2026-10-15-project-submission-draft.md) | 기업 데이터 미수령 0건·시스템 구조도/구현 범위·핵심 논문 주제 |
 | [관련 연구·Novelty 근거](research/2026-10-15-novelty-evidence.md) | 원문 기반 선행과 차별화 후보·주장 한계 |
 | [D 진행 현황과 회의 안건](meetings/2026-10-14-d-progress-and-decisions.md) | D-01~D-04 결과·D-05·통합/추가 수정·회의 결정표 |
+| [브랜치·커밋](collaboration.md) | prototype 통합과 실험 브랜치 운영 |
+| [PR·리뷰](pull-requests.md) | 작성 규칙과 작성자 외 승인 1명 |
+| [브랜치 보호](branch-protection.md) | GitHub 원격 적용값과 확인 방법 |
+| [디스코드 알림](discord-notifications.md) | 채널 확정 후 웹훅 연결과 알림 확장 |
 | [디자인 기준](design.md) | 사용자 제공 UI 스타일 |
 | [모델·설정 도우미](tasks/setup-guide.md) | 발급 안내·모델 선택·추천 적용·호출 한도 |
 | [C 담당 검토·집계](tasks/c-review-data.md) | 공통 계약·검토 저장 API·예정 분모와 누락 |

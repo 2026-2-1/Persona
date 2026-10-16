@@ -98,9 +98,19 @@ class SlowLoop:
                     raise
             snapshot = [entry.model_copy(deep=True) for entry in self.memory.entries]
             snapshot_seq = max((entry.seq for entry in snapshot), default=0)
-            # Scored importance takes priority; newest entries break ties.
-            selected = sorted(snapshot, key=lambda entry: (entry.importance or 0, entry.seq),
-                              reverse=True)[:8]
+            # The reference reflects over recent memories; select from this fixed snapshot.
+            selected_ids = [row["memory_id"] for row in self.memory.retrieve(
+                item["task"], limit=8, mode="slow")]
+            snapshot_by_id = {entry.memory_id: entry for entry in snapshot}
+            current_observation = next((entry.memory_id for entry in reversed(snapshot)
+                                        if entry.kind == "observation" and
+                                        entry.content_status == "observed" and
+                                        item["observation_id"] in entry.source_observation_ids), None)
+            if current_observation is not None:
+                selected_ids = [current_observation, *[memory_id for memory_id in selected_ids
+                                                       if memory_id != current_observation]][:8]
+            selected = [snapshot_by_id[memory_id] for memory_id in selected_ids
+                        if memory_id in snapshot_by_id]
             source_memory_ids = [entry.memory_id for entry in selected]
             self.status = "running"
             self._event(item, "started", snapshot_seq=snapshot_seq,

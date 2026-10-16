@@ -22,15 +22,20 @@ def _provider_opening(product):
         clicked = False
 
         async def complete(self, messages, *args, **kwargs):
-            obs = json.loads(messages[-1]["content"])["observation"]
             usage = {"model": "fake", "input_tokens": 1, "output_tokens": 1}
+            stage = messages[0]["content"].split("FAST_STAGE:", 1)[1].splitlines()[0]
+            if stage == "perception":
+                return json.dumps({"perception": "상품 목록"}, ensure_ascii=False), usage
+            if stage == "plan":
+                return json.dumps({"plan": "상세 열기"}, ensure_ascii=False), usage
+            obs = json.loads(messages[-1]["content"])["observation"]
             if DetailProvider.clicked:
-                return json.dumps({"perception": "상세 화면", "plan": "완료", "rationale_summary": "상세를 열었다",
-                                   "action": None, "finish": {"claim": "completed", "summary": "상세 확인"}},
+                return json.dumps({"rationale_summary": "상세를 열었다", "action": None,
+                                   "finish": {"claim": "completed", "summary": "상세 확인"}},
                                   ensure_ascii=False), usage
             target = next(e for e in obs["clickable_elements"] if e["name"] == product + " 상세 보기")
             DetailProvider.clicked = True
-            return json.dumps({"perception": "상품 목록", "plan": "상세 열기", "rationale_summary": "상품 확인",
+            return json.dumps({"rationale_summary": "상품 확인",
                                "action": {"type": "click", "observation_id": obs["observation_id"],
                                           "tab_id": obs["tab_id"], "target_id": target["id"]}, "finish": None},
                               ensure_ascii=False), usage

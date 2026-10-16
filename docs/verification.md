@@ -1,5 +1,46 @@
 # 검증 기록
 
+## 2026-10-16 최신 Brain + D/C 통합 (#69/#47/#36)
+
+- `codex/latest-pr-integration-20261015`에 #79 고정 head `1f82379b0139`, 별도 분기된 #78 `28f912b90a7f` 및 #75 `9c397b4f94e1` 후속을 통합했다. D #68/C 측정/문서 #80을 보존했다. [통합 범위·재현·한계](handoffs/2026-10-16-latest-pr-integration.md)를 따른다.
+- 최신 Fast kind·adopted/discarded·Wonder와 검증 reader/별칭의 불일치를 전용 3개 실패 테스트, 채택 배지 누락을 390px 브라우저 실패로 먼저 재현했다. reader/단일 패널/타입별 출력을 통일한 뒤 통과했다.
+- 전체 pytest: 처음 402 passed/1 failed(기존 #75 중복 패널 제목), 통합 패널에 맞춰 생성/실행/독립 결과 회귀를 보존한 최종 **403 passed in 168.98s**. 이후 #75의 데이터 갱신 대기 1줄을 별도 merge하고 해당 Chromium 검사 **1 passed in 3.51s**. #78 초기화 관련 2개도 통과했다.
+- doctor: Python 3.13.13, Chromium available, study_errors 없음. Node 문법, Python compileall, repo/staged 검사와 diff 공백 검사 통과. 원격 CI는 통합 PR의 현재 head 검사로 확인한다.
+- 실제 무료 Mock `20261015T145603-83f78314`: 6행동·60요청·독립 verified_success, 생성 60·작업 사건 193·기억 30·Wonder 추첨 12/당첨 1·읽기 경고 0. 최신 상태 completed 47/adopted 6/discarded 7. plan_review는 stale 5 + 종료 미소비 1로 전부 폐기됐고 reflection 5/Wonder 1이 채택됐다. 실제 계획의 출처 관찰 `obs-3fda456cc3`을 화면에서 열었다.
+- 실제 scripted 합성 필터 결함 `20261015T145630-7a949075`: 후보 `feature-6-filters`의 행동 6 이미지 확인 → deferred 초안 입력 → 다른 실행 왕복/자동 갱신 유지 → 저장 → 새로고침 → 이력 1건 유지. 독립 failure는 변하지 않았다.
+- 두 실행의 JSON/CSV/Markdown/HTML을 저장해 상세 API와 전체 Brain/카드 ID·버전·판정·메모를 대조했다. Brain CSV 330행의 타입별 JSON과 step trace도 일치했다. 실제 인앱 JSON 다운로드는 확인했고 나머지 실제 형식은 응답을 대조했다. 자동 Chromium 회귀에서는 네 형식 모두 다운로드했다. 인앱 다운로드 도구의 긴 지연과 검증 방법을 인수인계에 명시했다.
+- 유료 API·실제 사이트·사람 판단 유사성·기업 데이터는 이 검증에 사용하지 않았다. B #58/#60/#62와 prototype/main 병합은 별도다. 결과/스크린샷/원자료는 로컬 ignored/임시 폴더에 유지했다.
+
+## 2026-10-15 23:27 KST 최신 원격 구현 반영 정정
+
+- 직접 GitHub PR/이슈 목록과 prototype SHA를 다시 조회하고 #66/#71~#79 본문·고정 head, #79의 Brain/Runner/Slow/Memory/Schema/비교 코드를 읽었다. #78/#79의 분기와 #78 후속 패치도 확인했다. [최신 확인 기록](handoffs/2026-10-15-latest-github-review.md)에 근거를 남겼다.
+- 실험/회의/제출 문서의 preview 미포함과 최신 PR 구현 포함을 구분했다. 강제 Slow 활성, 점수화 결합, 현재 검색 profile, 동일 계획 검토 채택, 8상태/D 소비 중복, 분기된 후속 수정이 연구·통합 안건에 반영됐다.
+- 실제 검사: repository check PASS(0 problems), 관련 문서 6개 링크/표/펜스/문자 검사 PASS, git diff --check PASS. 새 원격 기능을 통합하거나 pytest/Mock/브라우저/유료 API를 새로 실행한 것은 아니다.
+
+## 2026-10-15 연구·회의·제출 문서 정리
+
+- 사용자 제공 팀 대화와 미수령 확인을 반영해 Slow 실행 빈도→검색 정책 실험 계획, 회의 안건/결정표, 기업 데이터·시스템 구조·Novelty 제출 초안을 작성했다. 기업체 자료 확보 수량은 0건이며 요청 목표·18/90/216세션은 제안으로 구분했다.
+- 원문 조사로 기존 구조·성찰 비교·버전 검증 선행과 기여 후보를 별도 기록했다. 연구 신규성과 인간 재현성을 확정하지 않았다.
+- 기존 메모리 계획은 2차 상세로 연결하고 현재 상태·Brain 생성 기록 계약의 오래된 표현을 preview에 맞게 정정했다. 실행 코드·스키마 변경은 없다.
+- 실제 수행: repository check PASS(0 problems), 새/관련 연구 문서 5개의 로컬 링크·표 열 수·코드 펜스 검사 PASS, git diff --check PASS, 문서 커밋 전 staged 검사 PASS.
+- 문서 변경이므로 pytest·Mock·유료 API·기업/사람 실험을 새로 실행하지 않았다. 324개 통과는 앞선 통합 preview의 검증 기록이며 이번 문서 작업 결과로 재사용하지 않는다.
+
+## 2026-10-14 #40 메모리 입력 분리 첫 단계
+
+Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 별도 필드로 전달하도록 수정했다. 변경 후 `git diff --check`와 관련 Python 파일의 `compileall`은 통과했다. pytest·실제 모델 호출·브라우저 실행은 아직 수행하지 않았다. 이 기록은 #40 전체의 완료 검증이 아니다.
+
+## 2026-10-14 #39 Brain 기록 계약
+
+로컬 Python 3.14에서 새 `BrainStageRecord`의 생성물·출처·계획 참조·시간대 검증 7개를 먼저 실패 재현(모델 미정의)한 뒤 통과시켰다. `python3 -m pytest -q tests/test_brain_schema.py tests/test_core.py tests/test_metrics.py`는 fixture 서버의 소켓 바인딩이 제한된 실행 환경에서 4개 실패·22개 통과였고, 소켓이 허용된 실행에서 **26개 통과**했다. `python3 scripts/check_repo.py`와 `git diff --check`도 통과했다.
+
+후속 단계에서는 비동기 작업 사건, 메모리 변경 사건, 구버전 `MemoryEntry` 읽기, `max_active_memories` 예약 필드, 제거 후 단조 순번과 Slow 출처를 추가했다. 제거 뒤 Slow가 목록 길이를 snapshot 순번으로 쓰는 실패를 재현하고 수정했다. 양의 N을 입력해도 실제 상한이 적용되지 않는 문제를 실패 테스트로 확인한 뒤 명시적 미지원 오류로 막았다. 첫 전체 검사인 로컬 Python 3.14의 `python3 -m pytest -q`는 **197 passed in 80.46s**였다. 유료 API나 실제 외부 사이트 호출은 하지 않았다.
+
+예약 필드의 미지원 검증을 추가한 뒤 `tests/test_brain_schema.py tests/test_core.py tests/test_dashboard.py tests/test_experiments.py` 관련 **35개가 통과**했다. `doctor --study configs/study.json`은 제한된 실행 환경에서 Chromium 권한 오류였고 허용된 환경에서 재실행한 결과 Playwright Chromium 사용 가능·설정 오류 없음이었다. `scripts/check_repo.py`와 `git diff --check`도 통과했다.
+
+이 결과는 새 기록 스키마의 직렬화와 기존 mock/메모리·지표·대시보드·보고서 경로의 호환성 검사다. Runner가 새 Brain 단계/작업 사건을 실제로 쓰거나 두 루프가 동작한다는 검증은 아니다. 활성 N개 상한도 아직 적용하지 않는다.
+
+이후 사용자 결정에 따라 새 메모리 중요도를 1~10으로 제한하고 구버전 1.0의 0~5점을 버전별로 읽도록 변경했다. 위 검사 수치는 이 변경 전 실행 결과이며 변경 후 검사는 아직 수행하지 않았다.
+
 ## 2026-10-09 Windows 1차 MVP
 
 환경: Windows, Python 3.13.5, Playwright 1.55.0, Chromium 140.0.7339.16 (build 1187). 원본 e4dfa98에서 개발한 작업 트리 기준이다.
@@ -101,6 +142,207 @@
 
 최종 화면 확인에서 초기 상태 로딩과 도우미 이동의 경합을 발견해 실패 테스트로 재현 후 수정했다. 브라우저 회귀 17 passed (249.58s). 모델 발급 안내 간격도 줄였다. 앞선 커밋의 Windows/Ubuntu CI는 모두 통과했다.
 
+## 2026-10-11 C/P05·P06
+
+- Baseline reports/metrics/experiments 10 passed.
+- P05 계약·보고서 집중25 passed; 한글/긴 카드 ID와 동일 observation ID의 내용 변경 회귀를 포함한다. 구현자 시나리오/회귀 포함38 passed, 작업 리뷰 지적2건 수정 후 blocker 없음.
+- P06 새 저장/HTTP/출력·계약·UI 집중37 passed. 보안 보완 후 candidate_reviews/setup_guide/HTTP 68 passed. 따옴표·역슬래시·개행 환경 비밀값 우회9건 실패 재현 후 통과했다.
+- 합성 필터 결함 scenario 실제 실행 ID `20261011T105939-438c89d8`: failure, 검색/상세 pass·필터 fail, 8행동/기록8, LLM0. 로컬 HTTP로 테스트 판정 deferred→valid 저장 후 새 Dashboard에서 이력2건/최신valid 조회, 독립verification은failure 유지, JSON/CSV/MD/HTML 일치.
+- 위 integration-test 검토는 개발용 가상 판정이며 실제 사람/독립2인검토 결과가 아니다. runs 원자료는 Git에 추가하지 않는다. 실제 사이트·유료API 검증은 이번 작업 범위가 아니다.
+
+## 2026-10-11 C/P08
+
+- 集중 지표·실험 검사15 passed (2.78s), 구현자 MVP/회귀 포함25 passed. scripted 분모7→5, 비유효 중앙값, null status, 저장 누락/legacy stale rate, bool 요청수의 거짓0을 실패 재현 후 수정했다.
+- 무료 비교 `20261011T110414-9c0c68e4`: 일반/페르소나 각각 성공1/예정1, 요청6, 기록6/6·rate1. 비용은null/unknown1로 유지한다. 실제 LLM 성능 비교나 사람 행동 재현 증거가 아니다.
+- doctor Python3.13.5/Playwright1.55.0/Chromium, study_errors없음. Mock 통합 `20261011T110505-f74829ea`: verified_success, 검색·필터·상세pass, 행동6/기록6.
+- P08 작업 리뷰 지적1건 수정 후 해당 범위 blocker없음. 전체검사와 최종통합리뷰는 아래에 추가한다.
+
+## C 최종 통합 검사
+
+- 최종 코드 전체 pytest: **257 passed in 225.28s**. 수정 전236개 통과만으로 완료 처리하지 않고 새 실패 재현을 추가했다.
+- Unicode JSONL과 실제 usage 누락 보완의 집중/통합 검사121 passed (211.83s), 안전 실행 ID 계약/저장51 passed. 통합 코드 리뷰의 두 지적과 추가 ID 호환 보완 후 Important/Critical blocker없음.
+- 최종 CLI Mock `20261011T112434-c256adcb`: success, 검색·필터·상세pass, 6행동/기록6, 실제 측정토큰0/complete=true. 비용complete=false로 유지한다. 외부 유료 API 호출0.
+- doctor / node --check / repo 검사 / diff 검사 통과. 1365×768 개선 보드에서 최신 판정·테스트 메모를 확인하고 가로 넘침없음. 기존 입력폼은 D 후속 범위다.
+- 메모의 Unicode 구분자, 환경 비밀값 이스케이프, 동시저장/손상/경로, 비용·토큰·기록의 부분값, 실제 실행기→비교 저장→조회 경로를 검사했다.
+- CI와 prototype 병합의 최종 상태는 관련 PR 기록에서 확인한다. 사람 독립 판정·실제 LLM 성능·실제 사이트 전체 평가는 이번 검사에 포함하지 않는다.
+
+## 2026-10-13 D-01 (#32) 검토 입력·저장
+
+- 기준: C PR #30의 b5bdffd 기반 `feat/32-candidate-review`. prototype 통합은 선행 PR 병합 후 별도 확인한다.
+- 구현 전 실제 로컬 브라우저에서 `.review-form` 부재 실패를 재현했다. C 저장 API는 재사용한다.
+- D-01 브라우저 12 passed (13.46s): 5종 판정 실제 HTTP 저장/새로고침, 과업 verification 유지, 메모 escaping, 400/404/409/500 입력 보존, 중복 제출 방지, 별칭·판정 필수, 실제 근거 버전 충돌 후 재조회, 모바일 가로 넘침 확인.
+- 최종 기능 코드 전체 pytest: **269 passed in 91.55s**. 캡처 경로는 Windows 호환 `tmp_path`를 사용한다.
+- doctor: Python 3.13.13 / Playwright 1.55.0 Chromium / study_errors 없음. JavaScript 구문·repo·diff 검사 통과.
+- CLI mock 실행 `20261013T115852-e6bf1c84`: 독립 success, 검색/필터/상세 pass, 행동6·기록6/6. 외부 유료 API 호출 없음.
+- 1365px 데스크톱 검토 폼 캡처를 확인했다. 390px 화면은 가로 넘침 없이 입력/저장 버튼을 제공한다.
+- 위 판정은 개발용 합성 데이터·테스트 별칭이며 실제 사람 평가나 실사이트 UX 검증 결과가 아니다. 전체 이력 UI·전환/경합 회귀 확대·비교표·통합 시연은 #33~#36 후속이다.
+
+## 2026-10-13 D-02 (#33) 초안·지연 응답
+
+- D-01 PR #37의 59f67dc 기반. 자동 갱신·두 실행/카드 초안 보존·지연 저장 성공/실패는 기존 코드에서 통과했고, 지연 GET이 최신 판정을 미검토로 되돌리는 실패를 재현했다.
+- 수정 후 전체 pytest **276 passed in 110.36s**. D-01 12개와 D-02 7개 브라우저 사례를 포함한다. 텍스트 포커스/선택, A→B→A 도중 옛 조회 무시, 실패 재시도와 다른 실행 저장 오염 방지를 검증했다.
+- doctor Python 3.13.13/Playwright 1.55.0 Chromium 정상, JS 구문·repo·diff 검사 통과. CLI mock 검색/필터/상세 성공. 유료 API 호출 없음.
+- 8765의 실제 화면에서 합성 상세 실패 실행 `20261013T121542-8e24cdfd`에 별칭·보류·미저장 메모를 넣고, 필터 실패 실행 `20261013T120550-f9b8ce5e`에 별도 초안을 작성한 뒤 왕복해 원래 값을 확인했다. 자동 갱신 후에도 유지됐다. 이번 수동 검사는 저장 버튼을 누르지 않았다.
+- 새로고침/탭 종료 뒤 미저장 입력 복원은 지원하지 않는다. 카드 버전이 달라지면 이전 초안을 자동 적용하지 않는다. 실제 사용자 판단 데이터나 외부 사이트 검증이 아니다.
+
+## D-03 사람 검토 이력·출처 (2026-10-14)
+
+- D-02 PR #38 f196579 기반, #34. 관련 후속 #47은 Brain 기록 표시이며 이번 범위에 포함하지 않았다.
+- 구현 전 새 이력 펼침 요소가 없어 브라우저 검사 1건 실패를 재현했다. 첫 샌드박스 실행은 로컬 소켓 권한 때문에 시작되지 않아 브라우저 실행 권한으로 다시 검사했다.
+- 관련 브라우저 24개 통과(새 5개 포함), 전체 pytest 281개 통과(115.49초). 현재/이전 버전 분리, 두 번 저장·새로고침, 서버 시각, 메모 HTML 이스케이프, 390px 긴 버전 표시, 누락 출처 추정 금지, D-02 초안/지연 응답을 확인했다.
+- repo 검사·diff 검사 통과. doctor: Python 3.13.13 / Chromium Playwright 1.55.0, study_errors=[]; 샌드박스 안에서는 Chromium 실행이 제한되어 허용된 환경에서 재실행했다.
+- mock 통합 run 20261014T123055-19814b54: verification=success, verified_success, 6행동, 검색/필터/상세 pass. 실제 유료 모델·실제 사이트 검증이 아니다.
+- 실제 로컬 대시보드에서 기존 합성 필터 결함 실행 20261013T120550-f9b8ce5e를 열었다. 사전 정의 스크립트/합성 테스트 환경 출처와 기존 검토를 확인하고 D03-화면검증 별칭의 테스트 보류 판정 1건을 추가했다. 기존 기록을 덮어쓰지 않고 2건이 표시되며 새로고침 뒤에도 별칭·판정·메모·시각이 유지됨을 확인했다. 이 기록은 실제 사용자 판단 데이터가 아니다.
+- Mock 실행의 데모/미확인 출처도 실제 화면에서 확인했다. AI/live_configured 표시는 가상 API 표본으로 검증했다. 이전 버전 분리는 임시 실행의 근거를 변경하는 실제 HTTP/Chromium 테스트로 검증했다.
+- 선행 #30 → #37 → #38과 prototype 통합 후의 검증 및 팀원 승인은 남아 있다. 이번 PR에서 병합하지 않는다.
+
+## D-04 비교 측정 범위·누락 (2026-10-14)
+
+- D-03 #49 aa3e115 기반 #35. 기존 C 집계를 재사용했으며 집계/저장 스키마 변경 없음.
+- 구현 전 비교 범위 요소가 없는 실패 1건 재현. 신규 브라우저 5개 통과; 기존 D 검토 포함 29개 통과. 첫 전체 검사에서 없는 실행 버튼에 이동 ID가 남은 회귀 1건을 검출(285 통과/1 실패). 이동 ID 제거 후 관련 6개 및 최종 전체 **286개 통과 (123.01초)**.
+- 실제 HTTP 집계→Chromium에서 2/5=40%, 성공0, 예정0, 취소/미실행, 부분값과 완전 측정/누락 포함 세션 수, 실제0/전체 누락, 기록0행동, 중앙값 계산 대상, scripted 제외, 없는 실행 비활성, 데이터 변경/자동 갱신 뒤 펼침 유지, 390px 가로 넘침 없음을 검사했다.
+- 실제 로컬 화면은 기존 실행과 분리한 `/tmp/persona-d04-preview/runs`의 가상 표본을 8766 포트로 제공했다. 비용 전체 미확인·부분 $0.125, 토큰 부분120, 기록 전체 미확인·측정3/4=75%, 실제0원과 기록 대상행동 없음, 모델/환경 누락, 존재하는 실행 이동과 없는 실행 버튼 비활성을 확인했다. 가상 성능 수치이며 유료 모델/실제 사람/실제 사이트 결과가 아니다.
+- doctor: Python 3.13.13 / Playwright 1.55.0 Chromium, study_errors=[]. Mock 20261014T124427-00482481: 6행동, verification=success, verified_success.
+- repo/staged/diff 검사 통과. 선행 PR들의 prototype 통합 및 원격 CI/팀원 리뷰는 별도로 확인해야 한다. 회의록 정리는 이번 기능 문서와 별도 후속이다.
+
+## codex 자동 CI와 D-03 D-04 원격 검사 (2026-10-14)
+
+- push 대상에 codex/**를 추가했다. 수동 실행 없이 push 이벤트로 자동 시작됐으며 기존 권한과 검사 항목은 유지했다.
+- D-03 #49의 2c42f67: [실행 38571360128](https://github.com/2026-2-1/Persona/actions/runs/38571360128). Ubuntu/Python3.11 281 passed (155.33초), Windows/Python3.13 281 passed (198.71초).
+- D-04 #50의 f618818: [실행 38571422499](https://github.com/2026-2-1/Persona/actions/runs/38571422499). Ubuntu/Python3.11 286 passed (163.32초), Windows/Python3.13 286 passed (202.53초).
+- 두 PR의 현재 head에 두 성공 check가 연결됨을 확인했다. 각 환경 repo 검사, doctor study_errors=[], Mock verification=success.
+- D-04에 D-03 CI 변경을 병합하며 트러블슈팅 문서의 추가 문단 충돌을 해결했다. 양쪽 기록을 모두 보존했고 실행 코드 변경은 없다.
+- prototype 병합과 팀원 승인은 별도다. 다른 브랜치도 이 워크플로 변경을 포함해야 codex push 검사가 실행된다.
+
+## 2026-10-14 D-05 검토·내보내기 (작업 브랜치)
+
+- 브랜치: `codex/36-review-export-verification`, 선행: D-04 #50 / 공유 문서 #51.
+- 실제 합성 실행 `20261014T133938-52036475`: 후보 → 행동 6 화면/평가 근거 → valid 저장 → 새로고침 후 이력 1건 유지 → JSON/CSV/Markdown/HTML 대조 통과.
+- HTML은 앱 내 브라우저 다운로드 도구 시간 초과 후 별도 Chromium의 실제 링크 다운로드로 확인했다. 나머지 세 형식은 앱 내 브라우저에서 다운로드했다.
+- 신규 회귀 3개 포함 전체 pytest: **289 passed** (macOS, Python 3.13.13). 집중 검토·내보내기 검사: 30 passed.
+- doctor: study_errors=[]; Mock: `20261014T135237-026b2a38`, verified_success, 6 actions. 실제 사용자/유료 모델 검증 아님.
+- repo 검사 PASS. CI 결과는 해당 PR의 head 검사에서 확인한다.
+- 근거 변경 시 Markdown/HTML에 현재 카드 버전이 없는 문제를 실패 테스트로 재현한 뒤 수정했다.
+- 팀원 독립 재현, 전체 예외 상태 시연 및 prototype 통합 재검증은 남았다. [절차와 한계](tasks/d-review-export-verification.md).
+
+## 2026-10-15 D 조회·출처·복구·예외 상태
+
+- 선행 PR #52의 최종 CI [38575931790](https://github.com/2026-2-1/Persona/actions/runs/38575931790): Ubuntu 3.11/Windows 3.13 모두 success.
+- `codex/d-dashboard-hardening`, #64/#65: 실패 테스트(조회/복구 4건, 출처 2건) 재현 후 수정. 집중 조회/검토 31 passed, 출처 3 passed, D-05/비교 12 passed.
+- 전체 pytest **303 passed** (macOS Python 3.13.13). doctor 정상, repo 검사 PASS.
+- 실제 Mock `20261014T165640-9f1f7163` verified_success. 새 run.json의 AI 실행/합성 출처 기록 확인.
+- 실제 합성 실패 `20261014T165643-1173dceb`: 별도 임시 검토 이력 파일을 손상시켜 실제 API 오류 유발 → 마지막 정상 시각·초안 유지·저장 비활성 화면 확인 → 테스트 파일 복구 후 자동 재조회 회복 → 보존된 초안으로 deferred 저장 → 새로고침 후 이력 1건 확인. 개인/기존 실행 파일은 변경하지 않았다.
+- 390px 정상/중단/빈 결과/근거 누락과 네 형식 내보내기 회귀를 추가했다. 독립 팀원 재현·prototype 통합은 남아 있다.
+
+## 2026-10-15 Fast 단계별 생성 (#41)
+
+- Fast의 perception·plan·decision을 별도 생성 요청으로 수행하고 단계별 입력 기억 ID, observation ID, plan ID, 생성 결과를 `brain_stages.jsonl`에 기록한다. perception·plan 생성 결과는 다음 단계 전에 메모리에 저장한다.
+- Jev의 후보 선택과 생성 fallback, 완료 선언과 독립 평가 구분을 유지했다. Slow 작업 예약과 Brain 신규 조율은 포함하지 않았다.
+- 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
+- mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
+## 2026-10-15 D Brain 기록 소비 (#47)
+
+- 브랜치 `codex/47-brain-trace-viewer`, 선행 D 하드닝 PR #67.
+- 기존 brain 필드/화면 패널 부재를 실패 재현하고 선택적 JSONL 읽기·6상태·제거 원본·내보내기를 연결했다.
+- 전체 pytest **310 passed** (macOS Python 3.13.13), doctor 정상, repo/diff 검사 PASS.
+- 첫 전체 검사에서 데스크톱 기본 화면의 세로 넘침 1건 발생: Brain과 비용의 접힌 패널을 같은 카드로 묶은 후 데스크톱 두 크기/390px/정확한 관찰 연결 및 전체 검사를 다시 통과했다.
+- 소비 가상 표본: append 상태·원본 제거 이력·손상/교차 실행/심볼릭 링크·비밀값 제거·네 형식 대조. 생성 실행기와의 실제 Mock 통합은 별도 격리 체크아웃 검증으로 기록한다.
+- D 하드닝 CI [38602694973](https://github.com/2026-2-1/Persona/actions/runs/38602694973): Ubuntu 3.11/Windows 3.13 모두 success.
+
+## 2026-10-15 A+D 격리 통합 (#69)
+
+- D 소비 d79a9b8 + A Fast 2c5f72a를 별도 checkout/preview에서 통합. 실행 출처와 Brain writer, C 실측 usage completeness를 함께 보존했다.
+- 전체 pytest **324 passed** (macOS Python 3.13.13), doctor 정상, repo 검사 PASS. 테스트한 src/tests 트리와 최종 통합 merge 트리의 diff=0을 확인했다.
+- 기존 C 사용량 기대값을 3 Fast+4 중요도 요청에 맞춰 보완하고 fast-stages-1 버전 기록을 실패 재현 후 구분했다.
+- 실제 무료 Mock `20261014T171511-3d562d94`: 6 actions/42 interface requests/verified_success, 42 stage records/72 task events/24 latest tasks/24 original memories/warnings 0. 브라우저의 계획→정확한 관찰 연결 및 네 형식 다운로드 대조 통과.
+- B live PR과 Slow 전체 조율, 팀원 재현·prototype 통합은 미포함. [아침 인수인계](handoffs/2026-10-15-morning.md).
+추가 실제 시연에서 긴 Brain 목록의 출처 버튼이 이미지만 바꾸고 근거를 화면 밖에 남기는 문제를 발견했다. 30개 선행 기록을 넣어 viewport 검사 실패를 재현하고, 선택한 관찰 설명으로 이동하도록 수정했다. 출처/데스크톱 집중 4개를 통과했다.
+
+원본 기억의 source_observation_ids/source_step_ids/source_stage_record_id도 표시한다. 단일 단계의 observation_id만 읽어 관찰 출처를 미기록으로 보이던 경우를 브라우저 실패로 재현하고 수정했다. 최종 소비 전체 310개 검사를 다시 통과했다.
+
+최종 preview는 원본 기억 출처 보완 e20d7fb까지 포함해 전체 324개 검사를 다시 통과했다. 출처 화면 이동 보완 뒤 실제 브라우저의 선택 관찰도 viewport 안에서 확인했다. CI 결과는 각 PR의 현재 head 검사를 기준으로 읽는다.
+
+### #41 PR 코드 리뷰 보완
+
+형식이 틀린 첫 응답과 복구된 두 번째 응답을 fake provider로 재현했다. 수정 전에는 예산 요청 2회에 비해 Fast 호출 로그가 1건이었고, 수정 후 두 응답의 사용량을 각각 기록한다. `tests/test_fast_stages.py`: 3 passed, 전체 pytest: 200 passed (81.18s). 유료 API 호출 없음.
+
+Jev가 입력 후보를 고른 뒤 생성 모델이 `give_up`을 반환하는 경로에서 null action 검사가 실패하는 것을 재현했다. 종료 선언을 보존하도록 수정했고 Fast·Jev 관련 검사 9개, 전체 pytest 201개(81.56s)가 통과했다. 유료 API 호출 없음.
+
+## 2026-10-15 Slow 성찰·계획 검토 (#42)
+
+- 전체 pytest: **204 passed in 80.86s**. Slow 전용 테스트는 대기열 무제한 예약, 비동기 호출, 성찰/계획 검토 기록, 고정 snapshot, provider 실패·timeout 기록과 mock runner 연결을 확인했다.
+- `python3 -m compileall -q src tests/test_slow_loop.py tests/test_core.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 신규 메모리 중요도는 5로 고정되며 점수 산정 API/작업은 실행되지 않는다. Slow 결과는 기존 계획을 바꾸지 않고 기록·메모리 후보만 추가한다.
+- 네트워크 기반 유료 LLM 호출은 하지 않았다. 브라우저 통합 검사는 로컬 fixture와 mock provider를 사용했다.
+
+### #42 PR 코드 리뷰 보완
+
+Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입력·출력 토큰을 별도 호출 로그에 기록한다. 수정 전에는 예산 요청 1회에 사용량 로그 0건이었다. fake provider 기반 Slow/Fast 관련 검사 4개, 선행 #41 수정 병합 후 전체 pytest 207개(81.38s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Brain 두 루프 조율 (#43)
+
+- 전체 pytest: **212 passed in 82.28s**. fake provider 검사에서 stage 경계 reflection 채택, observation/plan ID/version이 맞는 plan review만 decision 문맥에 전달, stale 결과 폐기, 종료 시 실행 중·대기 작업 취소, general 조건 persona context 축소, run 메모리 격리를 확인했다.
+- mock runner에서는 legacy `enable_slow_loop=false` 입력에도 Fast/Slow가 구성되고, Fast stage task ID와 stage record 연결, reflection/plan review 예약·상태 기록을 확인했다.
+- `python3 -m compileall -q src tests/test_brain.py tests/test_brain_schema.py tests/test_slow_loop.py tests/test_fast_stages.py tests/test_model_selection.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- 요청 수/총토큰 제한은 기본 `null`이며 대기열 상한을 추가하지 않았다. 테스트는 가짜 provider와 로컬 fixture를 사용했고 실제 유료 API는 호출하지 않았다.
+
+### #43 PR 코드 리뷰 보완
+
+채택한 reflection을 일반 검색 결과에서 제외해도 다음 Fast decision 입력에 전달되도록 경계 결과를 우선 삽입한다. 기존 계획 검토의 정확한 observation/plan/version 검사와 입력 개수 상한은 유지한다. fake provider 및 mock runner로 재현했다. 선행 #41·#42 수정 병합 후 전체 pytest 216개(83.73s) 통과. 유료 API 호출 없음.
+
+## 2026-10-15 Runner 평가 순서 (#44)
+
+- 코드 변경: 초기 `evaluate()`의 조기 종료를 제거하고 행동 후 재관찰 또는 `finish` 선언 때 독립 평가한다. 단계 기록에 평가 근거와 관찰 시각을 연결한다.
+- 검증 상태: 초기 성공·종료 선언·실행기 차단·후속 관찰 실패·모델 시간 초과·행동 중 중지의 mock runner 검사 6개와 전체 pytest 225개(91.75s)가 통과했다. 후속 관찰 뒤 summary가 이전 관찰을 가리키는 문제는 실패 재현 후 수정했다. 중지 시 현재 행동 기록과 비교 실행의 미시작 세션 보존, 페르소나 생성 중지에서 다른 실행을 건드리지 않는 동작은 전용 테스트로 확인했다. 실제 대시보드 하위 프로세스 검증에서는 `stopping` → `cancelled`, 취소 요약과 행동 시도·단계 기록 각 1건을 확인했다. `python3 -m uxagent run --study configs/study.json --provider mock --headless`는 처음에 로컬 포트 바인딩이 샌드박스에서 거부되어 실패했고, 허용된 권한으로 최종 재실행해 6회 행동 뒤 `verified_success`·기록 완전성 6/6을 확인했다. `node --check src/uxagent/dashboard/app.js`, Python compileall, 저장소 검사도 통과했다. 실제 유료 API/공개 사이트 성공은 확인하지 않았다.
+
+## 2026-10-15 Persona 기반 Wonder (#45)
+
+- 먼저 Wonder 전용 실패 재현 테스트를 작성했고, 초기에는 새 생성자 인자가 없어 5개가 실패했다. 구현 후 `python3 -m pytest -q tests/test_wonder.py` **13 passed**, 전체 `python3 -m pytest -q` **238 passed in 90.84s**.
+- 고정 seed 139의 당첨·비당첨, 시작된 Slow 작업 ID별 1회 추첨, 일반 조건의 공통 제약만 전달, 제공자 내부 재시도, 요청 예산 부족, 활성 기억 N=10에서 과업 기억 보존과 기존 Wonder 우선 제거, 실행 종료 취소, 비밀 패턴 출력 거부, 대시보드·보고서 가정 표시를 확인했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture에서 행동 6회 후 `verified_success`, 기록 완전성 6/6, 시작된 Slow 작업 12개와 Wonder 추첨 12개. 무작위 seed 실행이라 이 실행에서는 당첨이 없었고, 고정 seed 139 당첨은 전용 mock runner 테스트로 확인했다.
+- `git diff --check`, `node --check src/uxagent/dashboard/app.js`, `python3 -m compileall -q src tests/test_wonder.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`: 통과. `python3 -m uxagent doctor --study configs/study.json`는 샌드박스의 Chromium 프로세스 등록 제한으로 첫 시도에 실패했고, 허용된 권한으로 재실행해 browser available·study_errors 없음으로 통과했다. 로컬 fixture와 mock/fake provider만 사용했고 유료 API·실제 사람 행동은 검증하지 않았다.
+
+## 2026-10-15 두 루프 제공자·예산·비교 호환 (#46)
+
+- 먼저 #46 전용 실패 재현 5개가 각각 예산 원인·Fast 재시도 로그·Slow 실제 provider·Jev 사전 차단·실행 모델 경로의 누락으로 실패했다. 구현 후 전용 검사는 14개가 통과했다.
+- mock runner: `python3 -m uxagent run --study configs/study.json --provider mock --headless`에서 6회 행동 후 `verified_success`, 기록 완전성 6/6, LLM 호출 30회, Slow 작업 12개. 기본 요청/총토큰 상한은 `null`, 실행 상한은 30회 행동·300초로 유지했다. 이 결과는 이후 30회 행동의 비용/성공을 예측하지 않는다.
+- 가짜 Jev/Gemini 제공자를 쓴 로컬 browser fixture에서 perception·plan·reflection·plan_review는 Gemini 모델, 후보 선택은 `jev-latest`로 기록되는 것을 확인했다. 키 누락·미지원 embedding은 실행 기록 또는 비교 세션 생성 전에 거부되는지 확인했다. 실제 유료 API 호출·계정별 모델 접근은 검증하지 않았다.
+- 일반 조건에서 Fast·Slow·Wonder 생성 입력 전체에 persona 배경·숙련도·선호가 전달되지 않는지 확인했다. 의도치 않은 Slow persona 필드가 들어오면 비교를 차단하는 검사도 통과했다.
+- `python3 -m pytest -q`: **252 passed in 96.24s**. `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `python3 -m compileall -q src tests/test_provider_budget.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`, `git diff --check`: 통과.
+
+## 2026-10-15 두 루프 기록 소비 (#47)
+
+- 새 기록 소비 실패를 먼저 재현했다. 단계·작업·기억 로그를 만든 실행 상세에 `brain_tasks`와 `trace`가 없어 전용 테스트 2개가 실패했다. 구현 후 로컬 기록 소비·보고서 관련 24개가 통과했고, 새 Chromium 표시 테스트 1개와 데스크톱 높이 회귀 검사 2개가 통과했다.
+- 첫 전체 검사에서는 새 최상위 기록 카드가 1365×768 화면 높이를 넘겨 **253 passed, 1 failed**였다. 기록 펼침을 기존 모델 호출 카드 안으로 옮겨 해당 브라우저 회귀를 수정했다. Wonder 부모 연결과 테스트 fixture 보완을 포함한 최종 `python3 -m pytest -q`는 **255 passed in 105.35s**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: `20261015T060054-5e8459e2`, 6회 행동·30회 모델 호출·12개 Slow 작업 뒤 `verified_success`, 기록 확보율 6/6. 해당 실제 로컬 기록의 상세 API에서 행동 trace 6건, 생성 단계 30건, 작업 사건 102건, 원본 기억 29건을 읽었고 JSON/CSV/Markdown/HTML 출력이 모두 열리는지 확인했다. 이는 로컬 fixture와 mock 모델의 동작 확인이며 실제 API/사이트 성과가 아니다.
+- `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `node --check src/uxagent/dashboard/app.js`, Python compileall, manifest JSON 파싱, `python3 scripts/check_repo.py`, `git diff --check`: 통과. 실제 유료 API·공개 사이트·인간 행동 유사성은 검증하지 않았다.
+
+## 2026-10-15 공유 기억 중요도 산정 (#40)
+
+- 원본 기억은 `null` 점수로 남기고 동일 ID·순번·생성 시각에 1~10점 변경을 적용하는 실패 재현 테스트를 작성했다. Slow의 비동기 점수 호출, 공통 예산, 제거된 기억의 늦은 응답 폐기, 잘못된 점수와 예산 소진 기록을 확인했다. 중요도 전용 5개 테스트가 통과했다.
+- 첫 전체 pytest는 이전의 5회 모델 호출을 고정한 모델 선택 테스트 때문에 **257 passed, 1 failed**였다. fake provider와 호출 단계 기대값에 importance를 추가했다. 실패·예산 테스트 2개를 포함한 최종 전체 pytest는 **260 passed in 99.54s**, 중요도 전용 검사는 **5 passed**였다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T061604-f58f1f64`에서 6회 행동 후 독립 판정 `verified_success`, 기록 확보율 6/6. 총 모델 요청 58회 중 중요도 요청 28회가 완료됐고, 원본 기억 29개는 모두 `null`로 남으며 28개 점수 변경 사건이 따로 기록됐다. 마지막 기억 1개는 종료 시 아직 산정 작업이 예약되지 않아 실행 요약 `importance_scoring_status=pending`이다. 이는 종료 시점의 미산정 상태를 숨기지 않는다.
+- `python3 scripts/check_repo.py`, `python3 -m compileall -q src tests/test_memory_importance.py tests/test_model_selection.py`, manifest JSON 파싱, `git diff --check`: 통과. 위 검사는 mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 모델의 점수 품질·추가 비용·공개 사이트 성공은 검증하지 않았다.
+
+## 2026-10-15 메모리 검색 정책 (#54)
+
+- 같은 입력에서 #40 동일 I/Q/R 기준선과 Fast 계획·행동 결정의 종류 가중치, Slow 최신성 가중 검색 순서를 비교했다. 미산정 기억과 점수 갱신, 60초 반감기, 알 수 없는 검색 mode를 전용 검사 5개로 확인했다.
+- 첫 전체 pytest는 Slow 검색이 현재 관찰 원본을 밀어내 성찰 채택 테스트가 **263 passed, 1 failed**였다. 현재 관찰을 Slow snapshot의 필수 기억으로 추가한 뒤 관련 Brain·Slow·검색 검사 18개가 통과했다.
+- 최종 전체 `python3 -m pytest -q`: **265 passed in 97.89s**. `python3 scripts/check_repo.py`, Python compileall, manifest JSON 파싱, `git diff --check`도 통과했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T062424-1aa372d6`에서 6회 행동, 총 58회 mock 모델 요청, 독립 판정 `verified_success`, 기록 확보율 6/6, reflection 채택 5건을 확인했다. 실제 유료 API나 공개 사이트의 성공·시간 가중치 품질은 검증하지 않았다.
+
+## 2026-10-15 활성 기억 제거 경계 (#55)
+
+- 먼저 N=10 현재 단계 보호, N=12 미산정 대기 보존, N=10 대기 제거 이유, 임베딩 요청 중 제거 테스트를 작성했다. 4개 중 3개가 보호 API·우선순위·이유 누락으로 실패했다. 구현 후 오래된 Slow snapshot의 원본 출처 테스트도 포함해 전용 **5 passed**였다.
+- 최종 `python3 -m pytest -q`: **270 passed in 97.54s**. 현재 단계·최근 10개가 충돌해도 활성 상한을 지키고, 제거 원본 ID와 Slow 출처, 제거 후 늦은 embedding 결과의 캐시 미복원을 확인했다. 최신 10개는 Wonder를 제외한 과업 기억에서 센다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T063224-537d7a15`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6. 기본 상한 64개에서 제거 경계는 발생하지 않았고 N=10/12 충돌은 전용 테스트로 확인했다. 실제 유료 API·공개 사이트·사람 행동은 검증하지 않았다.
+
+## 2026-10-15 기억 점수·상한·출처 종합 검증 (#56)
+
+- `tests/test_memory_integration.py`의 로컬 mock runner 2개(활성 상한 10·64)와 빈 기억·오래된 고점 제거/순번 테스트 1개를 추가했다. **3 passed in 6.84s**. 상한 10 실행에서는 제거 사건이 발생했고, 64 실행에서는 발생하지 않았다. 두 실행 모두 원본 기억 ID·점수 변경·Slow 작업/단계 출처·호출 수와 공통 예산을 대조했다. Fast 계획의 검색 기억 최대 6개와 별도 최근 행동 이력도 확인했다.
+- 전체 `python3 -m pytest -q`: **273 passed in 102.92s**. 여기에는 #40의 점수 실패·예산·늦은 응답, #47의 이전 JSONL·null 행동, #54 검색 순위, #55의 N=10/12·Slow snapshot·embedding 경합, 기존 Slow 취소 회귀가 포함된다.
+- mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 API·공개 사이트 성공·사람 행동 유사성은 검증하지 않았다.
 ## 2026-10-15 실제 OpenAI 연결 / #57
 
 - 증상: 실제 `gpt-4o-mini`로 합성 shop.html 과업을 실행하면 첫 결정에서 `model_error`로 종료됐다. 첫 실행은 `perception` 객체·`finish: false`, 프롬프트 1차 수정 후에는 `observation_id` 누락·`value` 필드 사용으로 `AgentDecision`/`Action` 검증에 실패했다.
@@ -110,10 +352,25 @@
 - 전체 pytest 188 passed, 재현 테스트 3 passed, doctor 정상, mock verified_success, repository check PASS.
 - 남은 범위: 데카트론 페이지의 AI 실행·판정 연결(P04), 실제 데카트론 검색 제출(#19), Claude/Gemini 경로의 같은 프롬프트 실측은 미검증이다. 반복 실행 수가 적어 형식 오류 재발률은 확인하지 않았다.
 
+## 2026-10-16 prototype 병합 준비: #31/#58 호환
+
+- 원격 보호 설정 승인 전 격리된 로컬 준비본에서만 작업했다. prototype 병합/브랜치 삭제 완료를 뜻하지 않는다.
+- #31 협업 문서와 최신 #81의 연구/상태 링크를 모두 보존했다.
+- #58의 행동 필드 명세를 최신 3단계 Fast의 decision 프롬프트에 연결했다. 기존 단일 decide 전제 테스트를 실제 decision API에 맞췄다.
+- 날짜 snapshot 응답 모델의 비용 미확인과 프롬프트 필드 명세 누락을 2개 실패로 재현했다. 실제 응답 모델 식별을 유지하고 명시적으로 확인한 snapshot만 단가표에 추가했다. 알 수 없는 모델은 null을 유지한다.
+- 단가는 [GPT-4o mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4o-mini)와 [GPT-4.1 mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4.1-mini)를 2026-10-16 확인했다. 입력/출력 토큰 기준 추정이며 계정 청구액·캐시 할인·기타 서비스 요금의 실측값이 아니다.
+
+#57 단계별 추가 호환: 팀원의 `fix/57-staged-openai-format`에서 인식·계획의 평문 문자열 요구를 보존했다. 해당 명세 누락 실패 1개를 재현한 뒤 수정했고 Fast/OpenAI/예산 관련 23개가 통과했다. 행동 결정의 기존 필드·미확인 모델 null 규칙은 유지한다. 실제 API 재검증은 수행하지 않았다.
+
+## 2026-10-16 #74 Windows 검사 안정화
+
+동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.
+
 ## 2026-10-15 합성 데카트론 AI 실행 연결 / #59
 
 - 증상: AI runner는 `shop.html`일 때만 합성 페이지 서버를 띄워 `decathlon.html`로 시작할 수 없었다. 판정기 호출에 기대값을 넘기지 않아, 기대값이 없는 `decathlon-detail-v1`은 상세 영역과 필수 7개 필드만 확인했다. 기대값을 뺀 재현에서 러닝 가방 블루·트레킹 신발 블랙 상세를 열어도 verified_success였다.
 - 해결: runner가 `decathlon.html`도 합성 페이지로 서빙한다. `StudyConfig.evaluation_expectations`를 추가해 runner의 두 판정 호출에 전달한다. `configs/study-decathlon.json`은 `detail` 검사와 상품명 러닝 가방 블랙·검정·30000 이하 기대값을 쓴다(A 확인 전 제안). 과업 문구에는 정답 상품명을 넣지 않는다.
 - 재현 테스트 5 passed(정답 상품 success, 블루·프로·신발 failure, 과업 문구 정답 비노출). 전체 pytest 193 passed, doctor study_errors 없음, mock verified_success, repository check PASS.
 - 실제 OpenAI `gpt-4o-mini`: `20261014T160558-bd30eb0c`, `20261014T160602-7c9b4930` 모두 verified_success, 1행동(러닝 가방 블랙 상세 보기)·1요청·약 1,580토큰·$0.0003. 원자료 runs는 커밋하지 않는다.
+- 2026-10-16 Brain·3단계 Fast 병합 후 재검증: runner의 단일 판정 경계(`evaluate_current`)에 기대값을 전달하도록 다시 적용했다. 판정 함수를 대체하는 `tests/test_runner_flow.py`의 두 가짜 함수가 키워드 인자를 받도록 실제 `evaluate` 형태에 맞췄다. 전체 pytest 465 passed. 실제 OpenAI `20261016T024309-678b6f57`(6요청·7,631토큰), `20261016T024317-5a2b15c5`(5요청·6,966토큰) 모두 verified_success·1행동. 실행 종료 시 진행 중인 Slow 성찰 요청이 취소되어 토큰을 알 수 없으므로 전체 비용은 미확인(null)이며, 확인된 호출 합계는 약 $0.001이다.
 - 한계: 합성 페이지 첫 화면에 상품 4개의 이름·가격·색상이 모두 보여 AI가 검색·필터 없이 정답 상세를 바로 연다. 검색·필터 과정을 보려면 시작 화면 또는 과업 설계 변경이 필요하다(P01, A 확인). 판정 시점(#44)과 실제 사이트 프로필(P03, #19)은 범위 밖이다.

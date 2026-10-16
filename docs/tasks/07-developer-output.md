@@ -39,3 +39,5 @@ tests/test_reports.py: null/근거 누락/HTML escaping/CSV·JSON 동일 ID/키 
 ## 범위 밖
 
 외부 GitHub 이슈 자동 등록, 미검증 원인 확정
+
+2026-10-11 C 후속: 최소 사람 검토 저장/조회와 판정·메모 출력 연결은 [P06](c-review-data.md)로 구분한다. 완전한 합의/재검증/중복 병합은 아직 후속이다.

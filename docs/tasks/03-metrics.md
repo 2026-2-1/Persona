@@ -38,3 +38,5 @@ src/uxagent/schemas.py, runner.py, storage.py; 새 metrics.py; tests/test_metric
 ## 범위 밖
 
 임의 종합 점수, 실제 사용자 성공률 주장
+
+2026-10-11 C/P08: [집계 검증](c-review-data.md)에서 비용/토큰/기록 coverage와 명시적 scripted 배제를 추가한다. 예정 분모와 성공 세션 중앙값을 유지하며 실제 API 비용 검증은 수행하지 않는다.

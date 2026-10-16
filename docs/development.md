@@ -27,6 +27,8 @@ python3 -m venv .venv
 
 ## 한 이슈의 작업 흐름
 
+브랜치·커밋은 [협업 규칙](collaboration.md)을 따른다.
+
 첫 checkout에서 `git config core.hooksPath .githooks`를 실행하면 커밋 전에 staged 경로·민감정보·문서 링크 검사를 자동 실행한다. CI에서도 같은 검사를 수행한다.
 
 1. 이슈의 선행 작업·문서·완료 조건·회귀 검사를 읽는다.

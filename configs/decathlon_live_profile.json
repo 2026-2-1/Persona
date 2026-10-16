@@ -3,7 +3,7 @@
   "kind": "decathlon_public_live",
   "synthetic": false,
   "status": "partial_observed_live",
-  "description": "2026-10-10 공개 브라우저 DOM에서 확인한 검색/가격/상품명 부분 프로필. 색상/사이즈/재고/픽업 검증은 포함하지 않는다. 사이트 변경 시 재확인 필요.",
+  "description": "2026-10-10 공개 브라우저 DOM에서 확인한 검색/가격/상품명 부분 프로필. 색상/사이즈/재고/픽업 검증은 포함하지 않는다. 2026-10-16 상품 하단 번들 합계 가격과 구분하도록 상세 가격을 상품 요약 영역으로 제한. 사이트 변경 시 재확인 필요.",
   "selectors": {
     "query": "[data-cy=\"search-bar-desktop\"] input",
     "results": "body",
@@ -11,6 +11,6 @@
     "card_name": "div[title]",
     "card_price": "[data-cy=\"item-current-price\"]",
     "detail_name": "h1",
-    "detail_price": "[data-cy=\"item-current-price\"].vp-price-amount--large"
+    "detail_price": "#product-summary-container [data-cy=\"item-current-price\"].vp-price-amount--large"
   }
 }

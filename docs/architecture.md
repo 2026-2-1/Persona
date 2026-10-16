@@ -15,6 +15,7 @@
 | 성공 평가 | evaluator.py | fixture 성공 조건; 실제 과업 evaluator 확장 대상 |
 | persona | personas.py | seed·분포·생성 provenance; 일반 AI 대조 조건 분리 필요 |
 | 결과 | review.py | 후보·설문·인터뷰·HTML; null 결과와 근거 누락 확인 |
+| 근거 소비 | trace.py, reports.py | 단계·작업·원본 기억을 행동 관찰 ID로 연결하고 출력; 구버전 로그 누락 허용 |
 | 화면 | monitor.py, dashboard/ | 작업 시작·상태·최신 화면·API 키 비노출 |
 
 새 기능은 관찰/행동/평가/분석/UI 중 책임을 정하고 작은 모듈을 추가한다. 동일 변경에 전체 구조 재작성을 포함하지 않는다. 새 계약은 기존 로그도 읽을 수 있게 버전과 기본값을 정의한다.

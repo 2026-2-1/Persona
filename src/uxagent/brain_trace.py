@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 from .schemas import WonderDrawRecord
 
-TASK_STATES = ('scheduled', 'started', 'completed', 'skipped', 'failed', 'cancelled')
+TASK_STATES = ('scheduled', 'started', 'completed', 'adopted', 'discarded', 'skipped', 'failed', 'cancelled')
 STAGES = ('perception', 'plan', 'decision', 'importance', 'reflection', 'plan_review', 'wonder')
-KINDS = ('importance', 'reflection', 'plan_review', 'wonder')
+KINDS = STAGES
 
 
 def _read(folder, name, run_id, identity, versions, warnings):
@@ -85,4 +85,5 @@ def load_brain_trace(folder: Path, run_id: str):
             'stages': stages, 'task_events': events, 'tasks': list(latest.values()),
             'task_counts': {state: sum(t['status'] == state for t in latest.values()) for state in TASK_STATES},
             'memories': list(memories.values()), 'memory_changes': changes,
-            'wonder_draws': draws, 'warnings': warnings}
+            'wonder_draws': draws, 'wonder_seed_texts': [str(row['seed']) for row in draws],
+            'warnings': warnings}

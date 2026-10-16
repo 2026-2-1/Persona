@@ -1,5 +1,16 @@
 # 검증 기록
 
+## 2026-10-16 최신 Brain + D/C 통합 (#69/#47/#36)
+
+- `codex/latest-pr-integration-20261015`에 #79 고정 head `1f82379b0139`, 별도 분기된 #78 `28f912b90a7f` 및 #75 `9c397b4f94e1` 후속을 통합했다. D #68/C 측정/문서 #80을 보존했다. [통합 범위·재현·한계](handoffs/2026-10-16-latest-pr-integration.md)를 따른다.
+- 최신 Fast kind·adopted/discarded·Wonder와 검증 reader/별칭의 불일치를 전용 3개 실패 테스트, 채택 배지 누락을 390px 브라우저 실패로 먼저 재현했다. reader/단일 패널/타입별 출력을 통일한 뒤 통과했다.
+- 전체 pytest: 처음 402 passed/1 failed(기존 #75 중복 패널 제목), 통합 패널에 맞춰 생성/실행/독립 결과 회귀를 보존한 최종 **403 passed in 168.98s**. 이후 #75의 데이터 갱신 대기 1줄을 별도 merge하고 해당 Chromium 검사 **1 passed in 3.51s**. #78 초기화 관련 2개도 통과했다.
+- doctor: Python 3.13.13, Chromium available, study_errors 없음. Node 문법, Python compileall, repo/staged 검사와 diff 공백 검사 통과. 원격 CI는 통합 PR의 현재 head 검사로 확인한다.
+- 실제 무료 Mock `20261015T145603-83f78314`: 6행동·60요청·독립 verified_success, 생성 60·작업 사건 193·기억 30·Wonder 추첨 12/당첨 1·읽기 경고 0. 최신 상태 completed 47/adopted 6/discarded 7. plan_review는 stale 5 + 종료 미소비 1로 전부 폐기됐고 reflection 5/Wonder 1이 채택됐다. 실제 계획의 출처 관찰 `obs-3fda456cc3`을 화면에서 열었다.
+- 실제 scripted 합성 필터 결함 `20261015T145630-7a949075`: 후보 `feature-6-filters`의 행동 6 이미지 확인 → deferred 초안 입력 → 다른 실행 왕복/자동 갱신 유지 → 저장 → 새로고침 → 이력 1건 유지. 독립 failure는 변하지 않았다.
+- 두 실행의 JSON/CSV/Markdown/HTML을 저장해 상세 API와 전체 Brain/카드 ID·버전·판정·메모를 대조했다. Brain CSV 330행의 타입별 JSON과 step trace도 일치했다. 실제 인앱 JSON 다운로드는 확인했고 나머지 실제 형식은 응답을 대조했다. 자동 Chromium 회귀에서는 네 형식 모두 다운로드했다. 인앱 다운로드 도구의 긴 지연과 검증 방법을 인수인계에 명시했다.
+- 유료 API·실제 사이트·사람 판단 유사성·기업 데이터는 이 검증에 사용하지 않았다. B #58/#60/#62와 prototype/main 병합은 별도다. 결과/스크린샷/원자료는 로컬 ignored/임시 폴더에 유지했다.
+
 ## 2026-10-15 23:27 KST 최신 원격 구현 반영 정정
 
 - 직접 GitHub PR/이슈 목록과 prototype SHA를 다시 조회하고 #66/#71~#79 본문·고정 head, #79의 Brain/Runner/Slow/Memory/Schema/비교 코드를 읽었다. #78/#79의 분기와 #78 후속 패치도 확인했다. [최신 확인 기록](handoffs/2026-10-15-latest-github-review.md)에 근거를 남겼다.
@@ -223,6 +234,13 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 실제 합성 실패 `20261014T165643-1173dceb`: 별도 임시 검토 이력 파일을 손상시켜 실제 API 오류 유발 → 마지막 정상 시각·초안 유지·저장 비활성 화면 확인 → 테스트 파일 복구 후 자동 재조회 회복 → 보존된 초안으로 deferred 저장 → 새로고침 후 이력 1건 확인. 개인/기존 실행 파일은 변경하지 않았다.
 - 390px 정상/중단/빈 결과/근거 누락과 네 형식 내보내기 회귀를 추가했다. 독립 팀원 재현·prototype 통합은 남아 있다.
 
+## 2026-10-15 Fast 단계별 생성 (#41)
+
+- Fast의 perception·plan·decision을 별도 생성 요청으로 수행하고 단계별 입력 기억 ID, observation ID, plan ID, 생성 결과를 `brain_stages.jsonl`에 기록한다. perception·plan 생성 결과는 다음 단계 전에 메모리에 저장한다.
+- Jev의 후보 선택과 생성 fallback, 완료 선언과 독립 평가 구분을 유지했다. Slow 작업 예약과 Brain 신규 조율은 포함하지 않았다.
+- 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
+- Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
+- mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
 ## 2026-10-15 D Brain 기록 소비 (#47)
 
 - 브랜치 `codex/47-brain-trace-viewer`, 선행 D 하드닝 PR #67.
@@ -232,16 +250,18 @@ Fast 모델 입력에서 점수 상위 기억(후보 선택 모델 4개, 생성 
 - 소비 가상 표본: append 상태·원본 제거 이력·손상/교차 실행/심볼릭 링크·비밀값 제거·네 형식 대조. 생성 실행기와의 실제 Mock 통합은 별도 격리 체크아웃 검증으로 기록한다.
 - D 하드닝 CI [38602694973](https://github.com/2026-2-1/Persona/actions/runs/38602694973): Ubuntu 3.11/Windows 3.13 모두 success.
 
+## 2026-10-15 A+D 격리 통합 (#69)
+
+- D 소비 d79a9b8 + A Fast 2c5f72a를 별도 checkout/preview에서 통합. 실행 출처와 Brain writer, C 실측 usage completeness를 함께 보존했다.
+- 전체 pytest **324 passed** (macOS Python 3.13.13), doctor 정상, repo 검사 PASS. 테스트한 src/tests 트리와 최종 통합 merge 트리의 diff=0을 확인했다.
+- 기존 C 사용량 기대값을 3 Fast+4 중요도 요청에 맞춰 보완하고 fast-stages-1 버전 기록을 실패 재현 후 구분했다.
+- 실제 무료 Mock `20261014T171511-3d562d94`: 6 actions/42 interface requests/verified_success, 42 stage records/72 task events/24 latest tasks/24 original memories/warnings 0. 브라우저의 계획→정확한 관찰 연결 및 네 형식 다운로드 대조 통과.
+- B live PR과 Slow 전체 조율, 팀원 재현·prototype 통합은 미포함. [아침 인수인계](handoffs/2026-10-15-morning.md).
 추가 실제 시연에서 긴 Brain 목록의 출처 버튼이 이미지만 바꾸고 근거를 화면 밖에 남기는 문제를 발견했다. 30개 선행 기록을 넣어 viewport 검사 실패를 재현하고, 선택한 관찰 설명으로 이동하도록 수정했다. 출처/데스크톱 집중 4개를 통과했다.
 
 원본 기억의 source_observation_ids/source_step_ids/source_stage_record_id도 표시한다. 단일 단계의 observation_id만 읽어 관찰 출처를 미기록으로 보이던 경우를 브라우저 실패로 재현하고 수정했다. 최종 소비 전체 310개 검사를 다시 통과했다.
-## 2026-10-15 Fast 단계별 생성 (#41)
 
-- Fast의 perception·plan·decision을 별도 생성 요청으로 수행하고 단계별 입력 기억 ID, observation ID, plan ID, 생성 결과를 `brain_stages.jsonl`에 기록한다. perception·plan 생성 결과는 다음 단계 전에 메모리에 저장한다.
-- Jev의 후보 선택과 생성 fallback, 완료 선언과 독립 평가 구분을 유지했다. Slow 작업 예약과 Brain 신규 조율은 포함하지 않았다.
-- 전체 검사: **199 passed in 85.68s**. `python3 -m compileall -q src tests/test_fast_stages.py`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과.
-- Doctor: Python 3.14.5, Playwright 1.55.0 Chromium available, study_errors 없음.
-- mock runner 통합은 독립 성공 판정, false-finish, 반복 상태 종료와 단계 기록·중간 메모리 저장을 확인했다. 실제 유료 LLM API는 호출하지 않았다.
+최종 preview는 원본 기억 출처 보완 e20d7fb까지 포함해 전체 324개 검사를 다시 통과했다. 출처 화면 이동 보완 뒤 실제 브라우저의 선택 관찰도 viewport 안에서 확인했다. CI 결과는 각 PR의 현재 head 검사를 기준으로 읽는다.
 
 ### #41 PR 코드 리뷰 보완
 

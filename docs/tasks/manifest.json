@@ -133,5 +133,14 @@
     "path": "docs/tasks/44-runner-evaluation-flow.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/44",
     "issue_number": 44
+  },
+  {
+    "slug": "45-persona-wonder",
+    "title": "[phase:1] Persona 기반 1% Wonder",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/45-persona-wonder.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/45",
+    "issue_number": 45
   }
 ]

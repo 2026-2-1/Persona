@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from .schemas import WonderDrawRecord
 
 TASK_STATES = ('scheduled', 'started', 'completed', 'skipped', 'failed', 'cancelled')
 STAGES = ('perception', 'plan', 'decision', 'importance', 'reflection', 'plan_review', 'wonder')
@@ -26,7 +27,9 @@ def _read(folder, name, run_id, identity, versions, warnings):
                     row = json.loads(line)
                     if not isinstance(row, dict) or row.get('run_id') != run_id:
                         raise ValueError('invalid_identity')
-                    if not isinstance(row.get(identity), str) or not row[identity]:
+                    if name == 'wonder_draws.jsonl':
+                        WonderDrawRecord.model_validate(row)
+                    elif not isinstance(row.get(identity), str) or not row[identity]:
                         raise ValueError('missing_id')
                     if row.get('schema_version', '1.0') not in versions:
                         raise ValueError('unsupported_schema')
@@ -54,6 +57,7 @@ def load_brain_trace(folder: Path, run_id: str):
     events = _read(folder, 'brain_tasks.jsonl', run_id, 'event_id', ('1.0',), warnings)
     originals = _read(folder, 'memory.jsonl', run_id, 'memory_id', ('1.0', '2.0'), warnings)
     changes = _read(folder, 'memory_changes.jsonl', run_id, 'event_id', ('1.0',), warnings)
+    draws = _read(folder, 'wonder_draws.jsonl', run_id, 'draw_index', ('1.0',), warnings)
     latest = {}
     for event in events:
         task_id = event.get('task_id')
@@ -77,7 +81,8 @@ def load_brain_trace(folder: Path, run_id: str):
         else:
             warnings.append({'file': 'memory_changes.jsonl', 'reason': 'invalid_importance'})
     return {'available': any((folder / name).exists() or (folder / name).is_symlink() for name in
-                            ('brain_stages.jsonl', 'brain_tasks.jsonl', 'memory_changes.jsonl')),
+                            ('brain_stages.jsonl', 'brain_tasks.jsonl', 'memory_changes.jsonl', 'wonder_draws.jsonl')),
             'stages': stages, 'task_events': events, 'tasks': list(latest.values()),
             'task_counts': {state: sum(t['status'] == state for t in latest.values()) for state in TASK_STATES},
-            'memories': list(memories.values()), 'memory_changes': changes, 'warnings': warnings}
+            'memories': list(memories.values()), 'memory_changes': changes,
+            'wonder_draws': draws, 'warnings': warnings}

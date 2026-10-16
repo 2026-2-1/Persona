@@ -26,6 +26,9 @@ class MemoryStore:
         self.max_active_memories, self.change_writer = max_active_memories, change_writer
         self.entries: list[MemoryEntry] = []
         self.known_memory_ids: set[str] = set()
+        self.current_stage_ids: set[str] = set()
+        self.slow_snapshot_ids: set[str] = set()
+        self.pending_score_ids: set[str] = set()
         self.started = clock()
         self._next_seq = 1
         self.embedding_cache: dict[str, list[float]] = {}
@@ -45,41 +48,77 @@ class MemoryStore:
         self._next_seq += 1
         self.entries.append(entry)
         self.known_memory_ids.add(entry.memory_id)
+        if entry.importance is None:
+            self.pending_score_ids.add(entry.memory_id)
         if self.writer: self.writer.write(entry.model_dump())
         self._enforce_active_limit()
         return entry
 
+    def set_current_stage_memories(self, memory_ids):
+        self.current_stage_ids = set(memory_ids)
+
+    def set_slow_snapshot_memories(self, memory_ids):
+        self.slow_snapshot_ids = set(memory_ids)
+
+    def finish_score_attempt(self, memory_id):
+        self.pending_score_ids.discard(memory_id)
+
     def _enforce_active_limit(self):
         while len(self.entries) > self.max_active_memories:
-            protected_ids = {entry.memory_id for entry in self.entries[-10:] if entry.kind != "wonder"}
-            eligible = [entry for entry in self.entries if entry.memory_id not in protected_ids]
+            recent_ids = {entry.memory_id for entry in
+                          [row for row in self.entries if row.kind != "wonder"][-10:]}
 
             def retention_key(entry):
+                if entry.kind == "wonder":
+                    protection = 0
+                elif entry.memory_id in self.current_stage_ids:
+                    protection = 5
+                elif entry.memory_id in recent_ids:
+                    protection = 4
+                elif entry.memory_id in self.pending_score_ids:
+                    protection = 3
+                elif entry.memory_id in self.slow_snapshot_ids:
+                    protection = 2
+                else:
+                    protection = 1
                 if entry.importance is None:
-                    return (entry.kind != "wonder", False, 0.0, entry.seq)
+                    return (protection, 0.0, entry.seq)
                 maximum = 5 if entry.schema_version == "1.0" else 10
-                return (entry.kind != "wonder", True, entry.importance / maximum, entry.seq)
+                return (protection, entry.importance / maximum, entry.seq)
 
-            ranked = sorted(eligible, key=retention_key)
+            ranked = sorted(self.entries, key=retention_key)
             victim = ranked[0]
             # Keep the recorded score consistent with importance-first ordering.
-            oldest_seq, newest_seq = eligible[0].seq, eligible[-1].seq
+            oldest_seq, newest_seq = self.entries[0].seq, self.entries[-1].seq
             recency = (victim.seq - oldest_seq) / max(1, newest_seq - oldest_seq)
             if victim.importance is None:
                 retention_score = (0.05 * recency) / 2.05
             else:
                 maximum = 5 if victim.schema_version == "1.0" else 10
                 retention_score = (1 + victim.importance / maximum + 0.05 * recency) / 2.05
+            if victim.kind == "wonder":
+                reason = "wonder_lower_priority"
+            elif victim.memory_id in recent_ids and self.current_stage_ids:
+                reason = "recent_capacity_for_current_stage"
+            elif victim.memory_id in self.pending_score_ids:
+                reason = "pending_importance_capacity"
+            elif victim.memory_id in self.slow_snapshot_ids:
+                reason = "slow_snapshot_capacity"
+            else:
+                reason = "active_capacity_importance_then_recency"
             event = MemoryChangeEvent(
                 event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
                 memory_id=victim.memory_id, memory_seq=victim.seq, change="evicted",
                 importance_before=victim.importance if victim.schema_version == "2.0" else None,
                 retention_score=retention_score,
-                reason_code="wonder_lower_priority" if victim.kind == "wonder" else "active_capacity_importance_then_recency",
+                reason_code=reason,
                 recorded_at=datetime.now(timezone.utc),
             )
             if self.change_writer: self.change_writer.write(event.model_dump())
             self.entries.remove(victim)
+            self.current_stage_ids.discard(victim.memory_id)
+            self.slow_snapshot_ids.discard(victim.memory_id)
+            self.pending_score_ids.discard(victim.memory_id)
             self.embedding_cache.pop(victim.memory_id, None)
 
     def can_append_wonder(self):
@@ -107,6 +146,7 @@ class MemoryStore:
         if self.change_writer:
             self.change_writer.write(event.model_dump())
         entry.importance = importance
+        self.pending_score_ids.discard(memory_id)
         return True
 
     def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):

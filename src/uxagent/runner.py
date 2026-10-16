@@ -217,6 +217,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     termination="cancelled";break
                 observation_memory=memory.append("observation",observation.html[:600],
                     [step_id],[observation.observation_id])
+                memory.set_current_stage_memories([observation_memory.memory_id])
                 perception_boundary=brain.begin_stage("perception",observation.observation_id)
                 try:
                     if config.embedding_model:
@@ -254,6 +255,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         perception_memory=memory.append("observation",perception,[step_id],
                             [observation.observation_id],"generated",source_memory_ids=perception_sources,
                             source_stage_record_id=perception_record.record_id)
+                        memory.set_current_stage_memories([
+                            observation_memory.memory_id, perception_memory.memory_id])
                         brain.schedule_reflection(config.task,observation.observation_id,
                                                   error=previous_error)
                         plan_boundary=brain.begin_stage("plan",observation.observation_id)
@@ -273,6 +276,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         plan_memory=memory.append("plan",plan,[step_id],[observation.observation_id],
                             "generated",source_memory_ids=plan_sources,
                             source_stage_record_id=plan_record.record_id)
+                        memory.set_current_stage_memories([
+                            observation_memory.memory_id, perception_memory.memory_id,
+                            plan_memory.memory_id])
                         brain.schedule_plan_review(config.task,plan,observation.observation_id,
                                                    plan_record.plan_id,plan_record.plan_version)
                         decision_boundary=brain.begin_stage("decision",observation.observation_id,
@@ -294,6 +300,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                             action=decision.action,finish=decision.finish)
                         brain.complete_fast("decision",decision_record)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
+                    memory.set_current_stage_memories([])
                 except BudgetExceeded:
                     step_count+=1
                     write_unexecuted_step(step_id,observation,pre_observed_at,

@@ -101,6 +101,7 @@ class Brain:
                                               plan_id, plan_version)
 
     async def close(self):
+        self.memory.set_current_stage_memories([])
         await self.slow.close()
         for result in self.slow.pop_completed():
             self.slow.record_consumption(result, adopted=False,

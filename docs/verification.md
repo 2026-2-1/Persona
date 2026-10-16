@@ -298,6 +298,12 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 최종 전체 `python3 -m pytest -q`: **265 passed in 97.89s**. `python3 scripts/check_repo.py`, Python compileall, manifest JSON 파싱, `git diff --check`도 통과했다.
 - `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T062424-1aa372d6`에서 6회 행동, 총 58회 mock 모델 요청, 독립 판정 `verified_success`, 기록 확보율 6/6, reflection 채택 5건을 확인했다. 실제 유료 API나 공개 사이트의 성공·시간 가중치 품질은 검증하지 않았다.
 
+## 2026-10-15 활성 기억 제거 경계 (#55)
+
+- 먼저 N=10 현재 단계 보호, N=12 미산정 대기 보존, N=10 대기 제거 이유, 임베딩 요청 중 제거 테스트를 작성했다. 4개 중 3개가 보호 API·우선순위·이유 누락으로 실패했다. 구현 후 오래된 Slow snapshot의 원본 출처 테스트도 포함해 전용 **5 passed**였다.
+- 최종 `python3 -m pytest -q`: **270 passed in 97.54s**. 현재 단계·최근 10개가 충돌해도 활성 상한을 지키고, 제거 원본 ID와 Slow 출처, 제거 후 늦은 embedding 결과의 캐시 미복원을 확인했다. 최신 10개는 Wonder를 제외한 과업 기억에서 센다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture `20261015T063224-537d7a15`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6. 기본 상한 64개에서 제거 경계는 발생하지 않았고 N=10/12 충돌은 전용 테스트로 확인했다. 실제 유료 API·공개 사이트·사람 행동은 검증하지 않았다.
+
 ## 2026-10-16 #74 Windows 검사 안정화
 
 동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.

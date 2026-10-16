@@ -112,6 +112,7 @@ class SlowLoop:
             selected = [snapshot_by_id[memory_id] for memory_id in selected_ids
                         if memory_id in snapshot_by_id]
             source_memory_ids = [entry.memory_id for entry in selected]
+            self.memory.set_slow_snapshot_memories(source_memory_ids)
             self.status = "running"
             self._event(item, "started", snapshot_seq=snapshot_seq,
                         source_memory_ids=source_memory_ids)
@@ -148,6 +149,8 @@ class SlowLoop:
                 self._event(item, "failed", snapshot_seq=snapshot_seq,
                             source_memory_ids=source_memory_ids, reason_code=reason)
                 self._refresh_status()
+            finally:
+                self.memory.set_slow_snapshot_memories([])
 
     async def _score_pending(self, parent):
         pending = [entry for entry in self.memory.entries
@@ -202,6 +205,8 @@ class SlowLoop:
             except Exception:
                 self._event(item, "failed", snapshot_seq=snapshot_seq,
                             source_memory_ids=[entry.memory_id], reason_code="importance_call_failed")
+            finally:
+                self.memory.finish_score_attempt(entry.memory_id)
 
     def _maybe_schedule_wonder(self, parent, snapshot_seq):
         if not self.wonder_enabled:

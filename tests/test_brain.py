@@ -85,6 +85,8 @@ async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(mon
     config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
     config["persona_file"] = str(root / "configs/persona.json")
     config["max_steps"] = 1
+    config["action_timeout_ms"] = 15000
+    config["wonder_seed"] = 139
     study_path = tmp_path / "study.json"
     study_path.write_text(json.dumps(config), encoding="utf-8")
 
@@ -120,6 +122,8 @@ async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(mon
 
     _, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
 
+    assert summary["termination_reason"] == "max_steps", {
+        "termination": summary["termination_reason"], "error": summary.get("last_error")}
     assert summary["brain"]["adoption"]["reflection"] >= 1
     assert any(entry["kind"] == "reflection" for entry in decision_memories)
 

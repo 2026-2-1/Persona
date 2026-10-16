@@ -269,3 +269,17 @@ async def test_public_live_basic_detail_accepts_any_product_matching_name_keywor
         assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'
         await page.set_content(detail.replace('79,900원', '99,900원'))
         assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'
+
+
+@pytest.mark.asyncio
+async def test_live_profile_reads_summary_price_not_bundle_total():
+    # Since 2026-10-16 the live product page also shows a bundle total with the same price classes.
+    profile = json.loads((Path(__file__).resolve().parents[1] / 'configs/decathlon_live_profile.json').read_text(encoding='utf-8'))
+    price = '<span data-cy="item-current-price" class="vp-price-amount vp-price-amount--large">{}</span>'
+    async with BrowserSession(headed=False) as browser:
+        page = browser.active
+        await page.set_content('<div id="product-summary-container"><h1>남성 러닝화 킵코어</h1>' + price.format('79,900원') * 2 + '</div>'
+                               '<div data-testid="bundle-side-container">' + price.format('109,700원') + '</div>')
+        result = await evaluate_decathlon(page, 'detail_basic', {'product_name_contains': '러닝화', 'max_price': 80000}, profile)
+        assert result['verification'] == 'success'
+        assert result['feature_checks'][0]['evidence']['price'] == 79900

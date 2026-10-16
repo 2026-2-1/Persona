@@ -276,3 +276,7 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 가짜 Jev/Gemini 제공자를 쓴 로컬 browser fixture에서 perception·plan·reflection·plan_review는 Gemini 모델, 후보 선택은 `jev-latest`로 기록되는 것을 확인했다. 키 누락·미지원 embedding은 실행 기록 또는 비교 세션 생성 전에 거부되는지 확인했다. 실제 유료 API 호출·계정별 모델 접근은 검증하지 않았다.
 - 일반 조건에서 Fast·Slow·Wonder 생성 입력 전체에 persona 배경·숙련도·선호가 전달되지 않는지 확인했다. 의도치 않은 Slow persona 필드가 들어오면 비교를 차단하는 검사도 통과했다.
 - `python3 -m pytest -q`: **252 passed in 96.24s**. `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. `python3 -m compileall -q src tests/test_provider_budget.py`, `python3 -m json.tool docs/tasks/manifest.json`, `python3 scripts/check_repo.py`, `git diff --check`: 통과.
+
+## 2026-10-16 #74 Windows 검사 안정화
+
+동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.

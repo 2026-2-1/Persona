@@ -22,6 +22,7 @@ def test_provider_model_and_key_guide_send_selected_model(local_dashboard):
             route.fulfill(json={'provider':'live','configured':True,'model':'gpt-4.1-mini'})
         page.route('**/api/connection',connect)
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         page.locator('#wizard-next').click()
         page.locator('#wizard-next').click()
         page.locator('#provider').select_option('live')
@@ -309,6 +310,7 @@ def test_key_explicit_connection_is_cleared_and_never_browser_stored(local_dashb
         browser=p.chromium.launch()
         page=browser.new_page()
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         page.get_by_role('button',name='다음',exact=True).click()
         page.get_by_role('button',name='다음',exact=True).click()
         page.locator("#provider").select_option("live")
@@ -443,6 +445,7 @@ def test_wizard_automatically_chains_only_successful_generation(local_dashboard,
         page.route('**/api/state',state_route)
         page.route('**/api/jobs',job_route)
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         for _ in range(3):
             page.get_by_role('button',name='다음',exact=True).click()
         page.get_by_role('button',name='테스트 실행',exact=True).click()

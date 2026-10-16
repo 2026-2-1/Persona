@@ -366,6 +366,18 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 이번 작업에 한해 승인 수 1→0→1의 일시 변경을 허용받았다. CI·strict·관리자 적용은 유지하며 각 시도 직후 복원한다. 위 준비 당시 허용 대기 기록과 현재 권한을 구분한다. 원격 결과는 개별 PR의 squash commit과 최신 CI에서 확인하며, 전체 절차·로컬 검증·남은 문제는 [병합 기록](handoffs/2026-10-16-prototype-merge-queue.md)을 따른다.
 
 #57 단계별 추가 호환: 팀원의 `fix/57-staged-openai-format`에서 인식·계획의 평문 문자열 요구를 보존했다. 해당 명세 누락 실패 1개를 재현한 뒤 수정했고 Fast/OpenAI/예산 관련 23개가 통과했다. 행동 결정의 기존 필드·미확인 모델 null 규칙은 유지한다. 실제 API 재검증은 수행하지 않았다.
+## 2026-10-15 단계별 OpenAI 응답 형식 (#57, 팀원 staged 브랜치 기록)
+
+- 단계별 Fast의 자료형·행동 필드와 `gpt-4o-mini` 가격 누락에 대한 테스트 2개가 수정 전 실패하고 수정 후 통과했다.
+- `python3 -m pytest -q --tb=line`: **275 passed in 103.92s** (로컬 브라우저 서버 사용을 허용한 실행). 제한된 샌드박스 첫 시도는 소켓 생성 불가로 45 failed, 209 passed, 21 errors였으며 코드 회귀 판정에 사용하지 않았다.
+- `python3 scripts/check_repo.py`: 0 problems. 실제 API 호출은 `OPENAI_API_KEY`가 현재 실행 환경과 로컬 `.env`에 없어 수행하지 못했다. 모델 형식의 실호출 성공은 미검증이다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless`: 로컬 fixture 실행 `20261015T064911-78e45798`에서 6회 행동·58회 mock 모델 요청 후 독립 판정 `verified_success`, 기록 확보율 6/6이었다. Python compileall과 `git diff --check`도 통과했다.
+
+## 2026-10-15 합성 데카트론 AI 평가 연결 (#59)
+
+- 평가 기대값을 설정에 넣은 실패 재현 3개가 기존 StudyConfig의 extra field 오류로 실패했다. 구현 후 가짜 단계별 제공자를 사용한 실제 로컬 브라우저 실행에서 일치 상세는 `verified_success`, 불일치 상세 2개는 `agent_finished`·`failure`였다. 정답 상품명은 모델 과업 문장에 넣지 않았다.
+- 첫 전체 pytest는 기존 runner의 평가기 mock에 새 인자를 넘겨 **277 passed, 2 failed**였다. 기대값이 없는 기존 study의 호출을 유지하도록 수정한 뒤 관련 **10 passed**, 최종 전체 **279 passed in 108.03s**였다.
+- `python3 scripts/check_repo.py`, Python compileall, study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 호출은 현재 로컬 키가 없어 수행하지 못했다. 제공자 실호출의 과업 성공은 미검증이다.
 
 ## 2026-10-16 #74 Windows 검사 안정화
 

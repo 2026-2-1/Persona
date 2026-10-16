@@ -378,3 +378,7 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 평가 기대값을 설정에 넣은 실패 재현 3개가 기존 StudyConfig의 extra field 오류로 실패했다. 구현 후 가짜 단계별 제공자를 사용한 실제 로컬 브라우저 실행에서 일치 상세는 `verified_success`, 불일치 상세 2개는 `agent_finished`·`failure`였다. 정답 상품명은 모델 과업 문장에 넣지 않았다.
 - 첫 전체 pytest는 기존 runner의 평가기 mock에 새 인자를 넘겨 **277 passed, 2 failed**였다. 기대값이 없는 기존 study의 호출을 유지하도록 수정한 뒤 관련 **10 passed**, 최종 전체 **279 passed in 108.03s**였다.
 - `python3 scripts/check_repo.py`, Python compileall, study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 호출은 현재 로컬 키가 없어 수행하지 못했다. 제공자 실호출의 과업 성공은 미검증이다.
+
+## 2026-10-16 #74 Windows 검사 안정화
+
+동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.

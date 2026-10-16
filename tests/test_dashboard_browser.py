@@ -111,6 +111,9 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
     with sync_playwright() as p:
         browser=p.chromium.launch()
         page=browser.new_page(viewport={'width':1280,'height':720})
+        def select_ready(run_id):
+            page.locator('#run-select').select_option(run_id)
+            expect(page.locator('#data-status')).to_be_hidden(timeout=15000)
         payload=page.request.get(local_dashboard+'/api/run/run-0').json()
         payload['summary']['evaluator']['feature_checks']=[
             {'id':'search','label':'검색 결과','status':'pass','evidence':'검색어와 표시 결과 일치'},
@@ -120,8 +123,8 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
         page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
         page.goto(local_dashboard)
         page.get_by_role('tab',name='실행 기록',exact=True).click()
-        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
-        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
+        select_ready('run-0')
         expect(page.locator('#feature-checks details.feature')).to_have_count(3)
         for status,label in [('pass','통과'),('fail','실패'),('unknown','미확인')]:
             expect(page.locator(f'.feature[data-status="{status}"] .feature-state')).to_have_text(label)
@@ -139,9 +142,9 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
         page.locator('#feature-panel').screenshot(path=str(tmp_path/'check-status-preview.png'))
         row.locator('summary').click()
         expect(row).to_have_attribute('open','')
-        page.locator('#run-select').select_option('run-1')
+        select_ready('run-1')
         expect(page.locator('#feature-checks details.feature')).to_have_count(0)
-        page.locator('#run-select').select_option('run-0')
+        select_ready('run-0')
         expect(page.locator('#feature-checks details.feature')).to_have_count(3)
         expect(row).not_to_have_attribute('open','')
         browser.close()

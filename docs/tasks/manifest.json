@@ -187,5 +187,14 @@
     "path": "docs/tasks/55-memory-retention-boundaries.md",
     "issue_url": "https://github.com/2026-2-1/Persona/issues/55",
     "issue_number": 55
+  },
+  {
+    "slug": "56-memory-integration-regression",
+    "title": "[phase:1] 메모리 점수·상한·비동기 출처 종합 검증",
+    "phase": "phase:1",
+    "area": "area:agent",
+    "path": "docs/tasks/56-memory-integration-regression.md",
+    "issue_url": "https://github.com/2026-2-1/Persona/issues/56",
+    "issue_number": 56
   }
 ]

@@ -372,7 +372,7 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 해결: runner가 `decathlon.html`도 합성 페이지로 서빙한다. `StudyConfig.evaluation_expectations`를 추가해 runner의 두 판정 호출에 전달한다. `configs/study-decathlon.json`은 `detail` 검사와 상품명 러닝 가방 블랙·검정·30000 이하 기대값을 쓴다(A 확인 전 제안). 과업 문구에는 정답 상품명을 넣지 않는다.
 - 재현 테스트 5 passed(정답 상품 success, 블루·프로·신발 failure, 과업 문구 정답 비노출). 전체 pytest 193 passed, doctor study_errors 없음, mock verified_success, repository check PASS.
 - 실제 OpenAI `gpt-4o-mini`: `20261014T160558-bd30eb0c`, `20261014T160602-7c9b4930` 모두 verified_success, 1행동(러닝 가방 블랙 상세 보기)·1요청·약 1,580토큰·$0.0003. 원자료 runs는 커밋하지 않는다.
-- 2026-10-16 Brain·3단계 Fast 병합 후 재검증: runner의 단일 판정 경계(`evaluate_current`)에 기대값을 전달하도록 다시 적용했다. 판정 함수를 대체하는 `tests/test_runner_flow.py`의 두 가짜 함수가 키워드 인자를 받도록 실제 `evaluate` 형태에 맞췄다. 전체 pytest 465 passed. 실제 OpenAI `20261016T024309-678b6f57`(6요청·7,631토큰), `20261016T024317-5a2b15c5`(5요청·6,966토큰) 모두 verified_success·1행동. 실행 종료 시 진행 중인 Slow 성찰 요청이 취소되어 토큰을 알 수 없으므로 전체 비용은 미확인(null)이며, 확인된 호출 합계는 약 $0.001이다.
+- 2026-10-16 Brain·3단계 Fast 병합 후 재검증: runner의 단일 판정 경계(`evaluate_current`)에 기대값을 전달하도록 다시 적용했다. 판정 함수를 대체하는 `tests/test_runner_flow.py`의 두 가짜 함수가 키워드 인자를 받도록 실제 `evaluate` 형태에 맞췄다. 전체 pytest 415 passed(iCloud 중복 사본 제외). 실제 OpenAI `20261016T024309-678b6f57`(6요청·7,631토큰), `20261016T024317-5a2b15c5`(5요청·6,966토큰) 모두 verified_success·1행동. 실행 종료 시 진행 중인 Slow 성찰 요청이 취소되어 토큰을 알 수 없으므로 전체 비용은 미확인(null)이며, 확인된 호출 합계는 약 $0.001이다.
 - 한계: 합성 페이지 첫 화면에 상품 4개의 이름·가격·색상이 모두 보여 AI가 검색·필터 없이 정답 상세를 바로 연다. 검색·필터 과정을 보려면 시작 화면 또는 과업 설계 변경이 필요하다(P01, A 확인). 판정 시점(#44)과 실제 사이트 프로필(P03, #19)은 범위 밖이다.
 
 ## 2026-10-15 실제 데카트론 검색 결과 AI 실행 / #61

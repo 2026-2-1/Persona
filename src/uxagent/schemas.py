@@ -96,6 +96,7 @@ class StudyConfig(StrictModel):
     evaluator_id: str = "local-bag-detail-v1"
     evaluation_checks: list[EvaluationCheck] = Field(default_factory=list, max_length=50)
     evaluation_expectations: dict[str, Any] | None = None
+    evaluation_profile_file: str | None = None
     viewport: Viewport = Field(default_factory=Viewport)
     observation_policy: Literal["viewport"] = "viewport"
     source_kind: Literal["unknown", "synthetic_fixture", "live_configured"] = "unknown"

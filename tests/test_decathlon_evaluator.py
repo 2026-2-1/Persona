@@ -251,3 +251,19 @@ async def test_public_result_url_scope_does_not_claim_form_submission():
         assert (await evaluate_decathlon(page, 'filters_price', expected, LIVE_PROFILE))['verification'] == 'success'
         await page.locator('div[title]').evaluate("e=>e.textContent='트레킹 신발'")
         assert (await evaluate_decathlon(page, 'search_results', expected, LIVE_PROFILE))['verification'] == 'failure'
+
+
+@pytest.mark.asyncio
+async def test_public_live_basic_detail_accepts_matching_name_keyword_and_price():
+    async with BrowserSession(headed=False) as browser:
+        page = browser.active
+        detail = '<h1>남성 러닝화 킵코어</h1><span data-cy="item-current-price" class="vp-price-amount--large">79,900원</span>'
+        expected = {'product_name_contains': '러닝화', 'max_price': 80000}
+        await page.set_content(detail)
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'success'
+        await page.set_content(detail.replace('남성 러닝화 킵코어', '여성 러닝화 런서포트'))
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'success'
+        await page.set_content(detail.replace('남성 러닝화 킵코어', '트레킹 신발'))
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'
+        await page.set_content(detail.replace('79,900원', '99,900원'))
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'

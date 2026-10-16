@@ -379,6 +379,30 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 첫 전체 pytest는 기존 runner의 평가기 mock에 새 인자를 넘겨 **277 passed, 2 failed**였다. 기대값이 없는 기존 study의 호출을 유지하도록 수정한 뒤 관련 **10 passed**, 최종 전체 **279 passed in 108.03s**였다.
 - `python3 scripts/check_repo.py`, Python compileall, study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 호출은 현재 로컬 키가 없어 수행하지 못했다. 제공자 실호출의 과업 성공은 미검증이다.
 
+## 2026-10-15 공개 데카트론 AI 부분 평가 연결 (#61)
+
+- 프로필 설정 수용·공개 설정 파일·상품명 키워드 판정의 실패 재현 3개가 수정 전 실패했다. 수정 후 데카트론 AI/평가기 관련 **28 passed in 16.12s**, 전체 **282 passed in 107.54s**였다.
+- 로컬 Playwright DOM에서 다른 적합 러닝화 2개는 이름·8만원 이하 가격으로 성공하고, 신발 종류가 다르거나 가격이 99,900원이면 실패했다. 이 판정은 표시 상품명·가격의 부분 범위에 한정된다.
+- `python3 scripts/check_repo.py`, Python compileall, live study JSON 파싱, `git diff --check` 통과. 실제 OpenAI API 키를 사용할 수 없어 공개 사이트 AI 실행은 수행하지 않았다. 이전 브랜치의 공개 사이트 기록을 현재 단계별 Fast 구현의 실호출 결과로 간주하지 않는다.
+
+## 2026-10-16 원본 PR 순차 통합 최종 준비본
+
+- A/B/C/D 통합 전체 pytest **416 passed in 174.46s**. 실제 브라우저의 검토·초안·새로고침·네 형식 출력, Brain 기록 및 합성 데카트론의 일치/불일치·profile 전달을 포함한다.
+- 원본 #60의 다른 상품 종류 거부를 단계별 가짜 제공자에서도 보존했다. #58의 perception·plan 문자열 명세 누락을 실패 재현 후 팀원 staged 수정으로 보완했다. 제공자/호출 비용/예산 집중 23개, 데카트론 집중 29개 통과.
+- 최종 무료 Mock `20261015T220538-00787cd2`: `verified_success`, 독립 success, 6행동·기록 6/6, 58 mock 요청. 계획 검토 채택 0건은 알려진 실행 순서 문제이며 해결 또는 연구 효과로 표시하지 않는다.
+- Doctor Python 3.13.13 / Playwright 1.55.0 Chromium / study_errors 없음. Node 구문·repo/staged·diff 검사 통과. 유료 API·실제 공개 사이트·사람 평가 재검증은 수행하지 않았다.
+- 원격 필수 Ubuntu/Windows CI를 각 최신 PR head에서 다시 확인한 뒤 squash 병합한다. 이 로컬 통과로 CI·승인 상태를 대체하지 않는다. [병합 절차와 남은 제한](handoffs/2026-10-16-prototype-merge-queue.md).
+
+## 2026-10-16 Wonder seed 정밀도 보완 후 최종 검사
+
+- 실제 생성된 7930736020609184225와 2**63-1에서 Chromium 표시가 바뀌는 실패 2개를 재현했다. 원본 정수·JSONL·출력 계약과 난수 정책을 유지하고 검증 draw 순서의 `wonder_seed_texts` 문자열로 표시한다.
+- 화면·JSON/CSV/Markdown/HTML·원본 로그 불변을 실제 HTTP/Chromium으로 검증했다. 기존 Brain 소비·안전 읽기 포함 15 passed in 5.50s.
+- 보완 후 최종 A/B/C/D 전체 **418 passed in 175.90s**. 앞선 416개 검증은 이 표시 보완 전 기록이며 합산하지 않는다. Node 문법·repo/staged·diff 검사 통과.
+- 실제 유료 API·기업·사람 평가를 완료한 결과가 아니다. 계획 검토 실제 입력 도달·종료 집계 문제는 여전히 후속이다.
+
 ## 2026-10-16 #74 Windows 검사 안정화
 
 동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.
+
+- 준비 조건 보완 후 #74 범위의 전체 **377 passed in 159.10s**, 최종 A/B/C/D 통합 범위의 전체 **418 passed in 176.77s**였다. 전체 검증 범위를 줄이지 않았다.
+- 두 운영체제 원격 검사는 최신 PR head와 최종 prototype에서 별도로 확인한다. 진단용 부분 검사와 로컬 통과 기록은 원격 필수 CI 통과를 대신하지 않는다.

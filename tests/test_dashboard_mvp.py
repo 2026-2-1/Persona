@@ -45,11 +45,24 @@ def test_key_connection_is_explicit_validated_and_not_returned(setup, monkeypatc
 
 
 def test_stop_marks_job_cancelled_without_completion(setup):
-    dashboard, _, _ = setup
+    dashboard, _, process = setup
     dashboard.start_job("batch")
     state = dashboard.stop_job()
-    assert state["status"] == "cancelled"
+    assert state["status"] == "stopping"
+    assert process.poll() is None
+    process.returncode = 0
     assert dashboard._job_state()["status"] == "cancelled"
+
+
+def test_stopping_persona_generation_does_not_cancel_unrelated_run(setup):
+    dashboard, _, _ = setup
+    unrelated = dashboard.runs_dir / "unrelated"
+    unrelated.mkdir(parents=True)
+    (unrelated / "run.json").write_text('{"run_id":"unrelated"}', encoding="utf-8")
+    dashboard.start_job("generate")
+
+    assert dashboard.stop_job()["status"] == "cancelled"
+    assert not (unrelated / "summary.json").exists()
 
 
 def test_invalid_evaluation_check_never_launches(setup):

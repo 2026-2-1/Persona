@@ -27,6 +27,8 @@ python3 -m venv .venv
 
 ## 한 이슈의 작업 흐름
 
+브랜치·커밋은 [협업 규칙](collaboration.md)을 따른다.
+
 첫 checkout에서 `git config core.hooksPath .githooks`를 실행하면 커밋 전에 staged 경로·민감정보·문서 링크 검사를 자동 실행한다. CI에서도 같은 검사를 수행한다.
 
 1. 이슈의 선행 작업·문서·완료 조건·회귀 검사를 읽는다.
@@ -38,7 +40,7 @@ python3 -m venv .venv
 7. `python scripts/check_repo.py --staged`와 staged 목록을 확인하고 커밋·push한다.
 8. prototype 대상 PR에 이슈 링크, 실제 검사 결과, 남은 제한을 적고 리뷰받는다.
 
-GitHub Actions는 Windows/Python 3.13, Ubuntu/Python 3.11에서 pytest·repo 검사·doctor·mock을 실행한다. API 비밀값과 라이브 API 호출은 CI에 넣지 않는다. CI는 push/PR/manual trigger이며 main의 기존 설정을 변경하지 않는다.
+GitHub Actions는 Windows/Python 3.13, Ubuntu/Python 3.11에서 pytest·repo 검사·doctor·mock을 실행한다. API 비밀값과 라이브 API 호출은 CI에 넣지 않는다. CI는 prototype·feat/**·fix/**·chore/**·codex/** push, prototype/main 대상 PR 및 수동 실행으로 동작한다. 기능 브랜치를 대상으로 하는 PR도 head 브랜치 push 검사로 검증한다. main의 기존 설정을 변경하지 않는다.
 
 scripts/check_repo.py는 선택한 Git 파일의 민감 경로·일부 credential 패턴과 Markdown 로컬 링크를 검사하는 보조 장치다. 모든 비밀을 검출하는 보장은 없으므로 직접 검토도 수행한다.
 

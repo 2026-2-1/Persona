@@ -22,6 +22,7 @@ def test_provider_model_and_key_guide_send_selected_model(local_dashboard):
             route.fulfill(json={'provider':'live','configured':True,'model':'gpt-4.1-mini'})
         page.route('**/api/connection',connect)
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         page.locator('#wizard-next').click()
         page.locator('#wizard-next').click()
         page.locator('#provider').select_option('live')
@@ -111,6 +112,9 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
     with sync_playwright() as p:
         browser=p.chromium.launch()
         page=browser.new_page(viewport={'width':1280,'height':720})
+        def select_ready(run_id):
+            page.locator('#run-select').select_option(run_id)
+            expect(page.locator('#data-status')).to_be_hidden(timeout=15000)
         payload=page.request.get(local_dashboard+'/api/run/run-0').json()
         payload['summary']['evaluator']['feature_checks']=[
             {'id':'search','label':'검색 결과','status':'pass','evidence':'검색어와 표시 결과 일치'},
@@ -120,7 +124,8 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
         page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
         page.goto(local_dashboard)
         page.get_by_role('tab',name='실행 기록',exact=True).click()
-        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
+        select_ready('run-0')
         expect(page.locator('#feature-checks details.feature')).to_have_count(3)
         for status,label in [('pass','통과'),('fail','실패'),('unknown','미확인')]:
             expect(page.locator(f'.feature[data-status="{status}"] .feature-state')).to_have_text(label)
@@ -138,9 +143,9 @@ def test_check_status_rows_keep_distinct_states_and_open_evidence(local_dashboar
         page.locator('#feature-panel').screenshot(path=str(tmp_path/'check-status-preview.png'))
         row.locator('summary').click()
         expect(row).to_have_attribute('open','')
-        page.locator('#run-select').select_option('run-1')
+        select_ready('run-1')
         expect(page.locator('#feature-checks details.feature')).to_have_count(0)
-        page.locator('#run-select').select_option('run-0')
+        select_ready('run-0')
         expect(page.locator('#feature-checks details.feature')).to_have_count(3)
         expect(row).not_to_have_attribute('open','')
         browser.close()
@@ -183,6 +188,50 @@ def test_desktop_workspace_fits_and_keeps_results_beside_evidence(local_dashboar
         expect(page.locator('#job-status-card')).to_be_visible()
         expect(page.locator('#job-line')).to_contain_text('실패')
         expect(page.locator('#stop-job')).not_to_be_visible()
+        browser.close()
+
+
+def test_loop_trace_shows_generated_work_and_independent_result(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        payload=page.request.get(local_dashboard+'/api/run/run-0').json()
+        observation_id='obs-trace-1'
+        payload['steps']=[{'step_id':1,'observation_id':observation_id,
+                           'next_observation_id':'obs-trace-2',
+                           'action':{'type':'click'},'result':{'ok':True},
+                           'verification':'unknown'}]
+        payload['brain_stages']=[{'record_id':'stage-1','stage':'perception',
+                                  'observation_id':observation_id,'text':'AI 화면 해석 <probe>',
+                                  'source_memory_ids':['memory-1']}]
+        payload['brain_tasks']=[{'task_id':'slow-1','kind':'reflection','status':'cancelled',
+                                 'observation_id':observation_id,'reason_code':'run_finished'}]
+        payload['memories']=[{'memory_id':'memory-1','text':'원본 관찰','content_status':'observed'}]
+        payload['memory_changes']=[{'memory_id':'memory-1','change':'evicted'}]
+        payload['brain']={'available':True,'stages':payload['brain_stages'],
+                          'task_events':payload['brain_tasks'],'tasks':payload['brain_tasks'],
+                          'task_counts':{'cancelled':1},'warnings':[],
+                          'memories':[{**payload['memories'][0],'evicted':True}],
+                          'memory_changes':payload['memory_changes'],'wonder_draws':[]}
+        payload['trace']=[{'step_id':1,'observation_id':observation_id,'next_observation_id':'obs-2',
+                           'stages':payload['brain_stages'],'tasks':payload['brain_tasks'],
+                           'memories':[{**payload['memories'][0],'removed':True}],
+                           'action':payload['steps'][0].get('action'),
+                           'result':payload['steps'][0].get('result'),'verification':'unknown'}]
+        page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        page.locator('#brain-trace > summary').click()
+        expect(page.locator('#brain-content')).to_contain_text('AI 생성 · 화면 인식')
+        expect(page.locator('#brain-content')).to_contain_text('취소 1')
+        expect(page.locator('#brain-content')).to_contain_text('활성 목록에서 제거됨')
+        assert page.locator('probe').count()==0
+        page.locator('#steps button').first.click()
+        page.locator('#loop-records details > summary').click()
+        expect(page.locator('#loop-records')).to_contain_text('독립 판정')
+        expect(page.locator('#loop-records')).to_contain_text('cancelled')
+        assert page.locator('#brain-trace').count()==1
         browser.close()
 
 
@@ -261,6 +310,7 @@ def test_key_explicit_connection_is_cleared_and_never_browser_stored(local_dashb
         browser=p.chromium.launch()
         page=browser.new_page()
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         page.get_by_role('button',name='다음',exact=True).click()
         page.get_by_role('button',name='다음',exact=True).click()
         page.locator("#provider").select_option("live")
@@ -304,6 +354,7 @@ def test_wizard_validates_and_preserves_inputs(local_dashboard):
         browser=p.chromium.launch()
         page=browser.new_page()
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
         expect(page.locator('#wizard-step-1')).to_be_visible()
         expect(page.locator('#persona-background')).not_to_be_visible()
         page.locator('#target-url').fill('')
@@ -323,6 +374,32 @@ def test_wizard_validates_and_preserves_inputs(local_dashboard):
         page.get_by_role('button',name='이전',exact=True).click()
         expect(page.locator('#task-input')).to_have_value('검은 가방 찾기')
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+        browser.close()
+
+
+def test_wizard_preserves_edits_before_initial_state_load(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        page.add_init_script("""
+            const originalFetch=window.fetch.bind(window);
+            let delayInitialState=true;
+            window.fetch=(input,init)=>{
+                const url=typeof input==='string'?input:input.url;
+                if(delayInitialState&&url.includes('/api/state')){
+                    delayInitialState=false;
+                    return new Promise((resolve,reject)=>setTimeout(
+                        ()=>originalFetch(input,init).then(resolve,reject),1000));
+                }
+                return originalFetch(input,init);
+            };
+        """)
+        page.goto(local_dashboard)
+        page.locator('#target-url').fill('https://shop.example.test')
+        page.locator('#task-input').fill('초기 로딩 중 입력한 과업')
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신')
+        expect(page.locator('#target-url')).to_have_value('https://shop.example.test')
+        expect(page.locator('#task-input')).to_have_value('초기 로딩 중 입력한 과업')
         browser.close()
 
 
@@ -368,6 +445,7 @@ def test_wizard_automatically_chains_only_successful_generation(local_dashboard,
         page.route('**/api/state',state_route)
         page.route('**/api/jobs',job_route)
         page.goto(local_dashboard)
+        expect(page.locator('#updated')).to_contain_text('마지막 갱신', timeout=15000)
         for _ in range(3):
             page.get_by_role('button',name='다음',exact=True).click()
         page.get_by_role('button',name='테스트 실행',exact=True).click()
@@ -393,4 +471,26 @@ def test_guide_connect_survives_initial_state_load(local_dashboard):
         pending[0].fulfill(json=response)
         expect(page.locator('#target-url')).to_have_value(response['study']['start_url'])
         expect(page.locator('#wizard-step-3')).to_be_visible()
+        browser.close()
+
+
+def test_candidate_review_status_and_note_survive_polling(local_dashboard):
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page()
+        payload=page.request.get(local_dashboard+'/api/run/run-0').json()
+        payload['cards']=[{'issue_id':'feature-search','title':'검색 후보','review_status':'reviewed',
+                          'latest_review':{'verdict':'tool_error','reviewer_id':'reviewer-1','note':'도구 오류 확인'},
+                          'observed_behavior':'기록된 현상','hypothesis':'원인 가설','recommendation':'확인 제안',
+                          'acceptance':'재검증','evidence_step_ids':[1],'evidence':[]}]
+        page.route('**/api/run/run-0',lambda route:route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab',name='실행 기록',exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        page.get_by_role('tab',name='개선 보드',exact=True).click()
+        expect(page.locator('#cards')).to_contain_text('도구 오류')
+        expect(page.locator('#cards')).to_contain_text('도구 오류 확인')
+        expect(page.locator('#cards')).not_to_contain_text('사람 검토 전')
+        page.wait_for_timeout(1700)
+        expect(page.locator('#cards')).to_contain_text('도구 오류 확인')
         browser.close()

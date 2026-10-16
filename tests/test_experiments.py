@@ -45,6 +45,27 @@ def test_cancelled_comparison_keeps_unstarted_sessions(tmp_path):
     assert sum(group['requested'] for group in result['groups'].values()) == 2
 
 
+def test_cooperative_stop_keeps_remaining_comparison_session_unstarted(tmp_path):
+    personas = tmp_path / 'personas.jsonl'
+    personas.write_text(Path('configs/persona.json').read_text(encoding='utf-8').replace('\n', '') + '\n', encoding='utf-8')
+    stop_file = tmp_path / 'stop.request'
+    started = []
+
+    async def stop_after_first(study, provider, persona, headed, output, *, persona_mode, run_id_override, stop_file):
+        started.append(run_id_override)
+        Path(stop_file).touch()
+        return Path(output) / run_id_override, {'run_id': run_id_override, 'verification': 'unknown',
+                'termination_reason': 'cancelled', 'action_attempts': 1, 'elapsed_ms': 20, 'cost': None}
+
+    with patch('uxagent.experiments.run_study', stop_after_first):
+        directory, result = asyncio.run(run_comparison('configs/study.json', personas,
+                                                         output_root=tmp_path, stop_file=stop_file))
+    assert len(started) == 1
+    assert sorted(s['status'] for s in result['sessions']) == ['cancelled', 'not_started']
+    assert result['finished_at']
+    assert (directory / 'experiment.json').is_file()
+
+
 def test_runner_preserves_action_when_post_observation_fails(tmp_path):
     from uxagent import runner
     study = tmp_path / 'study.json'
@@ -72,3 +93,34 @@ def test_runner_preserves_action_when_post_observation_fails(tmp_path):
     general = json.loads((directory / 'persona.json').read_text(encoding='utf-8'))
     assert set(general) == {'constraints', 'intent', 'condition'}
     assert general['condition'] == 'general'
+
+def test_comparison_persists_usage_and_missing_summary_fields(tmp_path):
+    personas = tmp_path / 'personas.jsonl'
+    personas.write_text(Path('configs/persona.json').read_text(encoding='utf-8').replace('\n', '') + '\n', encoding='utf-8')
+    detail = {'provider':'mock','model':'fake','execution_mode':'ai','source_kind':'synthetic_fixture','llm_request_count':2,'llm_tokens':7,'provider_usage':{'mock':{'requests':2,'input_tokens':4,'output_tokens':3,'estimated_cost_usd':0}},'metrics':{'recording':{'complete':1,'attempted':2}}}
+    async def fake_run(*args, **kwargs):
+        return tmp_path / 'fake', {'run_id':kwargs['run_id_override'], 'verification':'success','termination_reason':'verified_success', **(detail if kwargs['persona_mode'] == 'general' else {})}
+    with patch('uxagent.experiments.run_study', fake_run):
+        directory, result = asyncio.run(run_comparison('configs/study.json', personas, output_root=tmp_path))
+    saved = json.loads((directory / 'experiment.json').read_text(encoding='utf-8'))
+    for session in saved['sessions']:
+        for key, value in detail.items():
+            assert session[key] == (value if session['condition'] == 'general' else None)
+    assert result['groups']['general']['llm_request_count'] == 2
+    assert result['groups']['persona']['llm_request_count'] is None
+
+
+def test_dashboard_recomputes_legacy_groups_without_rewriting(tmp_path):
+    from uxagent.monitor import Dashboard
+    runs = tmp_path / 'runs'
+    runs.mkdir()
+    sessions = [{'condition':'general','status':'cancelled','verification':'unknown'}]
+    path = runs / 'experiment.json'
+    raw = json.dumps({'experiment_id':'legacy','sessions':sessions,'groups':{'general':{'rate':1}}})
+    path.write_text(raw, encoding='utf-8')
+    dashboard = Dashboard(runs, tmp_path / 'personas', Path('configs/study.json'))
+    result = dashboard.experiments()[0]
+    assert result['sessions'] == sessions
+    assert result['groups']['general']['rate'] == 0
+    assert result['groups']['general']['cost'] is None
+    assert path.read_text(encoding='utf-8') == raw

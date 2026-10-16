@@ -39,3 +39,5 @@ test_dashboard.py 경로/과거 run 혼입/최신 화면/실패 상태 회귀 �
 ## 범위 밖
 
 Next.js 전면 재작성, 임의 종합 UX 점수
+
+D-01 사람 검토 입력·저장 작업은 [#32 안내](d-review-form.md)를 따른다. C PR #30 기반으로 구현·검증했으며 prototype 통합과 전체 이력 화면은 별도 상태다.

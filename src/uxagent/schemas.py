@@ -1,11 +1,63 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class CandidateReviewInput(StrictModel):
+    """Client review payload; execution identity and audit fields are server-owned."""
+
+    card_id: str = Field(strict=True, min_length=1, max_length=200)
+    card_version: str = Field(strict=True, pattern=r"^[a-f0-9]{64}$")
+    reviewer_id: str = Field(strict=True, min_length=1, max_length=200)
+    verdict: Literal["valid", "invalid", "deferred", "tool_error", "environment_error"]
+    note: str = Field(default="", strict=True, max_length=4000)
+
+    @field_validator("card_id")
+    @classmethod
+    def nonblank_card_identity(cls, value: str):
+        # Existing EvaluationCheck IDs allow Unicode and whitespace. IDs are
+        # opaque equality keys, never filesystem paths, and must not be trimmed.
+        if not value.strip():
+            raise ValueError("card_id must not be blank")
+        return value
+
+    @field_validator("reviewer_id", "note")
+    @classmethod
+    def normalize_review_text(cls, value: str, info):
+        value = value.strip()
+        if info.field_name == "reviewer_id" and not value:
+            raise ValueError("reviewer_id must not be blank")
+        return value
+
+
+class CandidateReviewRecord(CandidateReviewInput):
+    schema_version: Literal["1.0"] = "1.0"
+    review_id: str = Field(strict=True)
+    run_id: str = Field(strict=True, min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_.-]+$")
+    created_at: str = Field(strict=True)
+
+    @field_validator("review_id")
+    @classmethod
+    def valid_review_uuid(cls, value: str):
+        from uuid import UUID
+        if str(UUID(value)) != value:
+            raise ValueError("review_id must be a canonical UUID")
+        return value
+
+    @field_validator("created_at")
+    @classmethod
+    def utc_review_time(cls, value: str):
+        from datetime import datetime, timedelta
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
+            raise ValueError("created_at must be an ISO UTC timestamp")
+        return value
 
 
 class Viewport(StrictModel):
@@ -47,22 +99,25 @@ class StudyConfig(StrictModel):
     evaluation_profile_file: str | None = None
     viewport: Viewport = Field(default_factory=Viewport)
     observation_policy: Literal["viewport"] = "viewport"
+    source_kind: Literal["unknown", "synthetic_fixture", "live_configured"] = "unknown"
     explicit_scroll: bool = False
     max_steps: int = Field(default=30, gt=0)
     run_timeout_seconds: float = Field(default=300, gt=0)
     action_timeout_ms: int = Field(default=5000, gt=0)
     settle_timeout_ms: int = Field(default=3000, gt=0)
-    max_llm_requests: int = Field(default=40, gt=0)
-    max_total_tokens: int = Field(default=50000, gt=0)
+    max_llm_requests: int | None = Field(default=None, gt=0)
+    max_total_tokens: int | None = Field(default=None, gt=0)
     recent_step_count: int = Field(default=6, ge=0)
     repeated_state_action_limit: int = Field(default=3, gt=0)
     max_observation_text: int = Field(default=12000, gt=0)
     max_observation_elements: int = Field(default=100, gt=0)
     screenshot_input: Literal[False] = False
-    enable_slow_loop: bool = False
-    enable_wonder: bool = False
+    enable_slow_loop: bool = Field(default=True, description="Legacy field; Slow Loop is always enabled.")
+    enable_wonder: bool = True
+    wonder_seed: int | None = Field(default=None, ge=0, le=2**63-1)
     reflection_every_actions: int = Field(default=5, gt=0)
     memory_limit: int = Field(default=8, gt=0)
+    max_active_memories: int = Field(default=64, ge=10, le=64)
     embedding_model: str | None = None
     model: str = "gpt-4o-mini"
     provider_model: str | None = None
@@ -76,6 +131,12 @@ class StudyConfig(StrictModel):
         if len({check.id for check in checks}) != len(checks):
             raise ValueError('evaluation check IDs must be unique')
         return checks
+
+    @field_validator("enable_slow_loop", mode="before")
+    @classmethod
+    def slow_loop_is_required(cls, _value):
+        # Keep accepting older study files while making the #43 behavior explicit.
+        return True
 
     @field_validator("start_url")
     @classmethod
@@ -222,17 +283,161 @@ class AgentDecision(StrictModel):
         return self
 
 
+class BrainStageRecord(StrictModel):
+    """A generated stage result with links to the state used to produce it."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    record_id: str = Field(min_length=1)
+    task_id: str | None = Field(default=None, min_length=1)
+    run_id: str = Field(min_length=1)
+    stage: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    observation_id: str | None = Field(default=None, min_length=1)
+    plan_id: str | None = Field(default=None, min_length=1)
+    plan_version: int | None = Field(default=None, ge=1)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    snapshot_seq: int | None = Field(default=None, ge=0)
+    text: str = Field(min_length=1)
+    action: Action | None = None
+    finish: Finish | None = None
+    content_status: Literal["generated"] = "generated"
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_provenance(self):
+        if (self.plan_id is None) != (self.plan_version is None):
+            raise ValueError("plan_id and plan_version must be provided together")
+        if self.stage in ("perception", "plan", "decision", "plan_review") and self.observation_id is None:
+            raise ValueError(f"observation_id is required for {self.stage}")
+        if self.stage in ("plan", "decision", "plan_review") and self.plan_id is None:
+            raise ValueError(f"plan_id and plan_version are required for {self.stage}")
+        if self.stage == "decision":
+            if (self.action is None) == (self.finish is None):
+                raise ValueError("decision requires exactly one action or finish proposal")
+            if self.action is not None and self.action.observation_id != self.observation_id:
+                raise ValueError("proposed action must reference the decision observation")
+        elif self.action is not None or self.finish is not None:
+            raise ValueError("only decision stages may propose an action or finish")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
+class BrainTaskEvent(StrictModel):
+    """One append-only state change for a scheduled Slow Loop task."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    event_id: str = Field(min_length=1)
+    task_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    kind: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    status: Literal["scheduled", "started", "skipped", "completed", "adopted", "discarded", "failed", "cancelled"]
+    snapshot_seq: int = Field(ge=0)
+    observation_id: str | None = Field(default=None, min_length=1)
+    plan_id: str | None = Field(default=None, min_length=1)
+    plan_version: int | None = Field(default=None, ge=1)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    output_record_ids: list[str] = Field(default_factory=list)
+    reason_code: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_event(self):
+        if (self.plan_id is None) != (self.plan_version is None):
+            raise ValueError("plan_id and plan_version must be provided together")
+        if self.kind == "plan_review" and (self.plan_id is None or self.observation_id is None):
+            raise ValueError("plan_review requires plan and observation references")
+        if self.status in ("failed", "cancelled", "skipped", "discarded"):
+            if self.reason_code is None:
+                raise ValueError(f"{self.status} requires reason_code")
+        elif self.reason_code is not None:
+            raise ValueError(f"{self.status} must not have reason_code")
+        if self.status not in ("completed", "adopted", "discarded") and self.output_record_ids:
+            raise ValueError("only completed or consumed tasks may reference output records")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
+class WonderDrawRecord(StrictModel):
+    """One reproducible draw for a Slow task that actually started."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    run_id: str = Field(min_length=1)
+    seed: int = Field(ge=0, le=2**63-1)
+    draw_index: int = Field(ge=1)
+    parent_task_id: str = Field(min_length=1)
+    parent_kind: Literal["reflection", "plan_review"]
+    roll: float = Field(ge=0, lt=1)
+    selected: bool
+    wonder_task_id: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_draw(self):
+        if self.selected != (self.roll < 0.01):
+            raise ValueError("Wonder selection must use the fixed 1% threshold")
+        if self.selected != (self.wonder_task_id is not None):
+            raise ValueError("Only selected draws have a Wonder task ID")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self
+
+
 class MemoryEntry(StrictModel):
+    schema_version: Literal["1.0", "2.0"] = "1.0"
     memory_id: str
-    seq: int
+    seq: int = Field(ge=1)
     run_id: str
     kind: Literal["observation", "plan", "action", "reflection", "wonder"]
     text: str
     source_step_ids: list[int] = Field(default_factory=list)
     source_observation_ids: list[str] = Field(default_factory=list)
+    source_memory_ids: list[str] = Field(default_factory=list)
+    source_stage_record_id: str | None = Field(default=None, min_length=1)
     created_at: str
     created_monotonic_ms: int
     based_on_seq: int = 0
-    importance: int | None = Field(default=None, ge=0, le=5)
+    importance: int | None = None
     embedding_ref: str | None = None
     content_status: Literal["observed", "generated"] = "observed"
+
+    @model_validator(mode="after")
+    def validate_importance_scale(self):
+        if self.importance is not None:
+            minimum, maximum = (0, 5) if self.schema_version == "1.0" else (1, 10)
+            if not minimum <= self.importance <= maximum:
+                raise ValueError(f"importance for memory schema {self.schema_version} must be {minimum}..{maximum}")
+        return self
+
+
+class MemoryChangeEvent(StrictModel):
+    """An append-only importance update or active-memory eviction record."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    event_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    memory_id: str = Field(min_length=1)
+    memory_seq: int = Field(ge=1)
+    change: Literal["importance_scored", "evicted"]
+    importance_before: int | None = Field(default=None, ge=1, le=10)
+    importance_after: int | None = Field(default=None, ge=1, le=10)
+    retention_score: float | None = Field(default=None, ge=0, le=1)
+    source_stage_record_id: str | None = Field(default=None, min_length=1)
+    reason_code: str | None = Field(default=None, min_length=1)
+    recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_change(self):
+        if self.change == "importance_scored":
+            if self.importance_after is None or self.source_stage_record_id is None:
+                raise ValueError("importance scoring requires a score and source stage")
+            if self.retention_score is not None or self.reason_code is not None:
+                raise ValueError("importance scoring cannot carry eviction fields")
+        else:
+            if self.retention_score is None or self.reason_code is None:
+                raise ValueError("eviction requires a retention score and reason")
+            if self.importance_after is not None:
+                raise ValueError("eviction cannot set importance_after")
+        if self.recorded_at.tzinfo is None or self.recorded_at.utcoffset() is None:
+            raise ValueError("recorded_at must include a time zone")
+        return self

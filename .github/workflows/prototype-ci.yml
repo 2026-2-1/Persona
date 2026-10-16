@@ -1,7 +1,7 @@
 name: Prototype checks
 on:
   push:
-    branches: [prototype, 'feat/**', 'fix/**', 'chore/**']
+    branches: [prototype, 'feat/**', 'fix/**', 'chore/**', 'codex/**']
   pull_request:
     branches: [prototype, main]
   workflow_dispatch:

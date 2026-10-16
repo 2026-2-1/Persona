@@ -229,11 +229,14 @@ async def test_jev_finish_candidate_and_fallback_preserve_outcomes(claim, confid
             self.candidate = next(c for c in candidates if c.get('finish', {}).get('claim') == claim)
             return self.candidate['id'], confidence, {}, {'input_tokens':1, 'output_tokens':1}
         async def complete(self, messages, *args):
+            stage=messages[0]['content'].split('FAST_STAGE:',1)[1].splitlines()[0]
+            if stage=='perception':return json.dumps({'perception':'현재 화면을 확인합니다.'}), {'input_tokens':1, 'output_tokens':1}
+            if stage=='plan':return json.dumps({'plan':'과업을 진행합니다.'}), {'input_tokens':1, 'output_tokens':1}
             assert confidence < .65
-            return json.dumps({'candidate_id':self.candidate['id']}), {'input_tokens':1, 'output_tokens':1}
+            return json.dumps({'candidate_id':self.candidate['id'],'rationale_summary':'종료 후보를 선택합니다.'}), {'input_tokens':1, 'output_tokens':1}
     obs = Observation(observation_id='o', tab_id='t', url='https://shop.test', title='', html='')
     persona = Persona(persona_id='p', background='b', digital_familiarity='normal', preferences=['x'], intent='task')
-    result = await FastLoop(Provider(), BudgetManager(3, 10000), 'test', .2, 100).decide(persona, 'task', obs, [])
+    result = await FastLoop(Provider(), BudgetManager(4, 10000), 'test', .2, 100).decide(persona, 'task', obs, [])
     assert result.action is None
     assert result.finish.claim == claim
 

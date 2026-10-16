@@ -51,20 +51,32 @@ async def test_selected_model_reaches_request_and_all_run_artifacts(tmp_path,mon
     seen=[]
     async def complete(self,messages,model=None,temperature=.2,max_tokens=1200):
         seen.append(model)
-        return json.dumps({'perception':'Observed','plan':'Stop','rationale_summary':'Test','action':None,'finish':{'claim':'give_up','summary':'Fake provider stop'}}), {'model':model,'input_tokens':20,'output_tokens':10}
+        system=messages[0]['content']
+        if 'Rate the importance of one memory' in system:
+            result={'score':8,'rationale':'Current task evidence'}
+        elif 'Summarize up to three brief insights' in system:
+            payload=json.loads(messages[-1]['content'])
+            sources=[entry['memory_id'] for entry in payload.get('memories',[]) if entry.get('content_status')=='observed'][:1]
+            result={'insights':[{'summary':'검토한 관찰입니다.','source_memory_ids':sources}]} if sources else {'insights':[]}
+        elif 'Review whether the supplied plan' in system:
+            result={'review':'계획을 검토했습니다.','suggested_revisions':[]}
+        else:
+            result={'perception':'Observed','plan':'Stop','rationale_summary':'Test','action':None,'finish':{'claim':'give_up','summary':'Fake provider stop'}}
+        return json.dumps(result), {'model':model,'input_tokens':20,'output_tokens':10}
     monkeypatch.setattr(runner,'load_env_file',lambda *args:None)
     monkeypatch.setattr(GeminiProvider,'complete',complete)
     config=json.loads((ROOT/'configs/study.json').read_text(encoding='utf-8'))
     config.update(provider_model='gemini-2.5-flash',persona_file=str(ROOT/'configs/persona.json'),headed=False)
     study=tmp_path/'study.json';study.write_text(json.dumps(config),encoding='utf-8')
     folder,summary=await runner.run_study(study,provider_name='gemini',output_root=tmp_path/'runs')
-    assert seen==['gemini-2.5-flash']
+    assert len(seen) >= 5 and set(seen) == {'gemini-2.5-flash'}
     for name in ('run.json','summary.json'):
         assert json.loads((folder/name).read_text(encoding='utf-8'))['model']=='gemini-2.5-flash'
     calls=[json.loads(line) for line in (folder/'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert calls[0]['model']=='gemini-2.5-flash'
-    assert calls[0]['provider']=='gemini'
-    assert calls[0]['estimated_cost_usd'] is None
+    assert {call['stage'] for call in calls}=={'perception','plan','decision','importance','reflection','plan_review'}
+    assert all(call['model']=='gemini-2.5-flash' for call in calls)
+    assert all(call['provider']=='gemini' for call in calls)
+    assert all(call['estimated_cost_usd'] is None for call in calls)
 
 @pytest.mark.parametrize("legacy_model", ["gpt-4.1-mini","existing-custom-model"])
 def test_dashboard_legacy_live_model_is_not_reset(tmp_path,monkeypatch,legacy_model):

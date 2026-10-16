@@ -83,7 +83,9 @@ def _check_sensitive(value):
     _check_urls(value)
     encoded = json.dumps(value, ensure_ascii=False)
     keys = [v for k, v in os.environ.items() if v and len(v) >= 8 and any(tag in k.upper() for tag in ("API_KEY", "TOKEN", "SECRET", "PASSWORD"))]
-    if SECRET_PATTERN.search(encoded) or any(key in encoded for key in keys):
+    # Compare in the same representation: quotes, backslashes, and newlines in
+    # environment credentials are escaped in the serialized input as well.
+    if SECRET_PATTERN.search(encoded) or any(json.dumps(key, ensure_ascii=False)[1:-1] in encoded for key in keys):
         raise ValueError("setup_guide_sensitive_input")
 
 

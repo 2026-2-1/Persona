@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import html
 import io
 import json
@@ -19,6 +20,48 @@ def redact(value):
             text = text.replace(json.dumps(secret)[1:-1], "[redacted]")
     text = re.sub(r"sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{24,}", "[redacted]", text)
     return json.loads(text)
+
+
+def enrich_card_identity(card, detail):
+    """Identify factual card content independently of mutable human review state."""
+    enriched = dict(card)
+    run = detail.get("run") or {}
+    enriched.update(card_id=card["issue_id"], run_id=run.get("run_id") or card.get("run_id"),
+                    execution_mode=run.get("execution_mode") or "unknown",
+                    source_kind=run.get("source_kind") or "unknown")
+    review_fields = {"card_version", "review_status", "verdict", "note", "reviewer_id",
+                     "review_id", "created_at", "review_history", "latest_review", "review", "reviews"}
+    facts = {key: value for key, value in enriched.items() if key not in review_fields}
+    linked_steps = []
+    linked_observations = {}
+    for step in detail.get("steps", []):
+        if step.get("step_id") not in card.get("evidence_step_ids", []):
+            continue
+        evidence = {key: step.get(key) for key in ("step_id", "observation_id", "next_observation_id",
+                    "action", "result", "error", "verification", "scenario_step")}
+        if isinstance(evidence["result"], dict):
+            evidence["result"] = {key: value for key, value in evidence["result"].items()
+                                  if key != "elapsed_ms"}
+        linked_steps.append(evidence)
+        for observation_id in (step.get("observation_id"), step.get("next_observation_id")):
+            observation = (detail.get("observations") or {}).get(observation_id)
+            if not isinstance(observation, dict):
+                continue
+            observed = {key: value for key, value in observation.items() if key in (
+                "schema_version", "observation_id", "tab_id", "url", "title", "html",
+                "clickable_elements", "input_elements", "hoverable_elements", "select_elements",
+                "tabs", "error", "capture")}
+            if isinstance(observed.get("capture"), dict):
+                observed["capture"] = {key: value for key, value in observed["capture"].items()
+                                       if key != "screenshot_path"}
+            linked_observations[observation_id] = observed
+    version_facts = {"card": facts, "linked_steps": linked_steps}
+    if linked_observations:
+        version_facts["linked_observations"] = linked_observations
+    canonical = json.dumps(version_facts,
+                           ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    enriched["card_version"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return enriched
 
 
 def build_cards(detail):
@@ -67,35 +110,87 @@ def build_cards(detail):
         card["evidence"] = [{"step_id":step.get("step_id"), "observation_id":step.get("observation_id"),
             "next_observation_id":step.get("next_observation_id")} for step in steps
             if step.get("step_id") in card.get("evidence_step_ids",[])]
-    return redact(cards)
+    return [enrich_card_identity(card, detail) for card in redact(cards)]
 
 
 def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
+                   "wonder":detail.get("wonder",{}),
+                   "trace":detail.get("trace",[]),
+                   "brain_stages":detail.get("brain_stages",[]),
+                   "brain_tasks":detail.get("brain_tasks",[]),
+                   "memories":detail.get("memories",[]),
+                   "memory_changes":detail.get("memory_changes",[]),
                    "cards":detail.get("cards",build_cards(detail)),
-                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "AI가 제안한 미검토 후보입니다. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
+                   "reviews":detail.get("reviews", []), "review_summary":detail.get("review_summary"),
+                   "brain":detail.get("brain", {}),
+                   "notice":("사전 정의한 브라우저 시나리오의 코드 평가 후보입니다. AI/페르소나 성능이나 확정 사이트 결함이 아닙니다." if detail.get("run",{}).get("execution_mode")=="scripted" else "실행 근거에서 도출한 후보입니다. 카드별 사람 검토 상태를 확인하세요. 실제 사용자 증언이나 확정된 사이트 결함이 아닙니다.")})
     if kind == "json":
         return json.dumps(safe,ensure_ascii=False,indent=2)
     if kind == "csv":
         out=io.StringIO(newline="")
         writer=csv.writer(out)
-        writer.writerow(["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids"])
+        fields=["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"]
+        brain=safe["brain"]
+        include_brain=bool(brain.get("available"))
+        evidence_fields=["record_type","record_id","brain_record","stage_or_kind","status","text","observation_id","source_memory_ids"]
+        columns=fields + (evidence_fields if include_brain else [])
+        def safe_cell(value):
+            value=str(value if value is not None else "")
+            return "'"+value if value.lstrip().startswith(("=","+","-","@")) else value
+        writer.writerow(columns)
         for card in safe["cards"]:
-            values=[str(card.get(k,"")) for k in ("issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids")]
-            # Spreadsheet import must treat untrusted text as data, not a formula.
-            writer.writerow(["'"+v if v.lstrip().startswith(("=","+","-","@")) else v for v in values])
+            row={**card,"record_type":"candidate","run_id":safe["run"].get("run_id","")}
+            writer.writerow([safe_cell(row.get(key,"")) for key in columns])
+        if include_brain:
+            groups=[("stages","brain_stage"),("task_events","brain_task_event"),
+                    ("memories","memory"),("memory_changes","memory_change"),
+                    ("wonder_draws","wonder_draw"),("warnings","brain_warning")]
+            evidence=[(record_type,record) for group,record_type in groups for record in brain.get(group,[])]
+            evidence.extend(("step",record) for record in safe["trace"])
+            for record_type,record in evidence:
+                row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,
+                     "record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or record.get("draw_index") or record.get("step_id") or "",
+                     "brain_record":json.dumps(record,ensure_ascii=False),
+                     "stage_or_kind":record.get("stage") or record.get("kind") or record.get("change") or "",
+                     "status":record.get("status") or record.get("content_status") or "",
+                     "text":record.get("text") or record.get("reason_code") or "",
+                     "observation_id":record.get("observation_id") or "",
+                     "source_memory_ids":json.dumps(record.get("source_memory_ids",[]),ensure_ascii=False)}
+                writer.writerow([safe_cell(row.get(key,"")) for key in columns])
         return out.getvalue()
-    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], "",
+    source = (f"사전 정의 시나리오 ({safe['run'].get('source_kind') or '출처 미확인'})"
+              if safe["run"].get("execution_mode") == "scripted" else "mock 모델 실행"
+              if safe["run"].get("provider") == "mock" else
+              f"설정 제공자 {safe['run'].get('provider') or '미확인'} (실제 호출은 모델 로그 확인)")
+    lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], f"실행 출처: {source}", "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    if safe["trace"]:
+        lines.extend(["", "## 행동별 관찰·제안·실행·독립 평가", ""])
+        for row in safe["trace"]:
+            result = row.get("result") or {}
+            execution = "실행됨" if result.get("ok") is True else "실패" if result.get("ok") is False else "미실행/미확인"
+            lines.append(f"- 단계 {row.get('step_id','?')}: 관찰 {row.get('observation_id') or '없음'} → AI 제안 {json.dumps(row.get('action'), ensure_ascii=False)} → 도구 {execution} → 재관찰 {row.get('next_observation_id') or '없음'} → 독립 판정 {row.get('verification') or 'unknown'} ({(row.get('evaluation') or {}).get('reason') or '사유 미확인'})")
+    thoughts=(safe.get("wonder") or {}).get("thoughts",[])
+    if thoughts:
+        lines.extend(["", "## AI가 생성한 가정된 생각", "",
+                      "실제 사용자 기억이나 검증된 선호가 아닙니다. 1%는 실제 시작된 Slow 작업당 실험 추첨률이며 인간 행동 확률이 아닙니다."])
+        lines.extend(f"- {thought.get('text','')} (기억 저장: {'예' if thought.get('stored') else '아니요'})"
+                     for thought in thoughts)
     if not safe["cards"]:
         lines.extend(["", "문제 후보가 없습니다. 사이트에 문제가 없다는 뜻은 아닙니다."])
     for card in safe["cards"]:
         lines.extend(["", f"## {card['issue_id']}: {card.get('title','')}", "",
+            f"카드 ID: {card.get('card_id', card['issue_id'])}", f"근거 버전: {card.get('card_version') or '미기록'}",
             f"관찰: {card['observed_behavior']}", f"가설: {card['hypothesis']}",
             f"근거 단계: {card['evidence_step_ids']}", f"제안: {card['recommendation']}",
-            f"완료 조건: {card['acceptance']}", "상태: 사람 검토 전"])
+            f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",
+            f"판정: {card.get('verdict') or ''}", f"검토 메모: {card.get('note','')}",
+            f"검토자: {card.get('reviewer_id') or ''}", f"검토 이력: {json.dumps(card.get('review_history',[]),ensure_ascii=False)}"])
+    if safe["brain"].get("available"):
+        lines.extend(["", "## AI 생성·비동기 기록", "", "AI 생성물은 실행된 행동·독립 평가·사람 검토와 별개입니다. 작업 상태는 마지막 저장 사건이며 결과 반영을 보장하지 않습니다.", json.dumps(safe["brain"],ensure_ascii=False,indent=2)])
     text="\n".join(lines)+"\n"
     if kind == "md":
         return text

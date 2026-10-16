@@ -8,17 +8,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .metrics import aggregate_sessions
-from .runner import load_study, run_study
+from .runner import load_study, run_study, validate_provider_configuration
+from .llm import load_env_file
 from .schemas import Persona
 from .storage import write_json
 
 
-async def run_comparison(study_path, personas_path, provider_name='mock', repetitions=1, output_root='runs'):
+async def run_comparison(study_path, personas_path, provider_name='mock', repetitions=1, output_root='runs', *, stop_file=None):
     if repetitions not in (1, 2, 3):
         raise ValueError('repetitions must be between 1 and 3')
     config, _, _ = load_study(study_path)
-    if config.enable_slow_loop:
-        raise ValueError('comparison requires slow loop disabled to keep the general condition persona-free')
+    load_env_file(Path(study_path).resolve().parent / ".env")
+    load_env_file()
+    validate_provider_configuration(provider_name, config)
     personas = [Persona.model_validate_json(line) for line in Path(personas_path).read_text(encoding='utf-8').splitlines() if line.strip()]
     if not personas:
         raise ValueError('comparison requires at least one persona')
@@ -38,7 +40,7 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
         session["run_dir"] = str((directory / "runs" / session["run_id"]).resolve())
     random.Random(seed).shuffle(sessions)
     result = {'schema_version': '1.0', 'experiment_id': experiment_id, 'study_id': config.study_id, 'started_at': datetime.now(timezone.utc).isoformat(),
-              'settings': {'provider': provider_name, 'repetitions': repetitions, 'seed': seed, 'study': config.model_dump(), 'personas': [p.model_dump() for p in personas], 'prompt_version': 'fast-2', 'recovery_window_actions': 3},
+              'settings': {'provider': provider_name, 'repetitions': repetitions, 'seed': seed, 'study': config.model_dump(), 'personas': [p.model_dump() for p in personas], 'prompt_version': 'brain-3', 'recovery_window_actions': 3},
               'sessions': sessions, 'system_errors': 0}
     def save():
         result['groups'] = aggregate_sessions(sessions)
@@ -46,14 +48,17 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
     save()
     by_id = {p.persona_id: p for p in personas}
     for session in sessions:
+        if stop_file is not None and Path(stop_file).is_file():
+            break
         session['status'] = 'running'
         save()
         try:
-            run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'])
-            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost')})
+            stop_kwargs={'stop_file':stop_file} if stop_file is not None else {}
+            run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'], **stop_kwargs)
+            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost', 'cost_complete', 'cost_measured_total', 'provider_usage_complete', 'llm_request_count', 'llm_tokens', 'llm_tokens_complete', 'llm_tokens_measured_total', 'llm_tokens_known_calls', 'llm_tokens_unknown_calls', 'provider_usage', 'metrics', 'provider', 'model', 'execution_mode', 'source_kind')})
             session['run_dir'] = str(run_dir.resolve())
             reason = summary.get('termination_reason')
-            session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason == 'interrupted' else 'completed'
+            session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason in ('interrupted', 'cancelled') else 'completed'
             if session['status'] == 'error': result['system_errors'] += 1
         except (KeyboardInterrupt, asyncio.CancelledError):
             session.update(status="cancelled", verification="unknown", termination_reason="interrupted")

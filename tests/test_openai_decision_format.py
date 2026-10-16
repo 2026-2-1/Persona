@@ -28,8 +28,8 @@ class CapturingProvider:
 async def _decide(provider, calls):
     persona = Persona.model_validate_json((ROOT / "configs/persona.json").read_text(encoding="utf-8"))
     observation = {"observation_id": "o1", "tab_id": "tab-1", "input_elements": [{"id": "상품.검색"}]}
-    return await FastLoop(provider, BudgetManager(3, 10000), "gpt-4o-mini", 0.2, 100, calls.append).decide(
-        persona, "가방 검색", SimpleNamespace(model_dump=lambda: observation), [])
+    return await FastLoop(provider, BudgetManager(3, 10000), "gpt-4o-mini", 0.2, 100, calls.append).decide_action(
+        persona, "가방 검색", SimpleNamespace(model_dump=lambda: observation, observation_id="o1", tab_id="tab-1"), [], "검색창", "가방 검색")
 
 
 @pytest.mark.asyncio
@@ -38,7 +38,7 @@ async def test_fast_loop_prompt_states_decision_field_types():
     provider = CapturingProvider()
     await _decide(provider, [])
     system = provider.messages[0][0]["content"]
-    assert "perception, plan, rationale_summary are short plain strings" in system
+    assert "rationale_summary is a short plain string" in system
     assert 'finish is null or {"claim": "completed" or "give_up", "summary": string}' in system
     assert "never false" in system
     # Second live run omitted observation_id and used value instead of option_value (run 20261014T154056-7b12da8f).
@@ -57,5 +57,8 @@ async def test_openai_fast_call_records_measured_cost():
 def test_openai_catalog_model_costs():
     assert estimate_cost_usd("openai", 1_000_000, 1_000_000, model="gpt-4o-mini") == 0.75
     assert estimate_cost_usd("openai", 1_000_000, 1_000_000, model="gpt-4.1-mini") == 2.0
+    assert estimate_cost_usd("openai", 1_000_000, 1_000_000, model="gpt-4o-mini-2024-07-18") == 0.75
+    assert estimate_cost_usd("openai", 1_000_000, 1_000_000, model="gpt-4.1-mini-2025-04-14") == 2.0
+    assert estimate_cost_usd("openai", 100, 100, model="gpt-4o-mini-unknown") is None
     assert estimate_cost_usd("openai", 100, 100, model="gpt-unknown") is None
     assert estimate_cost_usd("openai", None, 100, model="gpt-4o-mini") is None

@@ -361,3 +361,7 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 단가는 [GPT-4o mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4o-mini)와 [GPT-4.1 mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4.1-mini)를 2026-10-16 확인했다. 입력/출력 토큰 기준 추정이며 계정 청구액·캐시 할인·기타 서비스 요금의 실측값이 아니다.
 
 #57 단계별 추가 호환: 팀원의 `fix/57-staged-openai-format`에서 인식·계획의 평문 문자열 요구를 보존했다. 해당 명세 누락 실패 1개를 재현한 뒤 수정했고 Fast/OpenAI/예산 관련 23개가 통과했다. 행동 결정의 기존 필드·미확인 모델 null 규칙은 유지한다. 실제 API 재검증은 수행하지 않았다.
+
+## 2026-10-16 #74 Windows 검사 안정화
+
+동일 head의 Windows 결과가 달라 두 실패 사례를 분리했다. 기본 로컬 집중 2개, 성찰 12회 반복과 실제 Windows 집중 12회×2개가 통과했다. 6초 지연 조건에서는 성찰 0건·판정 행 0개 실패를 재현했고, 조회 준비 및 테스트 초기화 조건 보완 후 동일 루프 2개가 17.12초에 통과했다. 기능 검증 조건을 제거하지 않았으며 테스트의 실제 decision 도달을 추가 확인한다. 실제 PR의 Ubuntu/Windows 전체 CI를 다시 실행한다. 디버그 계측·축소 workflow는 병합 준비본에 넣지 않는다.

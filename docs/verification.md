@@ -343,6 +343,24 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `tests/test_memory_integration.py`의 로컬 mock runner 2개(활성 상한 10·64)와 빈 기억·오래된 고점 제거/순번 테스트 1개를 추가했다. **3 passed in 6.84s**. 상한 10 실행에서는 제거 사건이 발생했고, 64 실행에서는 발생하지 않았다. 두 실행 모두 원본 기억 ID·점수 변경·Slow 작업/단계 출처·호출 수와 공통 예산을 대조했다. Fast 계획의 검색 기억 최대 6개와 별도 최근 행동 이력도 확인했다.
 - 전체 `python3 -m pytest -q`: **273 passed in 102.92s**. 여기에는 #40의 점수 실패·예산·늦은 응답, #47의 이전 JSONL·null 행동, #54 검색 순위, #55의 N=10/12·Slow snapshot·embedding 경합, 기존 Slow 취소 회귀가 포함된다.
 - mock/fake provider와 로컬 fixture만 사용했다. 실제 유료 API·공개 사이트 성공·사람 행동 유사성은 검증하지 않았다.
+## 2026-10-15 실제 OpenAI 연결 / #57
+
+- 증상: 실제 `gpt-4o-mini`로 합성 shop.html 과업을 실행하면 첫 결정에서 `model_error`로 종료됐다. 첫 실행은 `perception` 객체·`finish: false`, 프롬프트 1차 수정 후에는 `observation_id` 누락·`value` 필드 사용으로 `AgentDecision`/`Action` 검증에 실패했다.
+- 원인: Fast Loop 시스템 프롬프트가 필드 이름만 나열하고 필드 형식과 행동별 허용 필드를 명시하지 않았다. mock·fake HTTP 테스트에서는 드러나지 않았다.
+- 해결: 문자열 필드, action/finish 중 하나만 객체, finish 구조, 행동별 허용 필드를 프롬프트에 명시했다. 프로젝트 모델 목록의 OpenAI 단가(gpt-4o-mini 0.15/0.60, gpt-4.1-mini 0.40/1.60 USD per 1M, 표준 요금)를 추가했다. 공식 요금표 변경 시 갱신이 필요하다.
+- 실제 실행(유료 API, 키는 로컬 `.env`): 수정 전 `20261014T153403-c958d7b5` model_error, 1차 수정 후 `20261014T154056-7b12da8f` model_error($0.00063), 최종 `20261014T154123-dda0d05a` verified_success 3행동·3요청·5,617토큰·$0.00102·10.8초, `20261014T154144-e76d8432` verified_success 2단계·2요청·3,556토큰·$0.00065·6.3초. 원자료 runs는 커밋하지 않는다.
+- 전체 pytest 188 passed, 재현 테스트 3 passed, doctor 정상, mock verified_success, repository check PASS.
+- 남은 범위: 데카트론 페이지의 AI 실행·판정 연결(P04), 실제 데카트론 검색 제출(#19), Claude/Gemini 경로의 같은 프롬프트 실측은 미검증이다. 반복 실행 수가 적어 형식 오류 재발률은 확인하지 않았다.
+
+## 2026-10-16 prototype 병합 준비: #31/#58 호환
+
+- 원격 보호 설정 승인 전 격리된 로컬 준비본에서만 작업했다. prototype 병합/브랜치 삭제 완료를 뜻하지 않는다.
+- #31 협업 문서와 최신 #81의 연구/상태 링크를 모두 보존했다.
+- #58의 행동 필드 명세를 최신 3단계 Fast의 decision 프롬프트에 연결했다. 기존 단일 decide 전제 테스트를 실제 decision API에 맞췄다.
+- 날짜 snapshot 응답 모델의 비용 미확인과 프롬프트 필드 명세 누락을 2개 실패로 재현했다. 실제 응답 모델 식별을 유지하고 명시적으로 확인한 snapshot만 단가표에 추가했다. 알 수 없는 모델은 null을 유지한다.
+- 단가는 [GPT-4o mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4o-mini)와 [GPT-4.1 mini 공식 모델 문서](https://developers.openai.com/api/docs/models/gpt-4.1-mini)를 2026-10-16 확인했다. 입력/출력 토큰 기준 추정이며 계정 청구액·캐시 할인·기타 서비스 요금의 실측값이 아니다.
+
+#57 단계별 추가 호환: 팀원의 `fix/57-staged-openai-format`에서 인식·계획의 평문 문자열 요구를 보존했다. 해당 명세 누락 실패 1개를 재현한 뒤 수정했고 Fast/OpenAI/예산 관련 23개가 통과했다. 행동 결정의 기존 필드·미확인 모델 null 규칙은 유지한다. 실제 API 재검증은 수행하지 않았다.
 
 ## 2026-10-16 #74 Windows 검사 안정화
 

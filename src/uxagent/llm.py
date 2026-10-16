@@ -10,6 +10,10 @@ CLAUDE_MODEL = "claude-sonnet-4-6"
 GEMINI_INPUT_USD_PER_MILLION = 0.10
 GEMINI_OUTPUT_USD_PER_MILLION = 0.40
 JEV_INPUT_USD_PER_MILLION = 0.042
+# OpenAI standard (non-batch) prices for the live catalog models: (input, output) USD per 1M tokens.
+OPENAI_USD_PER_MILLION = {"gpt-4o-mini": (0.15, 0.60), "gpt-4.1-mini": (0.40, 1.60),
+                         "gpt-4o-mini-2024-07-18": (0.15, 0.60),
+                         "gpt-4.1-mini-2025-04-14": (0.40, 1.60)}
 
 
 def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
@@ -76,6 +80,9 @@ def estimate_cost_usd(provider: str, input_tokens: int | None, output_tokens: in
         if model is not None and model != "jev-latest":
             return None
         return round(input_tokens * JEV_INPUT_USD_PER_MILLION / 1_000_000, 10)
+    if provider in ("openai", "other") and model in OPENAI_USD_PER_MILLION:
+        input_price, output_price = OPENAI_USD_PER_MILLION[model]
+        return round(input_tokens * input_price / 1_000_000 + output_tokens * output_price / 1_000_000, 10)
     return None
 
 

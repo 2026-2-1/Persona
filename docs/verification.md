@@ -392,3 +392,10 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 최종 무료 Mock `20261015T220538-00787cd2`: `verified_success`, 독립 success, 6행동·기록 6/6, 58 mock 요청. 계획 검토 채택 0건은 알려진 실행 순서 문제이며 해결 또는 연구 효과로 표시하지 않는다.
 - Doctor Python 3.13.13 / Playwright 1.55.0 Chromium / study_errors 없음. Node 구문·repo/staged·diff 검사 통과. 유료 API·실제 공개 사이트·사람 평가 재검증은 수행하지 않았다.
 - 원격 필수 Ubuntu/Windows CI를 각 최신 PR head에서 다시 확인한 뒤 squash 병합한다. 이 로컬 통과로 CI·승인 상태를 대체하지 않는다. [병합 절차와 남은 제한](handoffs/2026-10-16-prototype-merge-queue.md).
+
+## 2026-10-16 Wonder seed 정밀도 보완 후 최종 검사
+
+- 실제 생성된 7930736020609184225와 2**63-1에서 Chromium 표시가 바뀌는 실패 2개를 재현했다. 원본 정수·JSONL·출력 계약과 난수 정책을 유지하고 검증 draw 순서의 `wonder_seed_texts` 문자열로 표시한다.
+- 화면·JSON/CSV/Markdown/HTML·원본 로그 불변을 실제 HTTP/Chromium으로 검증했다. 기존 Brain 소비·안전 읽기 포함 15 passed in 5.50s.
+- 보완 후 최종 A/B/C/D 전체 **418 passed in 175.90s**. 앞선 416개 검증은 이 표시 보완 전 기록이며 합산하지 않는다. Node 문법·repo/staged·diff 검사 통과.
+- 실제 유료 API·기업·사람 평가를 완료한 결과가 아니다. 계획 검토 실제 입력 도달·종료 집계 문제는 여전히 후속이다.

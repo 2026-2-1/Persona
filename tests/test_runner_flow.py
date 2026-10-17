@@ -61,9 +61,7 @@ async def test_finish_claim_keeps_current_evaluation_separate(monkeypatch, tmp_p
                 stage = system.split(":", 1)[1].splitlines()[0]
                 events.append(stage)
                 if stage == "decision":
-                    return json.dumps({"rationale_summary": "완료했다고 생각합니다.",
-                                       "action": None,
-                                       "finish": {"claim": "completed", "summary": "완료 선언"}}), {
+                    return json.dumps({"actions": [{"action": "terminate", "description": "완료 선언"}]}), {
                         "model": "mock-v1", "input_tokens": 1, "output_tokens": 1,
                     }
             return await super().complete(messages, model, temperature, max_tokens)
@@ -117,17 +115,22 @@ async def test_post_action_observation_failure_keeps_attempt_and_unknown_result(
 
 @pytest.mark.asyncio
 async def test_executor_failure_is_separate_from_decision_and_evaluation(monkeypatch, tmp_path):
+    original_execute = ActionExecutor.execute
+    proposals_before_execution = []
+
+    async def capture_proposals(self, action):
+        paths = list((tmp_path / "runs").glob("*/memory.jsonl"))
+        rows = [json.loads(line) for line in paths[0].read_text(encoding="utf-8").splitlines()]
+        proposals_before_execution.extend(row for row in rows if row["kind"] == "action")
+        return await original_execute(self, action)
+
+    monkeypatch.setattr(ActionExecutor, "execute", capture_proposals)
     class MissingTargetProvider(MockProvider):
         async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
             system = messages[0]["content"]
             if system.startswith("FAST_STAGE:decision"):
-                observation = json.loads(messages[-1]["content"])["observation"]
-                return json.dumps({"rationale_summary": "대상을 누릅니다.",
-                                   "action": {"type": "click",
-                                              "observation_id": observation["observation_id"],
-                                              "tab_id": observation["tab_id"],
-                                              "target_id": "missing-target"},
-                                   "finish": None}), {
+                return json.dumps({"actions": [{"action": "click", "target": "missing-target",
+                                                 "description": "대상을 누릅니다."}]}), {
                     "model": "mock-v1", "input_tokens": 1, "output_tokens": 1,
                 }
             return await super().complete(messages, model, temperature, max_tokens)
@@ -138,6 +141,8 @@ async def test_executor_failure_is_separate_from_decision_and_evaluation(monkeyp
     step = read_steps(run_dir)[0]
 
     assert summary["action_attempts"] == 1
+    assert proposals_before_execution[0]["raw_action"]["target"] == "missing-target"
+    assert proposals_before_execution[0]["content_status"] == "generated"
     assert step["decision"]["action"]["target_id"] == "missing-target"
     assert step["result"]["ok"] is False
     assert step["result"]["error"]["code"] == "target_not_found"
@@ -150,7 +155,7 @@ async def test_model_timeout_keeps_pre_observation_and_unknown_status(monkeypatc
     async def stalled_perception(self, *args, **kwargs):
         await asyncio.sleep(2)
 
-    monkeypatch.setattr(FastLoop, "perceive", stalled_perception)
+    monkeypatch.setattr(FastLoop, "perceive_page", stalled_perception)
     run_dir, summary = await run_study(study_file(tmp_path, run_timeout_seconds=1),
                                        "mock", None, False, tmp_path / "runs")
     step = read_steps(run_dir)[0]

@@ -1,5 +1,28 @@
 # 평가·기록·결과 계약
 
+## #85 현재 검색·제거·GPU 연결 계약
+
+새 runner는 U 점수 `(dot(memory,query)+exp(timestamp-current)+importance/10)*kind_weight`와 ranked20/plan 최근 prefix를 사용한다. source-step 중복 제거·cosine·벽시계 반감기·단어 fallback을 사용하지 않는다. 미준비 시 최근 목록만 반환한다. 활성 상한64는 유지하며 사용자 결정으로 미산정 우선 임시 보존, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순 제거다. 종류/관찰 단계/최근10개/Slow snapshot 보호는 없다. 원본 null·로그·점수 사건은 보존한다.
+
+채팅과 임베딩 제공자를 분리하고 Qwen chat은 persona-qwen으로 유지한다. managed 대시보드는 비공개 SSH/Slurm 설정으로 자기 작업만 시작·반환한다. 실제 원격 인증·모델/차원·할당/반환 성공을 가짜 HTTP/transport 테스트로 대체하지 않는다. [#85](tasks/85-u-memory.md), [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)의 구체 계약이 아래 이전 검색/보호 정책보다 우선한다.
+
+
+## #84 U Slow 계약 (작업 브랜치)
+
+현재 runner는 첫 인식 뒤 `ContinuousSlowLoop` 하나를 시작해 reflect→wonder→memory.update를 반복한다. 새 Reflection/Thought는 공유 기억에 바로 저장하며 stage 경계 채택·plan_review·1% draw가 없다. Wonder 입력은 persona+최근 기억 최대50개+intent, 출력은 0~3개 thoughts다. [#84 계약·한계](tasks/84-u-slow.md)가 아래 과거 Slow/1% 정책 설명보다 우선한다.
+
+`MemoryStore.last_seq/since(cursor)`가 64개 활성 배열과 독립적인 성찰 진행을 보장한다. update는 설정된 embedding과 중요도 산정을 함께 시작하고, 같은 활성 ID에만 늦은 결과를 적용한다. source_memory_evicted는 제거된 항목의 데이터 갱신 폐기이며 성찰 결과 사용 권한 판단이 아니다. memory_update·embedding 사건 kind를 reader에 추가했고 과거 로그 읽기를 유지한다.
+
+새 실행은 prompt_version=u-loops-1, wonder_policy=u_every_cycle이며 seed/draw 파일을 생성하지 않는다. enable_wonder의 과거 false 입력은 true로 정규화하고 wonder_seed/reflection_every_actions는 호환 입력으로만 남긴다. embedding 미설정은 not_configured이며 벡터 완료로 표시하지 않는다. 실제 GPU embedding과 검색 공식은 #85 범위다. 정상 Fast 종료 때도 무한 반복 task는 취소·합류하므로 Slow를 완료로 조작하지 않는다. 요청 응답 전 취소된 토큰·요금은 미확인이다.
+
+## #83 U Fast 계약 (작업 브랜치)
+
+현재 실행기의 Fast 계약은 [#83 구현 명세](tasks/83-u-fast.md)를 따른다. `UPerception.observations`, `UFeedback.thoughts`, `UPlan.plan/rationale/next_step`, `UActions.actions`를 소비한다. 후속 차례의 feedback과 perceive는 같은 현재 HTML에서 동시에 시작하고 공유 기억을 저장한 뒤 plan→act로 진행한다. plan 검색은 intent, act 검색은 next_step이다.
+
+새 `thought` 기억과 모든 Action 제안은 generated다. 기억의 `timestamp`는 차례 순번, Action의 `raw_action`은 U 원본 제안이다. `AgentDecision.proposed_actions`·`next_step`, `BrainStageRecord.model_response`·feedback stage는 추가 필드다. 기록의 perception/plan/decision 이름은 기존 소비용이며 U 원본 응답은 model_response에 남긴다. 원본 필드가 없는 구버전 기록은 기존대로 읽는다. 결과 성공 여부는 Action 기억에 쓰지 않고 steps의 result/evaluation을 확인한다.
+
+observation/tab ID는 실행 어댑터가 현재 관찰에서 붙인다. 모델 응답이나 완료된 Slow 결과를 현재 observation/plan version에 맞춰 강제로 허가하는 Brain gate는 없다. 실행기의 기존 브라우저 접근 정책은 #87, 과업 종료/평가 정책은 #89에서 변경한다. 제안 actions 전부를 기억에 저장하고 첫 번째만 실행하므로 두 번째 이후 제안을 실제 실행으로 집계하지 않는다. `type.enter=true`는 fill 후 Enter 한 번이며, clear는 빈 문자열 type으로 변환한다. 나머지 U 행동 확대와 선택적 key_press target 지원은 #87 범위다.
+
 이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
 
 현재 통합 브랜치는 #79와 #78 후속의 생성 계약을 D/C 소비에 연결했다. Fast 작업 kind와 adopted/discarded를 포함한 8상태, Wonder 추첨·부모 연결을 같은 검증 reader로 읽는다. [통합 검증](handoffs/2026-10-16-latest-pr-integration.md)을 따른다. 실제 입력 소비 계측과 연구용 실험 제어는 별도 후속이다.
@@ -45,6 +68,8 @@ Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현�
 실행 전에 experiment_id, session_id, task_id, condition(general/persona), 구매 제약, persona_id(일반 조건은 없음), environment_id, site_version, model/provider/prompt_version, 예산·반복 수·예정 상태를 확정한다. 성공·실패·미확인은 평가 결과이고, timeout/error/blocked/cancelled/not_started는 종료·실행 상태다. 두 축을 혼합하지 않는다.
 
 성공률 = 독립적으로 확인된 성공 / 사전 등록 평가 세션. 실패·오류·차단·취소·미실행·미확인 개수를 함께 공개하고 계획서의 분모를 유지한다. 모델 완료 선언은 별도 필드로 보존한다. 사이트/모델/환경 조건이 달라진 실행은 같은 비교 블록으로 묶지 않는다.
+
+순차 batch에서 한 페르소나의 `model_error`·`browser_error`는 해당 실행을 종료하고 오류로 집계하되 다음 페르소나 실행을 막지 않는다. 전체 batch는 예정된 순회를 마친 상태와 개별 실행 성공을 구분한다. 개별 오류 때문에 전체 작업을 단일 실패로 표시하지 않으며, 오류 로그와 독립 판정 `unknown`을 함께 제공한다.
 
 ## 행동과 근거
 
@@ -121,3 +146,14 @@ run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes
 ## Wonder seed 표시용 DTO
 
 `brain.wonder_seed_texts`는 검증된 `wonder_draws`와 순서가 같은 10진 문자열 배열이다. 원본 draw의 `seed` 정수 및 로그 스키마는 바꾸지 않는다. 화면은 JavaScript Number 반올림을 피하기 위해 이 문자열을 사용한다. 파일이 없거나 유효 draw가 없으면 빈 배열이며, 저장·재실행에 쓸 seed는 원본 값과 같아야 한다.
+
+## SSH 키 최초 등록 계약 (2026-10-18)
+
+키 최초 등록은 사용자 터미널에서 명시 실행한다. 개인 키는 저장소 밖에 두고 앱은 공개 키만 읽어 기존 원격 행을 보존하며 추가한다. 양쪽 새 publickey 전용 연결과 자기 임시 할당 반환 후에만 private config의 batch mode를 활성화한다. 암호는 OpenSSH·OS Keychain/agent가 처리한다. 실패 시 앱에 비밀번호를 받아 fallback하지 않는다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
+
+실제 Qwen health200·persona-qwen과 작업 반환은 서비스 연결 증거이며 키 등록·임베딩·생성 추론·과업 성공과 구분한다.
+
+
+### macOS 저장 비밀번호 인증 (사용자 후속 결정)
+
+명시적인 gpu-password-setup은 두 서버 비밀번호를 macOS 키체인에 저장하며 이후 SSH askpass pipe로 전달한다. config에는 저장 방식/서버 식별자만 둔다. 비밀번호 평문 파일·JSON·env·argv·로그를 만들지 않는다. host key 자동 승인·OTP 응답은 하지 않는다. 저장 성공과 실제 원격 인증/health/반환 성공을 구분한다. 기존 키 인증과 별도 선택 경로다.

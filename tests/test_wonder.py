@@ -129,7 +129,7 @@ async def test_wonder_adoption_keeps_generated_provenance():
 
 
 @pytest.mark.asyncio
-async def test_wonder_is_not_prioritized_as_next_fast_boundary_memory():
+async def test_completed_wonder_is_published_with_other_shared_memory_outputs():
     slow, store, tasks, stages, draws, calls = slow_loop()
     brain = Brain(None, slow, store, persona())
     slow.schedule_reflection(persona(), "가방 찾기", "obs-1")
@@ -138,7 +138,7 @@ async def test_wonder_is_not_prioritized_as_next_fast_boundary_memory():
 
     boundary = brain.begin_stage("perception", "obs-2")
 
-    assert all(entry["kind"] != "wonder" for entry in boundary)
+    assert any(entry["kind"] == "wonder" for entry in boundary)
     assert any(entry.kind == "wonder" for entry in store.entries)
 
 
@@ -157,7 +157,7 @@ async def test_wonder_budget_exhaustion_is_recorded_without_generated_memory():
 
 
 @pytest.mark.asyncio
-async def test_wonder_does_not_evict_task_memory_at_capacity():
+async def test_legacy_wonder_publication_obeys_shared_importance_oldest_eviction():
     store = MemoryStore("run-wonder", max_active_memories=10)
     original = [store.append("observation", f"필수 작업 근거 {i}") for i in range(10)]
     slow, _, tasks, stages, draws, calls = slow_loop(memory=store)
@@ -167,22 +167,26 @@ async def test_wonder_does_not_evict_task_memory_at_capacity():
     await asyncio.gather(*slow.wonder_tasks)
     brain.begin_stage("perception", "obs-2")
 
-    assert {entry.memory_id for entry in store.entries} == {entry.memory_id for entry in original}
-    assert any(row["kind"] == "wonder" and row["status"] == "discarded"
-               and row["reason_code"] == "memory_capacity" for row in tasks.records)
+    active = {entry.memory_id for entry in store.entries}
+    assert len(active) == 10 and original[0].memory_id not in active
+    assert all(entry.memory_id in active for entry in original[1:])
+    assert any(entry.kind == "wonder" for entry in store.entries)
+    # Unscored ties use age. Publication is not rejected by memory kind.
+    assert any(row["kind"] == "wonder" and row["status"] == "adopted" for row in tasks.records)
     assert any(row["stage"] == "wonder" for row in stages.records)
 
 
-def test_task_memory_eviction_prefers_wonder_even_when_wonder_is_recent():
+def test_unscored_ties_evict_oldest_instead_of_recent_wonder():
     store = MemoryStore("run-wonder", max_active_memories=10)
     task_entries = [store.append("observation", f"과업 근거 {i}") for i in range(9)]
     wonder = store.append("wonder", "가정된 생각: 차를 마실까?", content_status="generated")
 
     store.append("action", "새 과업 행동")
 
-    assert wonder.memory_id not in {entry.memory_id for entry in store.entries}
+    assert wonder.memory_id in {entry.memory_id for entry in store.entries}
+    assert task_entries[0].memory_id not in {entry.memory_id for entry in store.entries}
     assert all(entry.memory_id in {current.memory_id for current in store.entries}
-               for entry in task_entries)
+               for entry in task_entries[1:])
 
 
 @pytest.mark.asyncio
@@ -241,28 +245,32 @@ async def test_provider_internal_retry_does_not_repeat_the_task_draw():
 
 
 @pytest.mark.asyncio
-async def test_runner_records_wonder_seed_and_started_task_draws(tmp_path):
+async def test_u_runner_uses_every_cycle_wonder_without_legacy_seed_or_draws(tmp_path):
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
     config.update(persona_file=str(root / "configs/persona.json"), max_steps=1,
-                  wonder_seed=139)
+                  wonder_seed=139, enable_wonder=False)
     study = tmp_path / "study.json"
     study.write_text(json.dumps(config), encoding="utf-8")
 
     run_dir, summary = await run_study(study, "mock", None, False, tmp_path / "runs")
 
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    draws = [json.loads(line) for line in (run_dir / "wonder_draws.jsonl").read_text(encoding="utf-8").splitlines()]
     tasks = [json.loads(line) for line in (run_dir / "brain_tasks.jsonl").read_text(encoding="utf-8").splitlines()]
-    started = [row["task_id"] for row in tasks if row["status"] == "started"
-               and row["kind"] in {"reflection", "plan_review"}]
-
-    assert run["wonder_seed"] == summary["brain"]["slow"]["wonder_seed"] == 139
-    assert [row["parent_task_id"] for row in draws] == started
-    assert draws and draws[0]["selected"] is True
-    assert all(row["seed"] == 139 for row in draws)
+    started = [row['kind'] for row in tasks if row['status'] == 'started'
+               and row['kind'] in {'reflection', 'wonder', 'memory_update', 'plan_review'}]
+    assert not (run_dir / 'wonder_draws.jsonl').exists()
+    assert 'wonder_seed' not in run and 'wonder_seed' not in summary['brain']['slow']
+    assert run['wonder_policy'] == 'u_every_cycle'
+    assert started[:3] == ['reflection', 'wonder', 'memory_update']
+    assert all(kind == ['reflection', 'wonder', 'memory_update'][index % 3]
+               for index, kind in enumerate(started))
+    memories = [json.loads(line) for line in (run_dir / 'memory.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert any(row['kind'] == 'thought' for row in memories)
+    assert not any(row['kind'] == 'wonder' for row in memories)
+    assert summary['brain']['slow']['worker_starts'] == 1
 
 
 def test_detail_and_report_label_wonder_as_generated_assumption(tmp_path):

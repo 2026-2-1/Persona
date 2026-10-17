@@ -6,9 +6,20 @@
 
 ## 구현됨
 
+- #85 추가 사용자 요청으로 gpu-password-setup을 제공한다. 두 서버 비밀번호를 한 번 OS 키체인에 저장하면 대시보드가 자동 사용한다. 사용자 최초 저장 후 추가 입력 없는 Qwen health200/persona-qwen과 소유 작업19347 반환을 실제 확인했다.
+- #85 후속 gpu-key-setup은 전용 키/agent·Keychain, 양쪽 공개 키 중복 없는 등록과 새 publickey 인증, 임시 할당 반환 후 무인 모드 저장을 제공한다. gpu-key-unlock은 키만 agent에 로드한다. 실제 사용자 키 최초 등록은 사용자 터미널에서 해야 한다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
+
+- #85 작업 브랜치는 U dot-product·단계 exp 최신성·중요도/10·종류 가중치, ranked20·plan 최근 목록 중복을 적용한다. 활성64개는 미산정 우선 보존 후 채점 중요도 낮은 순·동점 오래된 순으로 제거한다. [상세](tasks/85-u-memory.md).
+- 사용자 후속 요청으로 [대시보드 GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)를 추가했다. 비공개 설정이 있으면 SSH/sbatch·채팅/분리 임베딩·터널·준비 확인 후 대시보드를 제공하고 Ctrl+C/SIGTERM에 소유 작업만 반환한다. 기본 인증은 OpenSSH 터미널이며, macOS gpu-password-setup으로 명시 저장한 경우 OS 키체인에서 askpass로 자동 전달한다. 비밀번호 파일/JSON/env/로그는 만들지 않는다. 2026-10-18 Qwen 단독 health200/persona-qwen과 작업19346 반환을 실제 확인했다. 임베딩·추론·데카트론 성공과 구분한다.
+
+- #84 작업 브랜치의 실행기는 첫 인식 뒤 실행별 단일 Slow task가 reflect→wonder→memory.update를 반복한다. 성찰/Thought는 즉시 공유 기억에 저장하며 stage 채택·plan_review·1% draw가 없다. 단조 seq cursor·64개 상한·활성 ID 기반 점수/벡터 갱신과 취소 합류를 포함한다. [현재 계약과 남은 범위](tasks/84-u-slow.md)가 아래 과거 정책보다 우선한다. 실제 GPU embedding과 검색 공식은 #85에서 연결해야 한다.
+- #83 작업 브랜치의 실행기는 `Brain.forward`로 U Fast 응답을 소비한다. 최초 perceive, 이후 feedback/perceive 동시 실행 후 plan/act를 호출하고, rationale Thought·Plan·모든 Action 제안을 실행 전에 저장한다. 첫 제안만 실행하며 모델은 observation/tab ID를 생성하지 않는다. 기록은 `u-fast-1`로 구분한다. [계약·제한](tasks/83-u-fast.md)이 아래 과거 #41/#43 Fast 정책보다 우선한다.
+- #83에서 현재 observation·plan version 기반 Brain 채택 게이트와 강제 우선 기억 삽입, 실행 후 결과를 Action 기억으로 만드는 경로를 제거했다. 첫 인식 직후 Slow 시작은 #84의 계속되는 U 반복으로 연결했다. 도구 결과와 독립 판정은 기존 steps에 보존한다.
 - Python 3.11+ / Playwright Chromium / Pydantic.
 - 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
 - Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
+- 로컬 SSH 터널을 통해 실행 중인 GPU 서버의 `persona-qwen` 채팅 API를 선택할 수 있다. 연결 확인은 실제 요청이며 키를 요구하지 않는다. 원격 Slurm 할당·서버 시작·SSH 터널은 현재 수동으로 유지한다. 실제 과업 실행 성공은 별도 검증 대상이다.
+- 순차 테스트에서 한 페르소나의 모델 출력·브라우저 오류는 해당 실행만 실패로 기록하고 다음 페르소나를 계속 실행한다. 완료 뒤 실패한 페르소나 수와 로그를 모달로 표시하며, 평가하지 못한 독립 판정은 `unknown`으로 유지한다.
 - #57에서 단계별 Fast의 OpenAI 응답 형식을 문자열·행동 필드·종료 객체 단위로 명시하고, 알려진 `gpt-4o-mini` 응답 모델의 호출 비용 추정치를 기록한다. 실제 API 재검증은 로컬 키가 준비된 뒤 수행한다.
 - #59에서 합성 데카트론 AI 실행 설정과 독립 평가 기대값을 연결했다. 평가 정답은 과업 프롬프트와 분리하고 상세의 상품명·색상·가격이 일치할 때만 성공으로 판정한다. 현재 브랜치의 실제 OpenAI 호출은 키 준비 후 재검증한다.
 - #61에서 공개 데카트론의 부분 평가 프로필을 AI 실행 설정에 연결하고, 여러 적합 상품을 허용하도록 상품명 키워드와 최대 가격을 검사한다. 공개 실행의 판정 범위는 상품명·가격이며 현재 브랜치의 실제 API·사이트 결합 실행은 미검증이다.

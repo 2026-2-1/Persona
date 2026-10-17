@@ -10,7 +10,7 @@ from uxagent.llm import BudgetManager
 from uxagent.memory import MemoryStore
 from uxagent.runner import run_study
 from uxagent.schemas import Persona
-from uxagent.slow_loop import SlowLoop
+from uxagent.slow_loop import SlowLoop, ContinuousSlowLoop
 
 
 class RecordingWriter:
@@ -80,7 +80,7 @@ async def test_reflection_is_adopted_only_at_a_fast_stage_boundary():
 
 
 @pytest.mark.asyncio
-async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(monkeypatch, tmp_path):
+async def test_u_runner_does_not_force_adopted_reflection_into_retrieval(monkeypatch, tmp_path):
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
     config["persona_file"] = str(root / "configs/persona.json")
@@ -90,20 +90,19 @@ async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(mon
     study_path = tmp_path / "study.json"
     study_path.write_text(json.dumps(config), encoding="utf-8")
 
-    original_plan = FastLoop.plan
-    original_decide = FastLoop.decide_action
+    original_plan = FastLoop.make_plan
+    original_decide = FastLoop.act
     original_retrieve = MemoryStore.retrieve
-    original_schedule = SlowLoop.schedule_reflection
+    original_reflect = ContinuousSlowLoop.reflect
+    reflection_ready = asyncio.Event()
     decision_memories = []
-    reflection_workers = []
 
-    def capture_reflection_worker(self, *args, **kwargs):
-        task_id = original_schedule(self, *args, **kwargs)
-        reflection_workers.append(self.worker)
-        return task_id
+    async def reflect_and_signal(self):
+        await original_reflect(self)
+        reflection_ready.set()
 
     async def plan_after_reflection(self, *args, **kwargs):
-        await reflection_workers[-1]
+        await asyncio.wait_for(reflection_ready.wait(), timeout=2)
         return await original_plan(self, *args, **kwargs)
 
     async def capture_decision(self, persona, task, observation, memories, *args, **kwargs):
@@ -115,21 +114,23 @@ async def test_runner_passes_adopted_reflection_even_when_retrieval_omits_it(mon
         return [entry for entry in original_retrieve(self, *args, **kwargs)
                 if entry["kind"] != "reflection"]
 
-    monkeypatch.setattr(FastLoop, "plan", plan_after_reflection)
-    monkeypatch.setattr(FastLoop, "decide_action", capture_decision)
+    monkeypatch.setattr(FastLoop, "make_plan", plan_after_reflection)
+    monkeypatch.setattr(FastLoop, "act", capture_decision)
     monkeypatch.setattr(MemoryStore, "retrieve", retrieve_without_reflection)
-    monkeypatch.setattr(SlowLoop, "schedule_reflection", capture_reflection_worker)
+    monkeypatch.setattr(ContinuousSlowLoop, "reflect", reflect_and_signal)
 
-    _, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
+    folder, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
 
     assert summary["termination_reason"] == "max_steps", {
         "termination": summary["termination_reason"], "error": summary.get("last_error")}
-    assert summary["brain"]["adoption"]["reflection"] >= 1
-    assert any(entry["kind"] == "reflection" for entry in decision_memories)
+    assert summary["brain"]["adoption"]["reflection"] == 0
+    memories = [json.loads(line) for line in (folder / "memory.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(row["kind"] == "reflection" for row in memories)
+    assert not any(entry["kind"] == "reflection" for entry in decision_memories)
 
 
 @pytest.mark.asyncio
-async def test_plan_review_is_adopted_only_for_exact_current_observation_and_plan():
+async def test_completed_legacy_plan_review_enters_shared_memory():
     brain, events, _, _ = make_brain()
     brain.memory.append("plan", "현재 계획", source_observation_ids=["obs-1"])
     brain.begin_stage("perception", "obs-1")
@@ -148,7 +149,7 @@ async def test_plan_review_is_adopted_only_for_exact_current_observation_and_pla
 
 
 @pytest.mark.asyncio
-async def test_stale_plan_review_is_discarded_without_entering_new_memory():
+async def test_old_observation_does_not_gate_completed_slow_output():
     brain, events, _, _ = make_brain()
     brain.memory.append("plan", "이전 계획", source_observation_ids=["obs-old"])
     brain.begin_stage("perception", "obs-old")
@@ -156,20 +157,21 @@ async def test_stale_plan_review_is_discarded_without_entering_new_memory():
     brain.schedule_plan_review("가방 찾기", "이전 계획", "obs-old", "plan-old", 1)
     await brain.slow.worker
 
-    brain.begin_stage("perception", "obs-new")
+    received = brain.begin_stage("perception", "obs-new")
     brain.begin_stage("plan", "obs-new")
     decision_reviews = brain.begin_stage("decision", "obs-new", plan_id="plan-new",
                                          plan_version=1)
 
     assert decision_reviews == []
-    assert all(entry.text != "검토 제안입니다." for entry in brain.memory.entries)
-    discarded = next(event for event in events.records if event["status"] == "discarded")
-    assert discarded["reason_code"] == "stale_context"
+    assert received[0]["text"] == "검토 제안입니다."
+    assert any(entry.text == "검토 제안입니다." for entry in brain.memory.entries)
+    assert any(event["status"] == "adopted" for event in events.records)
+    assert not any(event.get("reason_code") == "stale_context" for event in events.records)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("current_plan", "current_version"), [("plan-new", 1), ("plan-old", 2)])
-async def test_plan_review_requires_exact_plan_id_and_version(current_plan, current_version):
+async def test_plan_id_and_version_are_metadata_not_output_gates(current_plan, current_version):
     brain, events, _, _ = make_brain()
     brain.memory.append("plan", "검토 대상 계획", source_observation_ids=["obs-1"])
     brain.begin_stage("perception", "obs-1")
@@ -180,9 +182,9 @@ async def test_plan_review_requires_exact_plan_id_and_version(current_plan, curr
     reviews = brain.begin_stage("decision", "obs-1", plan_id=current_plan,
                                 plan_version=current_version)
 
-    assert reviews == []
-    discarded = next(event for event in events.records if event["status"] == "discarded")
-    assert discarded["reason_code"] == "stale_context"
+    assert reviews[0]["text"] == "검토 제안입니다."
+    assert any(event["status"] == "adopted" for event in events.records)
+    assert not any(event.get("reason_code") == "stale_context" for event in events.records)
 
 
 @pytest.mark.asyncio

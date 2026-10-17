@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlsplit, parse_qs
 
 from .security import normalize_origin
 from .llm import load_env_file, BudgetExceeded
-from .runner import load_study, validate_provider_configuration
+from .runner import load_study, validate_provider_configuration, validate_gpu_fixture_port
 from .schemas import Persona, StudyConfig
 from .model_catalog import catalog_payload, resolve_model
 from .setup_guide import SetupGuide, static_options
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = Path(__file__).resolve().parent
 RUN_ID = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 OBS_ID = re.compile(r"^obs-[A-Za-z0-9_-]{1,100}$")
-PROVIDERS = {"mock", "jev", "gemini", "live", "claude"}
+PROVIDERS = {"mock", "jev", "gemini", "live", "claude", "gpu"}
 PERSONA_CONTEXTS = [
     "검색 결과에서 여러 후보를 비교한 뒤 선택한다.",
     "안내 문구와 조건을 꼼꼼히 읽고 진행한다.",
@@ -81,6 +81,7 @@ class Dashboard:
         self.review_store = ReviewStore(runs_dir)
         self.guide_busy = False
         self.connection_models = {}
+        self.gpu_embedding_model = None
         # start_job returns _job_state while holding this lock, so it must be reentrant.
         self.job_lock = threading.RLock()
 
@@ -97,7 +98,9 @@ class Dashboard:
                     self.job["message"]="사용자가 실행을 중지했습니다. 완료된 단계 기록을 보존했습니다."
                     self._finalize_cancelled_records()
                 elif process.returncode == 0:
-                    self.job["message"] = (f"페르소나 {self.job['persona_count']}명 생성 완료" if self.job["kind"] == "generate"
+                    batch = _json_file(self.runs_dir / "batch_summary.json", {}) if self.job["kind"] == "batch" else {}
+                    self.job["message"] = (f"{batch.get('failed')}/{batch.get('requested')}명은 과업 실행에 실패했고 나머지 페르소나 실행을 마쳤습니다." if batch.get("study_id") == self.job.get("study_id") and batch.get("failed")
+                                           else f"페르소나 {self.job['persona_count']}명 생성 완료" if self.job["kind"] == "generate"
                                            else "시나리오 점검을 마쳤습니다. 과업 판정과 근거를 확인하세요." if self.job["kind"] == "scenario"
                                            else "AI 비교 실행을 마쳤습니다. 비교 결과를 확인하세요." if self.job["kind"] == "compare"
                                            else "순차 테스트 실행을 마쳤습니다. 각 페르소나의 결과를 확인하세요.")
@@ -220,7 +223,8 @@ class Dashboard:
             "connection_models": dict(self.connection_models),
             "persona_defaults": {"count": persona_config.get("count", 6), "background": example.background},
             "providers": {"jev": bool(os.environ.get("TYPESAFE_API_KEY") and os.environ.get("GEMINI_API_KEY")),
-                          "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(os.environ.get("ANTHROPIC_API_KEY"))},
+                          "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                          "gpu": self.connection_models.get("gpu") == "persona-qwen"},
         }
 
     def run_detail(self, run_id):
@@ -311,22 +315,22 @@ class Dashboard:
         return redact(sorted([row for row in rows if row],key=lambda row:row.get("started_at",""),reverse=True))
 
     def _verify_connection(self, provider, model=None):
-        from .llm import OpenAIProvider, GeminiProvider, JevProvider, ClaudeProvider
+        from .llm import OpenAIProvider, GeminiProvider, JevProvider, ClaudeProvider, LocalQwenProvider
         selected_model = resolve_model(provider, model)
         async def verify():
             if provider == "jev":
                 await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
                 await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
             else:
-                implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else GeminiProvider()
+                implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else LocalQwenProvider() if provider == "gpu" else GeminiProvider()
                 await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
         asyncio.run(verify())
 
     def connect(self, provider, api_key, fallback_key=None, model=None):
-        if provider not in {"live","gemini","jev","claude"}: raise ValueError("지원하지 않는 연결입니다")
+        if provider not in {"live","gemini","jev","claude","gpu"}: raise ValueError("지원하지 않는 연결입니다")
         selected_model = resolve_model(provider, model)
         keys = {"live":"OPENAI_API_KEY","gemini":"GEMINI_API_KEY","jev":"TYPESAFE_API_KEY","claude":"ANTHROPIC_API_KEY"}
-        supplied = {keys[provider]:api_key if api_key is not None else os.environ.get(keys[provider])}
+        supplied = {} if provider == "gpu" else {keys[provider]:api_key if api_key is not None else os.environ.get(keys[provider])}
         if provider == "jev": supplied["GEMINI_API_KEY"] = fallback_key or os.environ.get("GEMINI_API_KEY")
         if any(not isinstance(v,str) or not v.strip() or len(v)>2048 or any(c.isspace() for c in v) for v in supplied.values()):
             raise ValueError("공백 없는 API 키를 입력하세요. Jev는 Gemini 키도 필요합니다.")
@@ -344,12 +348,12 @@ class Dashboard:
                 for name,value in previous.items():
                     if value is None: os.environ.pop(name,None)
                     else: os.environ[name]=value
-                raise ValueError("연결 확인에 실패했습니다. 키·API 사용 권한·결제 설정·네트워크를 확인하세요.") from None
+                raise ValueError("연결 확인에 실패했습니다. GPU 서버·SSH 터널 또는 API 설정을 확인하세요." if provider == "gpu" else "연결 확인에 실패했습니다. 키·API 사용 권한·결제 설정·네트워크를 확인하세요.") from None
             if provider in {"gemini","jev"}:
                 self.connection_models.pop("gemini",None); self.connection_models.pop("jev",None)
             self.connection_models[provider] = selected_model
             if provider=="jev": self.connection_models["gemini"]=selected_model
-        return {"provider":provider,"model":selected_model,"configured":True,"validated":True,"message":"연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
+        return {"provider":provider,"model":selected_model,"configured":True,"validated":True,"message":"GPU 서버 연결 확인 완료." if provider == "gpu" else "연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
 
     def recommend_setup(self, provider="mock", model=None, message="", context=None, history=None):
         with self.job_lock:
@@ -419,7 +423,7 @@ class Dashboard:
             raise ValueError("unknown job")
         if provider not in PROVIDERS:
             raise ValueError("unknown provider")
-        config, example, _ = load_study(self.study)
+        config, example, config_path = load_study(self.study)
         requested_model = model if model is not None else config.provider_model
         selected_model = config.model if provider=='live' and requested_model is None else resolve_model(provider,requested_model)
         snapshot_model = selected_model
@@ -433,6 +437,8 @@ class Dashboard:
         if not isinstance(task, str) or not task.strip() or len(task) > 2000:
             raise ValueError("수행할 작업을 입력하세요 (최대 2000자)")
         start_url, task = start_url.strip(), task.strip()
+        if provider == "gpu":
+            validate_gpu_fixture_port(start_url)
         parsed = urlsplit(start_url)
         if parsed.username or parsed.password:
             raise ValueError("URL에 사용자명이나 비밀번호를 포함할 수 없습니다")
@@ -445,6 +451,9 @@ class Dashboard:
         if evaluation_checks is not None:
             config = StudyConfig.model_validate({**config.model_dump(),"evaluation_checks":evaluation_checks})
         if kind in {"batch", "compare"}:
+            if provider == 'gpu' and self.gpu_embedding_model:
+                config = StudyConfig.model_validate({**config.model_dump(),
+                    'embedding_provider':'local', 'embedding_model':self.gpu_embedding_model})
             if provider == "mock" and not fixture:
                 raise ValueError("Mock은 기본 데모 사이트 전용입니다. 외부 사이트에는 Jev 또는 Gemini를 선택하세요.")
             required = {"jev": ("TYPESAFE_API_KEY", "GEMINI_API_KEY"), "gemini": ("GEMINI_API_KEY",),
@@ -495,6 +504,10 @@ class Dashboard:
                 example_path = job_dir / f"{job_id}-persona.json"
                 example_path.write_text(generated[0].model_dump_json(indent=2), encoding="utf-8")
                 study = config.model_dump()
+                if config.evaluation_profile_file:
+                    profile_path = Path(config.evaluation_profile_file)
+                    if not profile_path.is_absolute():
+                        study["evaluation_profile_file"] = str((config_path.parent / profile_path).resolve())
                 study.update({"study_id": f"dashboard-{job_id}", "start_url": start_url,
                               "allowed_origins": [origin], "task": task, "persona_file": str(example_path), "provider_model": snapshot_model})
                 if not fixture:
@@ -631,13 +644,59 @@ def make_handler(dashboard: Dashboard):
     return Handler
 
 
-def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", study="configs/study.json"):
+def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", study="configs/study.json", *, gpu_config=None):
     dashboard = Dashboard(runs_dir, personas_dir, study)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(dashboard))
-    print(f"UXAgent dashboard: http://127.0.0.1:{port}", flush=True)
+    gpu = None
+    previous_sigterm = None
     try:
+        if gpu_config:
+            import signal
+            from .gpu_session import GpuSession, GpuSessionConfig
+            config = GpuSessionConfig.model_validate_json(Path(gpu_config).read_text())
+            gpu = GpuSession(config)
+            if threading.current_thread() is threading.main_thread():
+                previous_sigterm = signal.getsignal(signal.SIGTERM)
+                def terminate(_signum, _frame):
+                    raise KeyboardInterrupt
+                signal.signal(signal.SIGTERM, terminate)
+            gpu.start()
+            dashboard.gpu_embedding_model = config.embedding_model
+            dashboard.connect('gpu', None, model='persona-qwen')
+        print(f"UXAgent dashboard: http://127.0.0.1:{port}", flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        server.server_close()
+        try:
+            if gpu and dashboard.job and dashboard.job['process'].poll() is None:
+                # Finish local run records before returning the model allocation.
+                process = dashboard.job['process']
+                try:
+                    dashboard.stop_job()
+                except ValueError:
+                    if process.poll() is None:
+                        raise
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    import signal
+                    if os.name == 'nt':
+                        subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], check=False, capture_output=True)
+                    else:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        if os.name != 'nt':
+                            os.killpg(process.pid, signal.SIGKILL)
+                        process.wait(timeout=5)
+        finally:
+            server.server_close()
+            try:
+                if gpu:
+                    gpu.close()
+            finally:
+                if previous_sigterm is not None:
+                    import signal
+                    signal.signal(signal.SIGTERM, previous_sigterm)

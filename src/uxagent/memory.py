@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math, time, uuid
+import asyncio, math, time, uuid
 from datetime import datetime, timezone
 from .llm import MockProvider, OpenAIProvider, provider_for_model
 from .schemas import MemoryChangeEvent, MemoryEntry
@@ -14,8 +14,8 @@ SEARCH_PROFILES = {
     "slow": (0.2, 0.2, 0.6),
 }
 KIND_WEIGHTS = {
-    "fast_plan": {"action": 10, "plan": 10, "reflection": 10},
-    "fast_decision": {"observation": 0, "action": 10, "reflection": 10},
+    "fast_plan": {"action": 10, "plan": 10, "thought": 10, "reflection": 10},
+    "fast_decision": {"observation": 0, "action": 10, "thought": 10},
 }
 
 class MemoryStore:
@@ -31,11 +31,57 @@ class MemoryStore:
         self.pending_score_ids: set[str] = set()
         self.started = clock()
         self._next_seq = 1
+        self.timestamp = 0
         self.embedding_cache: dict[str, list[float]] = {}
+        self.update_lock = asyncio.Lock()
+
+    @property
+    def last_seq(self):
+        return self._next_seq - 1
+
+    def since(self, cursor):
+        """Active memories after a monotonic cursor, even when the array is full."""
+        return [entry.model_copy(deep=True) for entry in self.entries if entry.seq > cursor]
+
+    async def update(self, score_new, embed_new=None):
+        """Update a fixed set of IDs concurrently; never apply by array position."""
+        async with self.update_lock:
+            unscored = [entry.model_copy(deep=True) for entry in self.entries
+                        if entry.schema_version == "2.0" and entry.importance is None]
+            unembedded = [entry.model_copy(deep=True) for entry in self.entries
+                          if entry.memory_id not in self.embedding_cache]
+            jobs = [asyncio.create_task(score_new(unscored))]
+            if embed_new is not None:
+                jobs.append(asyncio.create_task(embed_new(unembedded)))
+            try:
+                results = await asyncio.gather(*jobs)
+            except BaseException:
+                for job in jobs:
+                    if not job.done():
+                        job.cancel()
+                await asyncio.gather(*jobs, return_exceptions=True)
+                raise
+            scores, vectors = results[0], results[1] if embed_new is not None else {}
+            active_ids = {entry.memory_id for entry in self.entries}
+            existing = [vector for memory_id, vector in self.embedding_cache.items() if memory_id in active_ids]
+            dimension = len(existing[0]) if existing else None
+            for vector in [*existing, *vectors.values()]:
+                self.validate_embedding(vector, dimension)
+                if dimension is None:
+                    dimension = len(vector)
+            for memory_id, vector in vectors.items():
+                if memory_id in active_ids:
+                    self.embedding_cache[memory_id] = vector
+            evicted_scores = []
+            for memory_id, score, record_id in scores:
+                if not self.update_importance(memory_id, score, record_id):
+                    evicted_scores.append(memory_id)
+            return {"evicted_score_ids": evicted_scores,
+                    "evicted_embedding_ids": [key for key in vectors if key not in active_ids]}
 
     def append(self, kind, text, source_step_ids=None, source_observation_ids=None,
                content_status="observed", based_on_seq=0, importance=None, *,
-               source_memory_ids=None, source_stage_record_id=None):
+               source_memory_ids=None, source_stage_record_id=None, raw_action=None):
         if importance is not None and (isinstance(importance, bool) or
                                        not isinstance(importance, int) or not 1 <= importance <= 10):
             raise ValueError("new memory importance must be 1..10 or null")
@@ -44,7 +90,8 @@ class MemoryStore:
             kind=kind,text=text,source_step_ids=source_step_ids or [],source_observation_ids=source_observation_ids or [],
             source_memory_ids=source_memory_ids or [],source_stage_record_id=source_stage_record_id,
             created_at=datetime.now(timezone.utc).isoformat(),created_monotonic_ms=int((self.clock()-self.started)*1000),
-            based_on_seq=based_on_seq,importance=importance,content_status=content_status)
+            based_on_seq=based_on_seq,importance=importance,content_status=content_status,
+            timestamp=self.timestamp,raw_action=raw_action)
         self._next_seq += 1
         self.entries.append(entry)
         self.known_memory_ids.add(entry.memory_id)
@@ -65,47 +112,16 @@ class MemoryStore:
 
     def _enforce_active_limit(self):
         while len(self.entries) > self.max_active_memories:
-            recent_ids = {entry.memory_id for entry in
-                          [row for row in self.entries if row.kind != "wonder"][-10:]}
-
             def retention_key(entry):
-                if entry.kind == "wonder":
-                    protection = 0
-                elif entry.memory_id in self.current_stage_ids:
-                    protection = 5
-                elif entry.memory_id in recent_ids:
-                    protection = 4
-                elif entry.memory_id in self.pending_score_ids:
-                    protection = 3
-                elif entry.memory_id in self.slow_snapshot_ids:
-                    protection = 2
-                else:
-                    protection = 1
-                if entry.importance is None:
-                    return (protection, 0.0, entry.seq)
                 maximum = 5 if entry.schema_version == "1.0" else 10
-                return (protection, entry.importance / maximum, entry.seq)
+                # Owner decision: retain pending memories above scored ones until
+                # importance arrives. Pending ties still evict the oldest at cap.
+                score = entry.importance / maximum if entry.importance is not None else 1
+                return entry.importance is None, score, entry.seq
 
-            ranked = sorted(self.entries, key=retention_key)
-            victim = ranked[0]
-            # Keep the recorded score consistent with importance-first ordering.
-            oldest_seq, newest_seq = self.entries[0].seq, self.entries[-1].seq
-            recency = (victim.seq - oldest_seq) / max(1, newest_seq - oldest_seq)
-            if victim.importance is None:
-                retention_score = (0.05 * recency) / 2.05
-            else:
-                maximum = 5 if victim.schema_version == "1.0" else 10
-                retention_score = (1 + victim.importance / maximum + 0.05 * recency) / 2.05
-            if victim.kind == "wonder":
-                reason = "wonder_lower_priority"
-            elif victim.memory_id in recent_ids and self.current_stage_ids:
-                reason = "recent_capacity_for_current_stage"
-            elif victim.memory_id in self.pending_score_ids:
-                reason = "pending_importance_capacity"
-            elif victim.memory_id in self.slow_snapshot_ids:
-                reason = "slow_snapshot_capacity"
-            else:
-                reason = "active_capacity_importance_then_recency"
+            victim = min(self.entries, key=retention_key)
+            retention_score = retention_key(victim)[1]
+            reason = "active_capacity_importance_then_oldest"
             event = MemoryChangeEvent(
                 event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
                 memory_id=victim.memory_id, memory_seq=victim.seq, change="evicted",
@@ -149,7 +165,8 @@ class MemoryStore:
         self.pending_score_ids.discard(memory_id)
         return True
 
-    def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):
+    def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast", *, deduplicate_steps=True):
+        """Legacy search API; the U runner uses retrieve_u."""
         if mode not in SEARCH_PROFILES:
             raise ValueError(f"unknown memory search mode: {mode}")
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms
@@ -178,14 +195,90 @@ class MemoryStore:
         scored.sort(key=lambda x:(x[0],x[1].seq),reverse=True)
         chosen=[]; source_steps=set()
         for score,e in scored:
-            if e.source_step_ids and all(s in source_steps for s in e.source_step_ids): continue
+            if deduplicate_steps and e.source_step_ids and all(s in source_steps for s in e.source_step_ids): continue
             chosen.append({**e.model_dump(),"retrieval_score":score})
             source_steps.update(e.source_step_ids)
             if len(chosen)>=limit: break
         return chosen
 
+    @staticmethod
+    def validate_embedding(vector, dimension=None):
+        if (not isinstance(vector, list) or not vector
+                or any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x)
+                       for x in vector)
+                or (dimension is not None and len(vector) != dimension)):
+            raise ValueError("invalid or incompatible embedding")
+
+    def retrieve_u(self, query, limit=20, *, query_vector=None, mode="fast_plan"):
+        """U recent-prefix plus ranked memories, without deduplication or fallback."""
+        if mode not in KIND_WEIGHTS:
+            raise ValueError(f"unknown U memory search mode: {mode}")
+        if limit <= 0:
+            raise ValueError("memory limit must be positive")
+        recent = []
+        if mode == "fast_plan":
+            for kind, window in (("observation", 3), ("action", 5), ("plan", 5), ("thought", 5)):
+                recent.extend(entry.model_dump() for entry in self.entries
+                              if entry.kind == kind and entry.timestamp is not None
+                              and entry.timestamp >= self.timestamp - window)
+        ready = [entry for entry in self.entries if entry.memory_id in self.embedding_cache]
+        if not ready:
+            return recent
+        self.validate_embedding(query_vector)
+        ranked = []
+        for entry in ready:
+            vector = self.embedding_cache[entry.memory_id]
+            self.validate_embedding(vector, len(query_vector))
+            similarity = sum(a * b for a, b in zip(vector, query_vector))
+            recency = math.exp((entry.timestamp or 0) - self.timestamp)
+            maximum = 5 if entry.schema_version == "1.0" else 10
+            importance = entry.importance / maximum if entry.importance is not None else 0
+            score = (similarity + recency + importance) * KIND_WEIGHTS[mode].get(entry.kind, 1)
+            if not math.isfinite(score):
+                raise ValueError("non-finite embedding score")
+            ranked.append((score, entry))
+        # Preserve insertion order for equal scores; do not privilege recent seq twice.
+        ranked.sort(key=lambda row: -row[0])
+        return recent + [{**entry.model_dump(), "retrieval_score": score}
+                         for score, entry in ranked[:limit]]
+
+    async def retrieve_u_with_embeddings(self, query, provider, budget, model, call_log=None,
+                                         *, mode="fast_plan", limit=20):
+        # U plan/act set trigger_update=False. Slow owns memory vector updates.
+        if not any(entry.memory_id in self.embedding_cache for entry in self.entries):
+            return self.retrieve_u(query, limit, mode=mode)
+        reservation = max(1, len(query) * 2 + 128)
+        budget.reserve(reservation)
+        started, settled = time.monotonic(), False
+        record = {"module": "embedding", "stage": "query_embedding",
+                  "provider": getattr(provider, 'provider_name', provider_for_model(model)), "model": model,
+                  "input_tokens": None, "output_tokens": None,
+                  "estimated": True, "estimated_cost_usd": None}
+        try:
+            vectors, usage = await provider.embed([query], model)
+            tokens = usage.get("input_tokens")
+            budget.settle(reservation, tokens)
+            settled = True
+            record.update(provider=usage.get("provider", record["provider"]),
+                          model=usage.get("model", model), input_tokens=tokens,
+                          output_tokens=0, estimated=tokens is None)
+            if usage.get('model', model) != model or usage.get('response_error'):
+                raise ValueError('invalid embedding response model/payload')
+            if len(vectors) != 1:
+                raise ValueError("invalid query embedding count")
+            return self.retrieve_u(query, limit, query_vector=vectors[0], mode=mode)
+        except BaseException as exc:
+            if not settled:
+                budget.settle(reservation, None)
+            record["error"] = type(exc).__name__
+            raise
+        finally:
+            record["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+            if call_log:
+                call_log(record)
+
     async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None,
-                                       mode="fast"):
+                                       mode="fast", *, deduplicate_steps=True):
         if not self.entries:return []
         provider_name = "openai" if isinstance(provider, OpenAIProvider) else "mock" if isinstance(provider, MockProvider) else provider_for_model(model)
         query_key="query:"+query
@@ -213,4 +306,4 @@ class MemoryStore:
                     budget.settle(reservation,None)
                     if call_log:call_log({"module":"embedding","provider":provider_name,"model":model,"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":None,"output_tokens":None,"estimated":True,"estimated_cost_usd":None,"error":type(exc).__name__})
                 raise
-        return self.retrieve(query,limit,embeddings=self.embedding_cache,mode=mode)
+        return self.retrieve(query,limit,embeddings=self.embedding_cache,mode=mode,deduplicate_steps=deduplicate_steps)

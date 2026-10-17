@@ -1,5 +1,37 @@
 # 개발 환경과 협업
 
+## GPU 서버 Qwen 연결
+
+자동 시작·반환은 [대시보드 GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)를 따른다. 최초 인증/임베딩 환경을 준비한 뒤 `runs/private/gpu-session.json`을 두면 기존 dashboard 명령으로 시작한다. `--no-gpu`는 자동 할당을 끈다. 아래는 계속 지원하는 수동 연결 방법이다.
+
+1. 로그인 서버에서 Slurm GPU를 할당받고 DIS01의 `~/persona-llm`에서 `source .venv-dis01/bin/activate`, `export HF_HUB_OFFLINE=1`, `python -u api_server.py`를 실행한다. 서버와 할당 세션을 유지한다.
+2. 로컬 별도 터미널에서 기존 SSH 점프 경로로 DIS01의 8000번 포트를 전달한다. SSH 비밀번호는 터미널에 직접 입력하거나 SSH 키를 사용한다. 프로젝트 `.env`에 SSH 비밀번호를 저장하지 않는다.
+3. 로컬에서 `curl http://127.0.0.1:8000/health`로 `model: persona-qwen`을 확인한다. 터널의 로컬 포트를 바꾼 경우 `.env`의 `PERSONA_QWEN_API_URL=http://127.0.0.1:<포트>/v1/chat/completions`를 설정한다. URL은 로컬 주소만 허용한다.
+4. 대시보드의 GPU 서버 제공자를 선택하고 **연결 확인**을 누른다. 키 입력은 없다. CLI는 `python3 -m uxagent run --study configs/study-decathlon-live.json --provider gpu --headless`처럼 실행한다. 이 공개 사이트 설정은 검색 결과와 상세 일부만 독립 판정한다.
+5. Slurm 할당이 끝나거나 SSH 터널이 닫히면 이후 모델 요청은 실패한다. 앱의 연결 확인은 원격 할당이나 터널을 자동 시작하지 않는다.
+
+기본 합성 fixture는 로컬 8000번 포트를 사용한다. 합성 fixture와 GPU 모델을 함께 실행할 때는 터널을 로컬 8001번 등으로 열고 `PERSONA_QWEN_API_URL`을 같은 포트로 지정한다. 원격 서버의 포트는 계속 8000번이다. Qwen 채팅 제공자 자체 embed는 미지원이다. 분리 GPU 임베딩은 위 자동 시작 문서의 별도 환경/설정을 사용하며 실제 원격 검증과 비용은 미확인이다.
+
+## 원격 GPU 임베딩의 SSH 인증
+
+채팅과 별도 임베딩 서버를 같은 SSH 연결에서 포트 전달할 수 있다. SSH 비밀번호는 로컬 터미널의 프롬프트에만 입력하고 앱 설정·`.env`·명령 인자·저장소·이슈에는 넣지 않는다. 앱은 전달된 로컬 HTTP API를 사용하므로 SSH 비밀번호를 필요로 하지 않는다.
+
+서버 정책이 공개 키 인증을 허용한다면 암호로 보호한 전용 SSH 키를 만들고 로컬 ssh-agent에 등록해 반복 인증을 줄일 수 있다. 공개 키만 각 인증 대상 서버에 등록하며 개인 키는 로컬에 둔다. 기존 키를 덮어쓰거나 서버 인증 설정을 임의 변경하지 않는다. ProxyJump로 로그인 서버를 경유할 수 있으며 agent forwarding을 켤 필요는 없다.
+
+다음은 **자리표시자를 바꿔 사용하는 예시**다. 임베딩 포트8002와 모델 서버의 존재는 아직 확인하지 않았으며 이 명령을 실행했다고 임베딩 기능이 생기는 것은 아니다.
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes \
+  -J LOGIN_USER@LOGIN_HOST \
+  -L 127.0.0.1:8001:127.0.0.1:8000 \
+  -L 127.0.0.1:8002:127.0.0.1:8002 \
+  GPU_USER@GPU_HOST
+```
+
+원격 채팅8000은 로컬8001, 원격 임베딩8002는 로컬8002로 전달하는 예다. 실제 원격 주소·포트와 API 경로는 서버 구성 확인 후 설정한다. SSH 인증 뒤에도 Slurm 할당·서버 프로세스·터널을 유지해야 한다. 앱에서 SSH 로그인이나 원격 서버 설치를 자동 실행하지 않는다.
+
+근거: [OpenSSH ssh의 -J/-L/-N](https://man.openbsd.org/ssh), [ssh-keygen](https://man.openbsd.org/ssh-keygen), [ssh-agent](https://man.openbsd.org/ssh-agent).
+
 ## Windows PowerShell
 
 ```powershell

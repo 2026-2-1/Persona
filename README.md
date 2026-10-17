@@ -6,6 +6,8 @@
 
 최종 A/B/C/D 통합 준비본의 로컬 전체 검사는 **418개**를 통과했습니다. 무료 Mock의 독립 성공·6행동·기록 6/6을 확인했습니다. [검증 기록](docs/verification.md)과 각 원격 PR의 CI를 구분해 확인하세요. 데카트론 AI 실행 #60/#62는 단계별 Fast와 호환되는 설정·독립 평가 연결이며, 실제 유료 모델·공개 사이트 재검증은 별도입니다.
 
+2026-10-17 Qwen 적용 준비본은 로컬 전체 **426개** 검사와 doctor·무료 Mock 통합을 통과했습니다. 실제 GPU/공개 데카트론은 이번에 재호출하지 않았으며, 원격 CI 및 과업 성공과 구분합니다. 상세 환경과 한계는 [검증 기록](docs/verification.md)을 따릅니다.
+
 ## 빠른 시작 (Windows)
 
 ```powershell
@@ -37,7 +39,11 @@ macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 �
 
 ## API 연결
 
-대시보드에서 3단계에서 OpenAI / Claude / Gemini / Jev+Gemini를 선택해 키를 입력하고 **연결 확인**을 누릅니다. Jev는 Gemini 연결도 필요하며 필요한 키 입력만 표시합니다. 작은 실제 요청으로 연결을 확인하므로 API 사용 요금이 발생할 수 있습니다. 키는 서버 프로세스 메모리에만 보관하고 브라우저 저장소·원자료·저장소에 쓰지 않습니다. 서버 재시작 시 다시 연결해야 합니다. 로컬 `.env`로 설정해도 되며 프로세스의 기존 값을 덮어쓰지 않습니다. `.env.example`에는 빈 변수만 있습니다.
+GPU 서버의 `persona-qwen` 모델을 사용하려면 먼저 원격 `api_server.py`와 SSH 터널을 실행하고 `curl http://127.0.0.1:8000/health`로 확인합니다. 대시보드 3단계에서 **GPU 서버 — Qwen3.5-9B → 연결 확인**을 선택하면 키 없이 실제 채팅 요청으로 확인합니다. CLI는 `--provider gpu`를 사용합니다. 기본 채팅 주소는 `http://127.0.0.1:8000/v1/chat/completions`이며, 다른 로컬 포트로 터널을 열었다면 `PERSONA_QWEN_API_URL`에 전체 채팅 주소를 설정합니다. GPU 할당과 터널은 사용 중 유지해야 합니다. [실행 순서](docs/development.md#gpu-서버-qwen-연결)를 참고하세요.
+
+기본 합성 사이트도 로컬 8000번 포트를 사용합니다. 합성 사이트에서 GPU 모델을 시험할 때는 터널의 로컬 포트를 8001 등 다른 번호로 열고 `PERSONA_QWEN_API_URL`을 그 포트로 맞춥니다. 공개 사이트 설정인 `configs/study-decathlon-live.json`은 이 충돌이 없습니다. GPU 모델의 실제 비용은 서버 응답만으로 알 수 없으므로 비용 미확인으로 기록합니다.
+
+대시보드 3단계에서 GPU 서버 / OpenAI / Claude / Gemini / Jev+Gemini를 선택하고 **연결 확인**을 누릅니다. GPU 서버는 SSH 터널을 사용하며 키 입력이 필요 없습니다. 다른 제공자는 API 키가 필요하고 Jev는 Gemini 연결도 필요합니다. 연결 확인은 작은 실제 요청을 보냅니다. 키는 서버 프로세스 메모리에만 보관하고 브라우저 저장소·원자료·저장소에 쓰지 않습니다. 서버 재시작 시 다시 연결해야 합니다. 로컬 `.env`로 설정해도 되며 프로세스의 기존 값을 덮어쓰지 않습니다. `.env.example`에는 빈 변수만 있습니다.
 
 Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 입력 문구가 필요하면 Gemini가 생성합니다. 낮은 신뢰도·잘못된 선택·Jev 오류에도 Gemini fallback을 사용합니다. OpenAI 경로는 기존 Chat Completions API, Claude는 Anthropic Messages API와 Claude Sonnet 4.6을 사용합니다. Claude 키 변수는 `ANTHROPIC_API_KEY`입니다. 연결되지 않은 유료 모델은 다음 단계로 진행할 수 없습니다.
 

@@ -171,6 +171,8 @@ class FastLoop:
 
     def _provider_name(self):
         model = str(getattr(self.provider, "model", self.model) or "")
+        if model == "persona-qwen":
+            return "gpu"
         if model.startswith("gemini-") or hasattr(self.provider, "choose"):
             return "gemini"
         if model.startswith("claude-"):

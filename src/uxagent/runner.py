@@ -11,7 +11,7 @@ from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
 from .evaluator import evaluate
-from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
+from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, LocalQwenProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
 from .fast_loop import FastLoop
 from .brain import Brain
 from .memory import MemoryStore
@@ -90,6 +90,14 @@ def validate_provider_configuration(provider_name: str, config: StudyConfig):
         raise ValueError("This provider does not support the configured embedding model")
 
 
+def validate_gpu_fixture_port(start_url: str):
+    page = urlsplit(start_url)
+    api = urlsplit(os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions"))
+    if (page.hostname in {"localhost", "127.0.0.1"} and page.path.endswith(("shop.html", "decathlon.html"))
+            and page.port == api.port):
+        raise ValueError("합성 사이트와 GPU SSH 터널이 같은 로컬 포트를 사용합니다. 터널을 8001번 등으로 열고 PERSONA_QWEN_API_URL을 맞추세요")
+
+
 class FixtureServer:
     def __init__(self, port=8000, host="127.0.0.1"): self.port=port; self.host=host; self.server=None; self.thread=None
     def start(self):
@@ -114,6 +122,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     profile=json.loads((config_path.parent/config.evaluation_profile_file).read_text(encoding="utf-8")) if config.evaluation_profile_file else None
     model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
     validate_provider_configuration(provider_name, config)
+    if provider_name == "gpu":
+        validate_gpu_fixture_port(config.start_url)
     routes = model_routes(provider_name, model)
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
@@ -181,7 +191,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                               **({"budget_reason":budget.last_exceeded_reason} if code=="budget_exceeded" else {})}})
     def stop_requested():
         return stop_file is not None and Path(stop_file).is_file()
-    provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
+    provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else LocalQwenProvider() if provider_name=="gpu" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,

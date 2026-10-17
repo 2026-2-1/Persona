@@ -180,7 +180,7 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
             if stage=="feedback":return json.dumps({"thoughts":["검색 결과가 같다"]}),{"model":"fake","input_tokens":1,"output_tokens":1}
             if stage=="plan":return json.dumps({"plan":"검색 버튼을 누른다","rationale":"버튼이 보인다","next_step":"검색"}),{"model":"fake","input_tokens":1,"output_tokens":1}
             payload=json.loads(messages[-1]["content"])
-            target=next(e for e in payload["valid_targets"]["clickable"] if e=="검색")
+            target=next(iter(payload["valid_targets"]["clickable"]))
             return json.dumps({"actions":[{"action":"click","target":target,"description":"화면에서 검색 버튼을 사용한다."}]},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",RepeatingProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"repeated")
@@ -232,7 +232,8 @@ async def test_observation_hides_hidden_text_and_stale_ids_are_rejected():
             await browser.active.goto(config.start_url)
             first,registry=await observe(browser)
             assert "정답은 상품 내부 코드" not in first.html
-            assert "테스트 숨김 옵션" not in first.html
+            # The U parser preserves native select options, including disabled/inactive options.
+            assert "테스트 숨김 옵션" in first.html
             # Two equal visible labels receive distinct IDs within the same observation.
             await browser.active.evaluate("""() => {for(let i=0;i<2;i++){const b=document.createElement('button');b.textContent='같은 버튼';document.querySelector('main').append(b)}}""")
             second,second_registry=await observe(browser)

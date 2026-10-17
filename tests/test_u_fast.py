@@ -326,10 +326,14 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
         system = payload['messages'][0]['content']
         if system.startswith('FAST_STAGE:'):
             stage = system.split(':', 1)[1].splitlines()[0]
-            content = {'perception': {'observations': ['검색 화면']},
-                       'feedback': {'thoughts': ['직전 검색 제안을 확인']},
-                       'plan': {'plan': '검색 확인', 'rationale': '검색 버튼 확인', 'next_step': '검색'},
-                       'decision': {'actions': [{'action': 'click', 'target': '검색', 'description': '검색'}]}}[stage]
+            if stage == 'decision':
+                decision_payload = json.loads(payload['messages'][-1]['content'])
+                content = {'actions': [{'action': 'click',
+                    'target': decision_payload['valid_targets']['clickable'][1], 'description': '검색'}]}
+            else:
+                content = {'perception': {'observations': ['검색 화면']},
+                           'feedback': {'thoughts': ['직전 검색 제안을 확인']},
+                           'plan': {'plan': '검색 확인', 'rationale': '검색 버튼 확인', 'next_step': '검색'}}[stage]
         elif system.startswith('SLOW_STAGE:importance'):
             content = {'score': 5, 'rationale': '기억 확인'}
         elif system.startswith('SLOW_STAGE:wonder'):

@@ -499,3 +499,11 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 로컬 전체 **502 passed in209.58s**. 이후 확인 값 불일치·키 방식 명시 전환 회귀를 보강했다. 비밀번호 저장 상태에서 gpu-key-setup을 완료해도 이전 저장 방식이 남는 실패를 재현해 성공 시 선택 모드를 해제했다. 최종 head 전체는 원격 CI에서 확인한다. 임시 agent 검사는 기본 sandbox에서 소켓 생성이 차단되므로 허용 환경 결과와 구분한다.
 
 - 최종 관련 **38 passed in0.46s**. 자동 승인 검토 시간 초과로 한 차례 실행이 취소되어 재시도했고, 실제 코드 수정과 임시 agent 허용 환경 검사 이후 통과를 확인했다.
+
+## 2026-10-18 #86 U DOM parser 관찰
+
+- `python3 -m pytest -q` 최종 전체 검사 **510 passed in 254.96s**. Chromium 실행에는 macOS sandbox에서 Mach rendezvous가 막혀 승인된 로컬 실행이 필요했다. 관련 관찰·action·runner·fake Qwen 회귀는 수정 후 **55 passed in 39.84s**였다.
+- 신규 browser 회귀는 빈 input/contenteditable, current select value/option, 한글·중복 이름 ID, 페이지 아래 scrollable 대상, hidden 제거, parser 재실행, 원본 DOM locator, password value redaction, network timeout, hover listener/fetch tracking을 포함한다. Network가 끝나지 않으면 기다림을 제한하고 관찰에 `observation_wait_timeout`을 기록한다.
+- `python3 -m compileall -q src`, Node `--check` 두 parser 리소스, `git diff --check` 통과. wheel 검사에서 `uxagent/parser/parser.js`, `uxagent/parser/initscript.js` 포함을 확인했다.
+- 공개 Decathlon 검색 URL은 HTTP200이었다. 관찰은 검색 입력 1, clickable 52, select 0, semantic ID 275개·정리 HTML 99,328자로 구성됐으며 검색·상품·필터 후보와 처음 5개 locator가 확인됐다. 페이지의 XHR/fetch가 3초 안에 idle하지 않아 `observation_wait_timeout`이 같이 기록됐다. 상품 과업이나 구매 행동은 하지 않았다.
+- 공개 페이지의 99,328자는 기존 권고 한도 12,000자를 넘는다. 관찰은 조용히 자르지 않고 초과 사실을 `CaptureInfo.limits_exceeded`와 측정 크기에 기록한다. Qwen 실제 생성 요청에서 이 크기가 처리되는지는 미검증이며 페이지/모델 한도 오류 가능성이 남는다. 실시간 관찰은 저장하지 않았다.

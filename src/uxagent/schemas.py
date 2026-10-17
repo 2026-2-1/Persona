@@ -197,6 +197,11 @@ class CaptureInfo(StrictModel):
     policy: str = "viewport"
     truncated: bool = False
     omitted_element_count: int = 0
+    observed_text_chars: int = 0
+    observed_element_count: int = 0
+    configured_text_limit: int | None = None
+    configured_element_limit: int | None = None
+    limits_exceeded: bool = False
     screenshot_path: str | None = None
     unsupported: list[str] = Field(default_factory=list)
 

@@ -14,9 +14,11 @@ macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 �
 
 SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent gpu-key-setup`으로 등록합니다. 이후 대시보드는 전용 키/agent를 사용합니다. [설정과 초기 인증](docs/tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증)을 참고하세요.
 
-#85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. SSH 인증과 원격 임베딩 최초 준비 후 사용할 수 있습니다. 실제 GPU/Slurm 검증은 남아 있으며 테스트와 구분합니다.
+#85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. 실제 임베딩 GPU health·벡터 응답과 Slurm 반환을 확인했습니다.
 
-#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. 실제 GPU embedding·U 검색 공식·DOM/전체 행동·종료 후 평가는 후속입니다.
+#86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다.
+
+#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85의 GPU embedding·U 검색은 연결됐고 DOM 관찰·전체 행동·종료 후 평가는 후속입니다.
 
 ## 빠른 시작 (Windows)
 

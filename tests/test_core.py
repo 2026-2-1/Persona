@@ -164,8 +164,9 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
     class FinishProvider:
         async def complete(self,messages,*args,**kwargs):
             stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
-            result={"perception":{"perception":"초기 화면"},"plan":{"plan":"완료 여부를 확인한다"},
-                "decision":{"rationale_summary":"현재 결과는 조건에 맞지 않습니다.","action":None,"finish":{"claim":"completed","summary":"완료했다고 판단했습니다."}}}[stage]
+            result={"perception":{"observations":["초기 화면"]},
+                "plan":{"plan":"완료 여부를 확인한다","rationale":"현재 결과를 검토한다","next_step":"종료"},
+                "decision":{"actions":[{"action":"terminate","description":"완료했다고 판단했습니다."}]}}[stage]
             return json.dumps(result,ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",FinishProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"false-finish")
@@ -175,11 +176,12 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
     class RepeatingProvider:
         async def complete(self,messages,*args,**kwargs):
             stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
-            if stage=="perception":return json.dumps({"perception":"검색 버튼이 보인다"}),{"model":"fake","input_tokens":1,"output_tokens":1}
-            if stage=="plan":return json.dumps({"plan":"검색 버튼을 누른다"}),{"model":"fake","input_tokens":1,"output_tokens":1}
-            payload=json.loads(messages[-1]["content"]);obs=payload["observation"]
-            target=next(e for e in obs["clickable_elements"] if e["name"]=="검색")
-            return json.dumps({"rationale_summary":"화면에서 검색 버튼을 사용한다.","action":{"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":target["id"]},"finish":None},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
+            if stage=="perception":return json.dumps({"observations":["검색 버튼이 보인다"]}),{"model":"fake","input_tokens":1,"output_tokens":1}
+            if stage=="feedback":return json.dumps({"thoughts":["검색 결과가 같다"]}),{"model":"fake","input_tokens":1,"output_tokens":1}
+            if stage=="plan":return json.dumps({"plan":"검색 버튼을 누른다","rationale":"버튼이 보인다","next_step":"검색"}),{"model":"fake","input_tokens":1,"output_tokens":1}
+            payload=json.loads(messages[-1]["content"])
+            target=next(e for e in payload["valid_targets"]["clickable"] if e=="검색")
+            return json.dumps({"actions":[{"action":"click","target":target,"description":"화면에서 검색 버튼을 사용한다."}]},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",RepeatingProvider)
     _,summary=await run_study(study,"mock",None,False,tmp_path/"repeated")
     assert summary["termination_reason"]=="stuck"

@@ -1,5 +1,13 @@
 # 평가·기록·결과 계약
 
+## #83 U Fast 계약 (작업 브랜치)
+
+현재 실행기의 Fast 계약은 [#83 구현 명세](tasks/83-u-fast.md)를 따른다. `UPerception.observations`, `UFeedback.thoughts`, `UPlan.plan/rationale/next_step`, `UActions.actions`를 소비한다. 후속 차례의 feedback과 perceive는 같은 현재 HTML에서 동시에 시작하고 공유 기억을 저장한 뒤 plan→act로 진행한다. plan 검색은 intent, act 검색은 next_step이다.
+
+새 `thought` 기억과 모든 Action 제안은 generated다. 기억의 `timestamp`는 차례 순번, Action의 `raw_action`은 U 원본 제안이다. `AgentDecision.proposed_actions`·`next_step`, `BrainStageRecord.model_response`·feedback stage는 추가 필드다. 기록의 perception/plan/decision 이름은 기존 소비용이며 U 원본 응답은 model_response에 남긴다. 원본 필드가 없는 구버전 기록은 기존대로 읽는다. 결과 성공 여부는 Action 기억에 쓰지 않고 steps의 result/evaluation을 확인한다.
+
+observation/tab ID는 실행 어댑터가 현재 관찰에서 붙인다. 모델 응답이나 완료된 Slow 결과를 현재 observation/plan version에 맞춰 강제로 허가하는 Brain gate는 없다. 실행기의 기존 브라우저 접근 정책은 #87, 과업 종료/평가 정책은 #89에서 변경한다. 제안 actions 전부를 기억에 저장하고 첫 번째만 실행하므로 두 번째 이후 제안을 실제 실행으로 집계하지 않는다. `type.enter=true`는 fill 후 Enter 한 번이며, clear는 빈 문자열 type으로 변환한다. 나머지 U 행동 확대와 선택적 key_press target 지원은 #87 범위다.
+
 이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
 
 현재 통합 브랜치는 #79와 #78 후속의 생성 계약을 D/C 소비에 연결했다. Fast 작업 kind와 adopted/discarded를 포함한 8상태, Wonder 추첨·부모 연결을 같은 검증 reader로 읽는다. [통합 검증](handoffs/2026-10-16-latest-pr-integration.md)을 따른다. 실제 입력 소비 계측과 연구용 실험 제어는 별도 후속이다.

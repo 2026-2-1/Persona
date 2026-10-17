@@ -228,6 +228,7 @@ class Action(StrictModel):
     key: Literal["Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "Space"] | None = None
     scroll_y: int | None = Field(default=None, strict=True, ge=-900, le=900)
     input_mode: Literal["fill", "sequential"] | None = None
+    enter: bool | None = Field(default=None, strict=True)
 
     @model_validator(mode="after")
     def validate_fields(self):
@@ -238,11 +239,11 @@ class Action(StrictModel):
         for key in required.get(self.type, []):
             if getattr(self, key) is None:
                 raise ValueError(f"{key} is required for {self.type}")
-        allowed={"click":{"target_id"},"type":{"target_id","text","input_mode"},"hover":{"target_id"},
+        allowed={"click":{"target_id"},"type":{"target_id","text","input_mode","enter"},"hover":{"target_id"},
                  "select":{"target_id","option_value"},"keypress":{"target_id","key"},
                  "scroll":{"scroll_y"},"navigate":{"url"},"back":set(),
                  "switch_tab":{"target_tab_id"},"close_tab":{"target_tab_id"}}
-        fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","input_mode"}
+        fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","input_mode","enter"}
         supplied={key for key in fields if getattr(self,key) is not None}
         if supplied-allowed[self.type]:
             raise ValueError(f"fields {sorted(supplied-allowed[self.type])} are not allowed for {self.type}")
@@ -268,6 +269,56 @@ class Finish(StrictModel):
     summary: str
 
 
+class UPerception(StrictModel):
+    observations: list[str]
+
+
+class UFeedback(StrictModel):
+    thoughts: list[str]
+
+
+class UPlan(StrictModel):
+    plan: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    next_step: str = Field(min_length=1)
+
+
+class UAction(StrictModel):
+    """Model proposal, deliberately independent of execution observation/tab IDs."""
+
+    action: Literal["click", "type", "hover", "select", "clear", "key_press", "goto_url",
+                    "back", "forward", "refresh", "new_tab", "switch_tab", "close_tab", "terminate"]
+    description: str = Field(min_length=1)
+    target: str | None = None
+    text: str | None = None
+    enter: bool | None = Field(default=None, strict=True)
+    value: str | None = None
+    key: str | None = None
+    url: str | None = None
+    tab_id: int | str | None = None
+    answer: str | None = None
+
+    @model_validator(mode="after")
+    def validate_arguments(self):
+        required = {"click": {"target"}, "type": {"target", "text"}, "hover": {"target"},
+                    "select": {"target", "value"}, "clear": {"target"}, "key_press": {"key"},
+                    "goto_url": {"url"}, "new_tab": {"url"}, "switch_tab": {"tab_id"},
+                    "close_tab": {"tab_id"}}
+        allowed = {**required, "type": {"target", "text", "enter"},
+                   "key_press": {"key", "target"}, "terminate": {"answer"}}
+        fields = {"target", "text", "enter", "value", "key", "url", "tab_id", "answer"}
+        supplied = {name for name in fields if getattr(self, name) is not None}
+        if required.get(self.action, set()) - supplied:
+            raise ValueError(f"missing arguments for {self.action}")
+        if supplied - allowed.get(self.action, set()):
+            raise ValueError(f"unexpected arguments for {self.action}")
+        return self
+
+
+class UActions(StrictModel):
+    actions: list[UAction] = Field(min_length=1)
+
+
 class AgentDecision(StrictModel):
     decision_id: str
     perception: str
@@ -275,6 +326,8 @@ class AgentDecision(StrictModel):
     rationale_summary: str
     action: Action | None = None
     finish: Finish | None = None
+    proposed_actions: list[UAction] = Field(default_factory=list)
+    next_step: str | None = None
 
     @model_validator(mode="after")
     def exactly_one_outcome(self):
@@ -290,7 +343,7 @@ class BrainStageRecord(StrictModel):
     record_id: str = Field(min_length=1)
     task_id: str | None = Field(default=None, min_length=1)
     run_id: str = Field(min_length=1)
-    stage: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    stage: Literal["perception", "feedback", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
     observation_id: str | None = Field(default=None, min_length=1)
     plan_id: str | None = Field(default=None, min_length=1)
     plan_version: int | None = Field(default=None, ge=1)
@@ -299,6 +352,7 @@ class BrainStageRecord(StrictModel):
     text: str = Field(min_length=1)
     action: Action | None = None
     finish: Finish | None = None
+    model_response: dict[str, Any] | None = None
     content_status: Literal["generated"] = "generated"
     recorded_at: datetime
 
@@ -312,7 +366,9 @@ class BrainStageRecord(StrictModel):
             raise ValueError(f"plan_id and plan_version are required for {self.stage}")
         if self.stage == "decision":
             if (self.action is None) == (self.finish is None):
-                raise ValueError("decision requires exactly one action or finish proposal")
+                if self.action is not None or self.model_response is None:
+                    raise ValueError("decision requires an action, finish or U proposal response")
+                UActions.model_validate(self.model_response)
             if self.action is not None and self.action.observation_id != self.observation_id:
                 raise ValueError("proposed action must reference the decision observation")
         elif self.action is not None or self.finish is not None:
@@ -329,7 +385,7 @@ class BrainTaskEvent(StrictModel):
     event_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    kind: Literal["perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    kind: Literal["perception", "feedback", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
     status: Literal["scheduled", "started", "skipped", "completed", "adopted", "discarded", "failed", "cancelled"]
     snapshot_seq: int = Field(ge=0)
     observation_id: str | None = Field(default=None, min_length=1)
@@ -388,8 +444,10 @@ class MemoryEntry(StrictModel):
     memory_id: str
     seq: int = Field(ge=1)
     run_id: str
-    kind: Literal["observation", "plan", "action", "reflection", "wonder"]
+    kind: Literal["observation", "thought", "plan", "action", "reflection", "wonder"]
     text: str
+    timestamp: int | None = Field(default=None, ge=0)
+    raw_action: dict[str, Any] | None = None
     source_step_ids: list[int] = Field(default_factory=list)
     source_observation_ids: list[str] = Field(default_factory=list)
     source_memory_ids: list[str] = Field(default_factory=list)

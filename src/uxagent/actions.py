@@ -88,6 +88,8 @@ class ActionExecutor:
                         await locator.press_sequentially(action.text or "", timeout=self.timeout_ms)
                     else:
                         await locator.fill(action.text or "", timeout=self.timeout_ms)
+                    if action.enter:
+                        await locator.press("Enter", timeout=self.timeout_ms)
                 elif action.type == "keypress":
                     if not target_data.capabilities.intersection({"click", "type"}):
                         raise ActionFailure("unsupported_control", "Target is not a safe keyboard control")

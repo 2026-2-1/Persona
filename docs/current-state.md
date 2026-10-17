@@ -6,6 +6,8 @@
 
 ## 구현됨
 
+- #83 작업 브랜치의 실행기는 `Brain.forward`로 U Fast 응답을 소비한다. 최초 perceive, 이후 feedback/perceive 동시 실행 후 plan/act를 호출하고, rationale Thought·Plan·모든 Action 제안을 실행 전에 저장한다. 첫 제안만 실행하며 모델은 observation/tab ID를 생성하지 않는다. 기록은 `u-fast-1`로 구분한다. [계약·제한](tasks/83-u-fast.md)이 아래 과거 #41/#43 Fast 정책보다 우선한다.
+- #83에서 현재 observation·plan version 기반 Brain 채택 게이트와 강제 우선 기억 삽입, 실행 후 결과를 Action 기억으로 만드는 경로를 제거했다. Slow는 첫 인식 직후 시작하는 기존 reflection 연결만 있으며 U의 계속되는 reflect/wonder/update 반복은 #84에서 구현해야 한다. 도구 결과와 독립 판정은 기존 steps에 보존한다.
 - Python 3.11+ / Playwright Chromium / Pydantic.
 - 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
 - Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.

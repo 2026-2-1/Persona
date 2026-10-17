@@ -393,3 +393,11 @@
 - 해결: 개별 모델·브라우저 오류는 해당 페르소나 실패로 집계하고 다음 페르소나를 계속 실행한다. 예정 순회를 마친 batch는 완료 상태로 반환하며, 대시보드는 실패한 페르소나와 로그를 모달로 표시한다.
 - 함께 확인할 회귀: 실패 뒤 다음 페르소나 호출, batch 실패 수·원문 로그, 전체 작업 완료 상태, 독립 판정 `unknown`, 모달 HTML escaping과 닫기.
 - 실제 검증 결과: 수정 전 batch 종료 코드와 모달 회귀 2개가 실패했고 수정 후 통과했다. 대시보드 완료 상태 회귀를 포함한 관련 검사 18개도 통과했다.
+
+## 2026-10-17 #83 U Fast 전환과 회귀
+
+- 증상: 기존 Fast는 feedback이 없고 perception/plan 단일 문자열과 observation/tab ID가 든 행동을 요구했다. U의 observations·rationale/next_step·actions를 그대로 연결할 수 없었고 Action 기억은 실행 결과 뒤에 저장됐다.
+- 원인: 이전 단계별 Fast 계약과 Brain의 현재 observation/plan version gate, source step 중복 제거·채택 결과 강제 삽입이 U 호출·기억 흐름과 달랐다.
+- 해결: Brain.forward가 최초 perceive, 후속 feedback/perceive gather, plan/act와 U 원본 응답 기록을 연결한다. Thought·Plan·raw Action 제안은 실행 전에 저장하고 실제 도구 결과는 steps에 별도로 남긴다. 모델이 observation/tab ID를 만들지 않도록 호스트 어댑터에서 붙인다. 자세한 차이는 [#83](tasks/83-u-fast.md)을 따른다.
+- 함께 확인할 회귀: Event 기반 동시 실행, 첫 feedback 미호출, 빈/잘못된 응답, 실제 사용량/예산/취소 정산, 제안 뒤 도구 실패, 일반 조건 개인 배경 제외, type+Enter 실제 제출, 데카트론 상품 일치/불일치와 평가 프로필 전달, 기존 사람 검토/출력.
+- 실제 검증 결과: 새 U 회귀 8개가 구현 전 실패하고 구현 후 통과했다. 한쪽 실패·취소·JSON 사용량·실행 어댑터 회귀까지 확장한 13개가 통과했다. 첫 전체 검사는 426 passed / 8 failed였고 기존 계약을 사용하는 테스트와 Mock 내부 재호출 계측을 확인했다. Mock은 네트워크 요청이 아닌 내부 변환을 순수 helper로 바꿔 사용량 중복 집계를 해결했고, 해당 실패와 인접 회귀 42개가 통과했다. 최종 전체 결과는 [verification](verification.md)에 기록한다.

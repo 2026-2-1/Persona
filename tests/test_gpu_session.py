@@ -165,3 +165,17 @@ def test_embedding_starts_separately_and_environment_is_restored(tmp_path, monke
     manager.close()
     assert os.environ['PERSONA_QWEN_API_URL'].endswith('9991/v1/chat/completions')
     assert os.environ['PERSONA_EMBEDDING_API_URL'].endswith('9992/v1/embeddings')
+
+
+def test_authentication_only_allocation_does_not_start_models_or_forward_ports(tmp_path, monkeypatch):
+    transport=Transport();manager=session(tmp_path,monkeypatch,transport)
+    def forbidden(*args): raise AssertionError('model/port operations forbidden in enrollment')
+    monkeypatch.setattr(GpuSession,'_check_ports',forbidden)
+    monkeypatch.setattr(GpuSession,'_wait_health',forbidden)
+    manager.config=manager.config.model_copy(update={'embedding_model':'not-needed'})
+    manager.start(authentication_only=True)
+    script=next(kwargs['input'] for args,kwargs in transport.calls if 'sbatch ' in args[-1])
+    assert 'exec sleep 600' in script and 'python' not in script
+    assert not any('-L' in args for args,_ in transport.calls)
+    manager.close()
+    assert any(args[-1]=='scancel 12345' for args,_ in transport.calls)

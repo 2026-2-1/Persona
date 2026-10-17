@@ -33,6 +33,11 @@ def _parser():
     group=p.add_mutually_exclusive_group()
     group.add_argument("--gpu-config", help="Private SSH/Slurm configuration; auto-detect runs/private/gpu-session.json")
     group.add_argument("--no-gpu",action="store_true",help="Disable automatic GPU allocation for this dashboard")
+    p=sub.add_parser('gpu-key-setup',help='Enroll a dedicated SSH public key once for automatic GPU startup')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
+    p.add_argument('--identity-file',default='~/.ssh/uxagent_gpu_ed25519')
+    p=sub.add_parser('gpu-key-unlock',help='Load the existing GPU SSH key into ssh-agent')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
     p=sub.add_parser("review");p.add_argument("--run",required=True)
     p=sub.add_parser("survey");p.add_argument("--run",required=True)
     p=sub.add_parser("interview");p.add_argument("--run",required=True);p.add_argument("--at-step",type=int,required=True);p.add_argument("--question",required=True)
@@ -153,6 +158,14 @@ def main():
             if not args.no_gpu and gpu_config is None and Path('runs/private/gpu-session.json').is_file():
                 gpu_config = 'runs/private/gpu-session.json'
             serve_dashboard(args.port,args.runs,args.personas_dir,args.study,gpu_config=gpu_config)
+            return 0
+        if args.command=='gpu-key-setup':
+            from .gpu_ssh_keys import setup_gpu_key
+            setup_gpu_key(args.gpu_config,key_path=args.identity_file)
+            return 0
+        if args.command=='gpu-key-unlock':
+            from .gpu_ssh_keys import unlock_gpu_key
+            unlock_gpu_key(args.gpu_config)
             return 0
         if args.command=="review":
             file,issues=create_review(args.run);print(json.dumps({"review":str(file),"issue_candidates":len(issues)},ensure_ascii=False));return 0

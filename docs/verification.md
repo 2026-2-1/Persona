@@ -476,3 +476,13 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 최종 정책 반영 전체 `python3 -m pytest -q --tb=short`: **482 passed in 224.32s**. 이 전체 실행 도중 반환 직전의 squeue 작업ID·고유 이름 동시 대조를 보강했고, 해당 보강 이후 신규/Slow/제거/중요도 집중 **52 passed in 0.81s**였다. 새 커밋 전체 원격 CI 결과는 PR에서 별도로 확인한다.
 - doctor: Python3.14.5 / Playwright1.55.0 Chromium available, study_errors 없음. Mock CLI 합성 통합: verified_success / 독립 success, **6행동·기록6/6·1,262 mock 요청**, 단일 Slow worker·603회 순환·종료후active/pending0·cancelled. 임베딩 미설정/not_configured 조건이며 실제 GPU 임베딩이나 성능 지표가 아니다. 종료 취소 usage는 미확인으로 보존한다.
 - wheel 빌드 후 gpu_session.py/embeddings.py/embedding_server.py가 현재 파일과 byte 단위로 같고 격리 import에서 원격 helper 리소스를 읽는 것을 확인했다. 예시 설정으로 생성한 원격 job script의 bash -n 통과. repo 검사0 problems·Python compileall·diff 공백 검사 통과. 별도 lint/typecheck 설정은 없다. staged 검사와 실제 파일 목록을 push 전에 확인한다.
+
+## 2026-10-18 실제 Qwen health·반환과 SSH 키 인증 후속
+
+- 사용자 터미널에서 최초 login/compute 비밀번호를 입력해 시작한 Qwen-only smoke에 Codex가 실제 요청을 보냈다. localhost8001/health에서 HTTP200/status=ok/model=persona-qwen을 확인하고 작업19346의 squeue 소멸·반환, phase=finished/released=true, 복구 파일 삭제를 확인했다. 원자료는 runs/private에만 남겼다. 임베딩·생성 추론·키 인증을 검증한 것은 아니다.
+- 신규 키 등록 모듈 부재 실패를 먼저 확인한 뒤 관련 **31 passed in 0.26s**였다. 기존 키/제한 옵션 보존·실패 시 비활성화·양쪽 새 인증·모델 없는 임시 할당을 확인했다. 격리 ssh-agent 소켓 검사는 첫 샌드박스 실행에서 막혀 허용 환경에서 재실행했다.
+- 실제 agent 서명은 테스트용 임시 키와 새 agent로 검증하고 생성한 agent를 종료했다. 사용자 키·원격 authorized_keys·SSH 전역 설정은 변경하지 않았다. 사용자 실제 최초 등록은 터미널에서 gpu-key-setup 실행 후 확인해야 한다.
+
+- 후속 전체 로컬 검사 **497 passed in207.93s**. 그 뒤 공개 키 추가 중 외부 프로세스의 동시 append를 덮어쓰는 실패를 재현해 O_APPEND로 수정했다. 수정 후 관련 **32 passed in0.28s**이며, 이 마지막 변경을 포함한 전체 결과는 새 head CI에서 확인한다.
+- doctor: Python3.14.5/Playwright1.55.0 Chromium available·study_errors 없음. Mock CLI는 verified_success/독립 success,6행동·기록6/6·1,238 mock 요청이었다. 실제 GPU 추론·임베딩 결과가 아니다.
+- 최종 wheel 빌드·새 모듈 byte 비교·격리 import와 inspect 기반 원격 공개 키 설치 코드 생성, repo0 problems·compileall·diff 검사를 확인했다. 사용자 실제 키 등록과 무인 원격 시작 검증은 사용자 터미널의 최초 설정 완료 후 수행한다.

@@ -7,6 +7,7 @@ import re
 import shlex
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -40,6 +41,9 @@ class GpuSessionConfig(BaseModel):
     embedding_venv: str = '.venv-persona-embedding'
     embedding_local_port: int = Field(default=8002, ge=1024, le=65535)
     embedding_remote_port: int = Field(default=8002, ge=1024, le=65535)
+    identity_file: str | None = None
+    identity_agent: str | None = None
+    ssh_batch_mode: bool = False
 
     @field_validator('login_host', 'compute_host', 'user', 'partition', 'node', 'gres', 'memory')
     @classmethod
@@ -79,10 +83,39 @@ class GpuSession:
         self.submission_started = False
         self.state_created = False
         self.embedding_validation = None
+        self.authentication_only = False
+
+    def identity_options(self):
+        if not self.config.identity_file:
+            return []
+        args = ['-i', str(Path(self.config.identity_file).expanduser()),
+                '-o', 'IdentitiesOnly=yes', '-o', 'AddKeysToAgent=yes']
+        if self.config.identity_agent and Path(self.config.identity_agent).is_socket():
+            args += ['-o', 'IdentityAgent=' + self.config.identity_agent]
+        if sys.platform == 'darwin':
+            args += ['-o', 'IgnoreUnknown=UseKeychain', '-o', 'UseKeychain=yes']
+        return args
+
+    def open_login(self):
+        if self.closed:
+            raise RuntimeError('GPU session is closed')
+        if self.temp is not None:
+            return
+        self.temp = tempfile.TemporaryDirectory(prefix='px-', dir='/tmp' if os.name != 'nt' else None)
+        self.login_socket = Path(self.temp.name) / 'login'
+        self.compute_socket = Path(self.temp.name) / 'compute'
+        self._master(self.config.login_host, self.login_socket)
 
     def _ssh(self, host, control):
         return ['ssh', '-S', str(control), '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
+                *self.identity_options(),
                 '-p', str(self.config.ssh_port), f'{self.config.user}@{host}']
+
+    def install_compute_key(self, command, payload):
+        result = subprocess.run(self._ssh(self.config.compute_host, self.compute_socket) + [command],
+            input=payload, text=True, capture_output=True, timeout=self.config.ssh_timeout, check=False)
+        if result.returncode:
+            raise RuntimeError('계산 노드 공개 키 등록을 완료하지 못했습니다')
 
     def _remote(self, command, *, input=None):
         result = subprocess.run(self._ssh(self.config.login_host, self.login_socket) + [command],
@@ -97,6 +130,8 @@ class GpuSession:
         args = ['ssh', '-M', '-S', str(control), '-fN', '-o', 'ControlPersist=no',
                 '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
                 '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', *extra,
+                *self.identity_options(),
+                '-o', 'BatchMode=' + ('yes' if self.config.ssh_batch_mode else 'no'),
                 '-p', str(self.config.ssh_port), f'{self.config.user}@{host}']
         result = subprocess.run(args, timeout=self.config.ssh_timeout, check=False)
         if result.returncode:
@@ -116,6 +151,8 @@ class GpuSession:
                     raise RuntimeError('GPU 로컬 포트가 이미 사용 중입니다. 기존 터널을 확인하세요.') from None
 
     def _script(self):
+        if self.authentication_only:
+            return '#!/bin/bash\nexec sleep 600\n'
         c = self.config
         script = ('#!/bin/bash\nset -euo pipefail\numask 077\n'
                 f'cd "$HOME"/{shlex.quote(c.remote_dir)}\n'
@@ -227,21 +264,20 @@ class GpuSession:
             time.sleep(1)
         raise RuntimeError('GPU 임베딩 서버 준비 시간이 초과됐습니다.')
 
-    def start(self):
+    def start(self, *, authentication_only=False):
         if self.job_id or self.closed:
             raise RuntimeError('GPU session cannot be restarted')
         if self.state_path.exists():
             raise RuntimeError('이전 GPU 작업의 미반환 기록이 있습니다. 반환을 확인한 뒤 다시 시작하세요.')
-        self._check_ports()
-        self.temp = tempfile.TemporaryDirectory(prefix='px-', dir='/tmp' if os.name != 'nt' else None)
-        self.login_socket = Path(self.temp.name) / 'login'
-        self.compute_socket = Path(self.temp.name) / 'compute'
+        self.authentication_only = authentication_only
+        if not authentication_only:
+            self._check_ports()
         print('GPU SSH 인증과 Slurm 할당을 시작합니다. 암호는 터미널에서만 입력하세요.', flush=True)
         try:
-            self._master(self.config.login_host, self.login_socket)
+            self.open_login()
             self._save()
             self._remote('umask 077; mkdir -p "$HOME/.persona-gpu" && chmod 700 "$HOME/.persona-gpu"')
-            if self.config.embedding_model:
+            if self.config.embedding_model and not authentication_only:
                 self._remote(f'cat > "$HOME/.persona-gpu/{self.token}-embedding.py"',
                              input=files('uxagent').joinpath('embedding_server.py').read_text())
             self.submission_started = True
@@ -255,12 +291,14 @@ class GpuSession:
             # Reuse authenticated login master for the jump; no agent forwarding.
             proxy = shlex.join(self._ssh(self.config.login_host, self.login_socket)[:-1]
                                + ['-W', '%h:%p', f'{self.config.user}@{self.config.login_host}'])
-            tunnel_options = [
-                '-o', 'ProxyCommand=' + proxy, '-L',
-                f'127.0.0.1:{self.config.local_port}:127.0.0.1:{self.config.remote_port}']
-            if self.config.embedding_model:
+            tunnel_options = ['-o', 'ProxyCommand=' + proxy]
+            if not authentication_only:
+                tunnel_options += ['-L', f'127.0.0.1:{self.config.local_port}:127.0.0.1:{self.config.remote_port}']
+            if self.config.embedding_model and not authentication_only:
                 tunnel_options += ['-L', f'127.0.0.1:{self.config.embedding_local_port}:127.0.0.1:{self.config.embedding_remote_port}']
             self._master(self.config.compute_host, self.compute_socket, tunnel_options)
+            if authentication_only:
+                return self
             self._wait_health()
             if self.config.embedding_model:
                 self._wait_embedding_health()

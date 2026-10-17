@@ -146,3 +146,9 @@ run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes
 ## Wonder seed 표시용 DTO
 
 `brain.wonder_seed_texts`는 검증된 `wonder_draws`와 순서가 같은 10진 문자열 배열이다. 원본 draw의 `seed` 정수 및 로그 스키마는 바꾸지 않는다. 화면은 JavaScript Number 반올림을 피하기 위해 이 문자열을 사용한다. 파일이 없거나 유효 draw가 없으면 빈 배열이며, 저장·재실행에 쓸 seed는 원본 값과 같아야 한다.
+
+## SSH 키 최초 등록 계약 (2026-10-18)
+
+키 최초 등록은 사용자 터미널에서 명시 실행한다. 개인 키는 저장소 밖에 두고 앱은 공개 키만 읽어 기존 원격 행을 보존하며 추가한다. 양쪽 새 publickey 전용 연결과 자기 임시 할당 반환 후에만 private config의 batch mode를 활성화한다. 암호는 OpenSSH·OS Keychain/agent가 처리한다. 실패 시 앱에 비밀번호를 받아 fallback하지 않는다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
+
+실제 Qwen health200·persona-qwen과 작업 반환은 서비스 연결 증거이며 키 등록·임베딩·생성 추론·과업 성공과 구분한다.

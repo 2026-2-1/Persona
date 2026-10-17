@@ -1,6 +1,6 @@
 # 대시보드가 소유하는 GPU 세션
 
-2026-10-17 사용자 후속 요청으로 #85 구현에 추가했다. 기존 수동 SSH·Slurm 사용법을 유지하며, 비공개 GPU 설정을 둔 대시보드만 자동 할당한다. 실제 원격 시작·반환은 SSH 인증 후 검증해야 한다.
+2026-10-17 사용자 후속 요청으로 #85 구현에 추가했다. 기존 수동 SSH·Slurm 사용법을 유지하며, 비공개 GPU 설정을 둔 대시보드만 자동 할당한다. 2026-10-18 Qwen 단독 health200/persona-qwen과 작업19346 반환을 실제 확인했다. 임베딩·키 전용 인증·추론은 해당 smoke 범위가 아니다.
 
 ## 시작과 종료
 
@@ -36,7 +36,7 @@ python3 -m uxagent dashboard --no-gpu
 
 ## 인증
 
-비밀번호는 OpenSSH의 사용자 터미널 프롬프트에서 입력한다. 앱·환경 변수·JSON·요청·로그에 보관하지 않는다. 실행 중에는 인증한 login master를 ProxyCommand로 재사용하고 agent forwarding을 켜지 않는다. 완전 무인 시작은 운영자가 허용하는 SSH 키 인증을 로그인·계산 노드에 준비해야 한다. 이번 로컬 BatchMode 읽기 전용 점검은 Permission denied였으며 실제 Slurm 명령 지원·할당·서버 실행을 확인하지 못했다. 키/인증파일/known_hosts는 코드가 변경하지 않는다.
+비밀번호는 OpenSSH의 사용자 터미널 프롬프트에서 입력한다. 앱·환경 변수·JSON·요청·로그에 보관하지 않는다. 실행 중에는 인증한 login master를 ProxyCommand로 재사용하고 agent forwarding을 켜지 않는다. 완전 무인 시작은 운영자가 허용하는 SSH 키 인증을 로그인·계산 노드에 준비해야 한다. 초기 BatchMode 점검은 Permission denied였다. 이후 사용자 터미널의 비밀번호 인증으로 실제 Qwen health200과 소유 Slurm 작업 반환을 확인했다. 키 전용 인증은 최초 등록 후 별도로 검증한다. 기본 런타임은 키 등록을 수행하지 않는다. 아래 최초 설정 명령만 사용자가 명시 실행할 때 공개 키를 등록한다.
 
 ## 임베딩 최초 준비
 
@@ -65,3 +65,29 @@ HF_HUB_OFFLINE=0 .venv-persona-embedding/bin/python -c 'from sentence_transforme
 - 자원 할당은 srun --pty 대화형 셸 대신 동일 자원 옵션의 sbatch를 사용한다. 서버 실행/종료를 작업 ID로 관리하기 위해서다. 이 클러스터의 sbatch 정책은 실제 인증 후 확인해야 한다.
 
 근거: [sbatch](https://slurm.schedmd.com/sbatch.html), [squeue](https://slurm.schedmd.com/squeue.html), [scancel](https://slurm.schedmd.com/scancel.html), [OpenSSH](https://man.openbsd.org/ssh).
+
+## SSH 키 최초 설정과 이후 자동 인증
+
+사용자 터미널에서 최초 한 번 실행한다. 실제 접속 설정은 runs/private/gpu-session.json에 둔다.
+
+```sh
+python3 -m uxagent gpu-key-setup
+```
+
+- 전용 키 ~/.ssh/uxagent_gpu_ed25519를 만들거나 기존 완전한 쌍을 재사용한다. 암호는 OpenSSH 터미널에서 입력한다. 저장소 안 키·불완전한 쌍·공개 키 symlink·열린 POSIX 개인 키 권한은 거부한다. 기존 키·전역 SSH config를 덮어쓰지 않는다.
+- macOS는 시스템 ssh-add --apple-use-keychain으로 agent와 OS Keychain을 사용한다. 다른 POSIX 환경은 기존 agent 또는 전용 agent를 쓴다. 앱은 개인 키 본문·암호를 읽지 않는다. 공개 키만 읽고 해당 키의 agent 서명도 확인한다.
+- 로그인 서버에 공개 키를 추가한다. authorized_keys는 잠금 후 추가하고 기존 행을 보존한다. 같은 키가 제한 옵션과 함께 있어도 무제한 사본을 추가하지 않는다. symlink 대상이나 관리자 SSH 정책을 변경하지 않는다.
+- 계산 노드 접속에 필요한 임시 Slurm 할당을 만든다. 모델·임베딩·포트 전달 없이 최대600초 대기 프로세스만 실행한다. 계산 노드에도 공개 키를 등록하며 HOME 공유 시 중복 추가하지 않는다.
+- 양쪽에 ControlPath=none 새 연결로 publickey 전용·BatchMode 인증을 확인한다. 자기 임시 할당을 반환한 뒤에만 private config의 identity_file·identity_agent·ssh_batch_mode=true를 저장한다. 실패 시 활성화하지 않는다. 이미 추가한 공개 키는 자동 삭제하지 않으며 재실행은 중복 등록하지 않는다.
+
+최초 설정에는 키 암호와 서버 비밀번호 입력이 필요하다. 이후 대시보드는 전용 키와 agent를 사용하고 비밀번호를 앱에 받아 fallback하지 않는다. 운영자가 공개 키 인증을 허용하고 agent/Keychain이 사용 가능해야 한다. 비대화형 새 키 생성과 암호 등록은 거부한다.
+
+POSIX 로그인 세션 종료·agent 재시작 후 필요하면 키만 다시 등록한다. 이 명령은 원격 공개 키 재등록이나 GPU 할당을 하지 않는다.
+
+```sh
+python3 -m uxagent gpu-key-unlock
+```
+
+macOS의 해제된 Keychain에서는 저장한 키 암호를 사용할 수 있다. 사용자 지정 키는 gpu-key-setup --identity-file로 지정하며 저장소 밖이어야 한다. Windows는 기존 agent 서비스가 필요하고 실제 SSH/Slurm은 미검증이다. 소켓/PID 설정은 비공개 파일에만 둔다. 런타임은 공개 키 등록을 수행하지 않는다.
+
+근거: [ssh-add](https://man.openbsd.org/ssh-add), [IdentityFile/IdentityAgent/BatchMode](https://man.openbsd.org/ssh_config), [macOS 시스템 ssh-add·Keychain](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).

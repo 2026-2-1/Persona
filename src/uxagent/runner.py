@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio, hashlib, json, os, secrets, socket, threading, time, uuid
+import asyncio, hashlib, json, os, socket, threading, time, uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -15,7 +15,7 @@ from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, Gemin
 from .fast_loop import FastLoop
 from .brain import Brain
 from .memory import MemoryStore
-from .slow_loop import SlowLoop
+from .slow_loop import ContinuousSlowLoop
 from .storage import write_json, JsonlWriter
 from .security import normalize_origin
 from .model_catalog import resolve_model
@@ -72,7 +72,7 @@ def load_study(path: str | Path):
 def model_routes(provider_name: str, model: str):
     generator = "gemini" if provider_name == "jev" else "openai" if provider_name == "live" else provider_for_model(model, provider_name)
     routes = {stage: {"provider": generator, "model": model} for stage in
-              ("perception", "feedback", "plan", "decision", "importance", "reflection", "plan_review", "wonder")}
+              ("perception", "feedback", "plan", "decision", "importance", "reflection", "wonder")}
     if provider_name == "jev":
         routes["decision"] = {"provider": "typesafe", "model": "jev-latest"}
         routes["decision_choice"] = routes["decision"]
@@ -134,12 +134,11 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     server_started=server.start() if server else False
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
-    wonder_seed=config.wonder_seed if config.wonder_seed is not None else secrets.randbits(63)
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"model_routes":routes,"prompt_version":"u-fast-1","condition":persona_mode,"wonder_seed":wonder_seed if config.enable_wonder else None,
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"model_routes":routes,"prompt_version":"u-loops-1","condition":persona_mode,"wonder_policy":"u_every_cycle",
         "execution_mode":"ai", "source_kind":"synthetic_fixture" if is_fixture else config.source_kind})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
-    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl");wonder_draw_writer=JsonlWriter(run_dir/"wonder_draws.jsonl")
+    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl")
     started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;seen={};last_obs=None;slow=None;brain=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
     llm_elapsed_total=0
@@ -176,10 +175,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else LocalQwenProvider() if provider_name=="gpu" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
-    slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
-                  memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True,
-                  wonder_enabled=config.enable_wonder,wonder_seed=wonder_seed,
-                  wonder_draw_writer=wonder_draw_writer,importance_enabled=True)
+    slow=ContinuousSlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
+                            memory,brain_task_writer,brain_stage_writer,log_call,
+                            embedding_model=config.embedding_model)
     brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer,stage_writer=brain_stage_writer)
     async def retrieve_fast_memories(query, mode):
         nonlocal previous_error
@@ -351,5 +349,5 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     summary.update(measured)
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
-    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close();wonder_draw_writer.close()
+    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close()
     return run_dir,summary

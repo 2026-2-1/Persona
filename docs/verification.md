@@ -445,3 +445,14 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - doctor: Python **3.14.5**, Playwright **1.55.0** Chromium available, study_errors 없음. 무료 Mock 통합은 `verified_success`, 독립 success, **6행동·기록 6/6·28 mock 요청**, perception/plan/decision 각 6회와 feedback 5회 완료였다. 기존 성공 시 조기 종료 평가 정책은 #89까지 유지한다.
 - `pip wheel --no-deps --no-build-isolation --no-index --no-cache-dir`로 패키징했다. wheel 안의 U 프롬프트 4개가 고정 원문과 byte 단위로 같고, 격리 Python의 wheel import에서 리소스를 읽는 것을 확인했다. repo 검사 0 problems, Python compileall·Node 구문·diff 공백 검사 통과. push 전 staged 검사와 파일 목록을 재확인한다.
 - 실제 로컬 GPU `/health`는 URLError로 응답을 얻지 못했다. 실제 GPU 채팅·공개 데카트론 과업은 실행하지 않았다. Qwen 문맥/출력 한도, 큰 페이지 인식 완전성, 실제 과업 성능은 미검증이다. 선행 #91의 원격 Ubuntu/Python 3.11·Windows/Python 3.13 CI는 성공했지만 #83 head의 원격 결과를 대신하지 않는다.
+
+## 2026-10-17 #84 U Slow·Wonder 반복
+
+- 브랜치 `feat/84-u-transition-02`, 선행 Fast `4e42109a94898fb772a7c214221115ce25b75d66`와 Qwen #91을 포함한다. [작업 문서](tasks/84-u-slow.md)의 범위이며 prototype 병합·#85~#90 완료와 구분한다. 환경은 Python 3.14.5 / pytest 8.4.2 / Playwright 1.55.0 Chromium이다.
+- 신규 7개는 구현 전 실패했고 신규 회귀 전체 **11 passed**였다. Event로 두 번 이상 순환·Fast 병행·최근50개·64개 이후 cursor·빈 입력/출력·ID 제거 뒤 늦은 응답·두 run 분리·취소/JSON/예산 실패를 검증했다. 새/옛 Slow **21 passed, 1 deselected**, 관련 Fast/Slow/모델/기억 **87 passed in 21.18s**였다.
+- 첫 전체 `python3 -m pytest -q --tb=short`: **448 passed / 3 failed in 208.54s**. 종료 시 아직 응답하지 않은 Slow 요청의 usage도 측정됐다고 기대하던 테스트를 실제 시도/반환 횟수·미확인 전체값·측정 부분합을 확인하도록 수정했다. 제품의 usage 집계 정책은 바꾸지 않았다. 관련 **26 passed in 12.61s**였다.
+- 두 번째 전체: **450 passed / 1 failed in 202.73s**. 반복 상태 판정 전에 `Page.screenshot`이 30초 시간 초과로 browser_error를 반환했다. 같은 사례 단독 **1 passed in 3.45s**였다. 브라우저 정책이나 제한을 수정하지 않았다.
+- 마지막 전체: **448 passed / 3 failed in 217.96s**. 대시보드 클릭 30초, Chromium launch 180초 시간 초과와 모델 호출 전 브라우저 관찰 실패가 발생했다. 실패한 `test_check_status_rows_keep_distinct_states_and_open_evidence`, `test_demo_states_keep_verification_termination_and_missing_evidence[failure-scenario_failed-checks2]`, `test_runner_comparison_persists_actual_usage[missing]`를 이어 재실행해 **3 passed in 14.70s**였다. **전체 일괄 통과는 확보하지 못했으며** Chromium 전체 검사 안정성을 PR의 남은 검증으로 명시한다. 부분 재실행을 전체 통과로 합산하지 않는다.
+- doctor: Chromium available, study_errors 없음. Mock CLI 합성 통합은 verified_success / 독립 success, **6행동·기록 6/6·1,302 mock 요청**이었다. Slow worker 1개·623회 순환, 종료 후 active/pending 0·cancelled·reserved_tokens 0·embedding_status=not_configured였다. 응답 전 취소 1건의 토큰은 미확인이며 brain 상태는 incomplete로 보존됐다. Mock의 빠른 응답/반복/요청 수는 GPU 속도·비용 지표가 아니다.
+- 로컬 wheel 빌드에서 U Slow 프롬프트 3개가 고정 원문과 byte 단위로 같고 격리 import에서 읽힘을 확인했다. repo 검사 0 problems, Python compileall·git diff 공백 검사 통과. push 전 staged 검사·파일 목록을 확인한다. 별도 lint/typecheck 설정은 없다.
+- 실제 GPU 채팅·embedding·공개 데카트론은 이번 작업에서 호출하지 않았다. GPU embedding은 미지원이며 설정 없이는 importance만 갱신한다. urllib의 이미 시작된 원격 HTTP 강제 취소·실제 과금 중단은 보장하지 않는다. #91/#92의 Ubuntu/Windows CI 통과는 이 브랜치의 새 head CI 결과를 대신하지 않는다.

@@ -51,22 +51,24 @@ async def test_selected_model_reaches_request_and_all_run_artifacts(tmp_path,mon
     from uxagent.llm import GeminiProvider
     seen=[]
     reflection_seen=asyncio.Event()
+    importance_seen=asyncio.Event()
     async def complete(self,messages,model=None,temperature=.2,max_tokens=1200):
         seen.append(model)
         system=messages[0]['content']
-        if 'Rate the importance of one memory' in system:
+        if system.startswith('SLOW_STAGE:importance'):
             result={'score':8,'rationale':'Current task evidence'}
-        elif 'Summarize up to three brief insights' in system:
-            payload=json.loads(messages[-1]['content'])
-            sources=[entry['memory_id'] for entry in payload.get('memories',[]) if entry.get('kind')=='observation'][:1]
-            result={'insights':[{'summary':'검토한 관찰입니다.','source_memory_ids':sources}]} if sources else {'insights':[]}
+            importance_seen.set()
+        elif system.startswith('SLOW_STAGE:reflection'):
+            result={'insights':['검토한 관찰입니다.']}
             reflection_seen.set()
+        elif system.startswith('SLOW_STAGE:wonder'):
+            result={'thoughts':[]}
         elif 'Review whether the supplied plan' in system:
             result={'review':'계획을 검토했습니다.','suggested_revisions':[]}
         elif 'FAST_STAGE:perception' in system:
             result={'observations':['Observed']}
         elif 'FAST_STAGE:plan' in system:
-            await asyncio.wait_for(reflection_seen.wait(),timeout=2)
+            await asyncio.wait_for(importance_seen.wait(),timeout=2)
             result={'plan':'Stop','rationale':'Test','next_step':'Terminate'}
         else:
             result={'actions':[{'action':'terminate','description':'Fake provider stop'}]}
@@ -81,7 +83,8 @@ async def test_selected_model_reaches_request_and_all_run_artifacts(tmp_path,mon
     for name in ('run.json','summary.json'):
         assert json.loads((folder/name).read_text(encoding='utf-8'))['model']=='gemini-2.5-flash'
     calls=[json.loads(line) for line in (folder/'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert {call['stage'] for call in calls}=={'perception','plan','decision','importance','reflection'}
+    assert {'perception','plan','decision','reflection'} <= {call['stage'] for call in calls}
+    assert not any(call['stage']=='plan_review' for call in calls)
     assert all(call['model']=='gemini-2.5-flash' for call in calls)
     assert all(call['provider']=='gemini' for call in calls)
     assert all(call['estimated_cost_usd'] is None for call in calls)

@@ -7,7 +7,7 @@ from .schemas import WonderDrawRecord
 
 TASK_STATES = ('scheduled', 'started', 'completed', 'adopted', 'discarded', 'skipped', 'failed', 'cancelled')
 STAGES = ('perception', 'feedback', 'plan', 'decision', 'importance', 'reflection', 'plan_review', 'wonder')
-KINDS = STAGES
+KINDS = (*STAGES, 'memory_update', 'embedding')
 
 
 def _read(folder, name, run_id, identity, versions, warnings):

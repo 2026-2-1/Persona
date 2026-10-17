@@ -242,28 +242,32 @@ async def test_provider_internal_retry_does_not_repeat_the_task_draw():
 
 
 @pytest.mark.asyncio
-async def test_runner_records_wonder_seed_and_started_task_draws(tmp_path):
+async def test_u_runner_uses_every_cycle_wonder_without_legacy_seed_or_draws(tmp_path):
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "configs/study.json").read_text(encoding="utf-8"))
     config.update(persona_file=str(root / "configs/persona.json"), max_steps=1,
-                  wonder_seed=139)
+                  wonder_seed=139, enable_wonder=False)
     study = tmp_path / "study.json"
     study.write_text(json.dumps(config), encoding="utf-8")
 
     run_dir, summary = await run_study(study, "mock", None, False, tmp_path / "runs")
 
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    draws = [json.loads(line) for line in (run_dir / "wonder_draws.jsonl").read_text(encoding="utf-8").splitlines()]
     tasks = [json.loads(line) for line in (run_dir / "brain_tasks.jsonl").read_text(encoding="utf-8").splitlines()]
-    started = [row["task_id"] for row in tasks if row["status"] == "started"
-               and row["kind"] in {"reflection", "plan_review"}]
-
-    assert run["wonder_seed"] == summary["brain"]["slow"]["wonder_seed"] == 139
-    assert [row["parent_task_id"] for row in draws] == started
-    assert draws and draws[0]["selected"] is True
-    assert all(row["seed"] == 139 for row in draws)
+    started = [row['kind'] for row in tasks if row['status'] == 'started'
+               and row['kind'] in {'reflection', 'wonder', 'memory_update', 'plan_review'}]
+    assert not (run_dir / 'wonder_draws.jsonl').exists()
+    assert 'wonder_seed' not in run and 'wonder_seed' not in summary['brain']['slow']
+    assert run['wonder_policy'] == 'u_every_cycle'
+    assert started[:3] == ['reflection', 'wonder', 'memory_update']
+    assert all(kind == ['reflection', 'wonder', 'memory_update'][index % 3]
+               for index, kind in enumerate(started))
+    memories = [json.loads(line) for line in (run_dir / 'memory.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert any(row['kind'] == 'thought' for row in memories)
+    assert not any(row['kind'] == 'wonder' for row in memories)
+    assert summary['brain']['slow']['worker_starts'] == 1
 
 
 def test_detail_and_report_label_wonder_as_generated_assumption(tmp_path):

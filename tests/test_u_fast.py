@@ -24,7 +24,7 @@ class Slow:
     def __init__(self):
         self.starts = []
 
-    def schedule_reflection(self, *args, **kwargs):
+    def start(self, *args, **kwargs):
         self.starts.append(args)
 
     def pop_completed(self):
@@ -330,8 +330,10 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
                        'feedback': {'thoughts': ['직전 검색 제안을 확인']},
                        'plan': {'plan': '검색 확인', 'rationale': '검색 버튼 확인', 'next_step': '검색'},
                        'decision': {'actions': [{'action': 'click', 'target': '검색', 'description': '검색'}]}}[stage]
-        elif 'Rate the importance' in system:
-            content = {'score': 5, 'reason': '기억 확인'}
+        elif system.startswith('SLOW_STAGE:importance'):
+            content = {'score': 5, 'rationale': '기억 확인'}
+        elif system.startswith('SLOW_STAGE:wonder'):
+            content = {'thoughts': []}
         else:
             content = {'insights': []}
         return Response(json.dumps(content))
@@ -342,7 +344,8 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
     assert summary['action_attempts'] == 2
     assert summary['provider'] == 'gpu' and summary['model'] == 'persona-qwen'
     assert summary['brain']['fast']['feedback']['completed'] == 1
-    assert summary['llm_request_count'] == len(requests)
+    calls = [json.loads(line) for line in (folder / 'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert summary['llm_request_count'] == len(calls) >= len(requests)
     assert all(request['model'] == 'persona-qwen' for request in requests)
     steps = [json.loads(line) for line in (folder / 'steps.jsonl').read_text(encoding='utf-8').splitlines()]
     assert all(step['decision']['proposed_actions'][0]['action'] == 'click' for step in steps)

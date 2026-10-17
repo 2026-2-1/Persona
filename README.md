@@ -10,6 +10,8 @@
 
 #83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·종료 후 평가의 후속 전환은 남아 있습니다.
 
+#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. 실제 GPU embedding·U 검색 공식·DOM/전체 행동·종료 후 평가는 후속입니다.
+
 ## 빠른 시작 (Windows)
 
 ```powershell

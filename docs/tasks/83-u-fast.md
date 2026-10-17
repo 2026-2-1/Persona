@@ -1,5 +1,7 @@
 # #83 U Fast 판단 전환
 
+후속 #84 작업 브랜치는 아래의 최초 reflection 연결을 [U Slow 반복](84-u-slow.md)으로 교체한다. 이 문서의 #84 미구현 표기는 #83 작성 당시 범위다.
+
 이슈: [#83](https://github.com/2026-2-1/Persona/issues/83). Qwen 선행: [PR #91](https://github.com/2026-2-1/Persona/pull/91), `264bd985ce3bd1744d4e692af52efdc719e61b00`. 구현 브랜치는 `feat/83-u-transition-01`이다. prototype 병합이나 실제 GPU 과업 성공을 뜻하지 않는다.
 
 ## 실행 순서와 책임

@@ -2,6 +2,8 @@
 
 GitHub: [#41](https://github.com/2026-2-1/Persona/issues/41)
 
+이 문서는 기존 3단계 구현 기록이다. #83 작업 브랜치의 실제 runner는 [U Fast 계약](83-u-fast.md)으로 전환했으며 아래의 모델 observation ID 요구와 조율 방식을 새 실행 경로의 요구로 적용하지 않는다. 기존 호출 API는 호환용으로 남는다.
+
 ## 범위
 
 - Fast Loop에서 perception, plan, action decision을 순서대로 별도 생성 요청으로 수행한다.

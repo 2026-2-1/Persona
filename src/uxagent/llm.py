@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio, hashlib, json, os, threading, time, urllib.request, urllib.error
 import ssl
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
@@ -28,6 +29,8 @@ def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
         return "openai"
     if model == "mock-v1":
         return "mock"
+    if model == "persona-qwen":
+        return "gpu"
     return fallback
 
 
@@ -229,15 +232,43 @@ class BudgetManager:
 
 class MockProvider:
     model = "mock-v1"
+
+    def set_observation(self, observation):
+        """Fixture-only adapter; observation metadata is not added to real U prompts."""
+        self.fixture_observation = observation
+
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
         payload = json.loads(messages[-1]["content"])
         system = messages[0]["content"]
+        if "FAST_STAGE:perception" in system and isinstance(payload, str):
+            return json.dumps({"observations":[payload]},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:feedback" in system:
+            return json.dumps({"thoughts":["직전 제안과 새 화면을 확인했습니다."]},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:plan" in system and "old_plan" in payload:
+            return json.dumps({"plan":"조건에 맞는 상품의 검색·필터·상세를 확인합니다.",
+                "rationale":"현재 관찰과 제안 행동을 바탕으로 진행합니다.","next_step":"다음 검색·필터·상세 행동"},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+        if "FAST_STAGE:decision" in system and "environment" in payload:
+            history = getattr(self, "fixture_history", [])
+            legacy_payload = {"observation":self.fixture_observation.model_dump(),
+                              "recent_actions":[{"action_type":stage} for stage in history]}
+            response, usage = self._fixture_decision(legacy_payload)
+            selected = json.loads(response)
+            action = selected["action"]
+            if action is None:
+                raw={"action":"terminate","description":selected["finish"]["summary"]}
+            else:
+                raw={"action":action["type"],"description":f"{action['type']} {action.get('target_id','')}"}
+                for source,target in (("target_id","target"),("text","text"),("option_value","value")):
+                    if source in action:raw[target]=action[source]
+                stages=["type","click-search","select-color","select-price","apply-filter","detail"]
+                self.fixture_history=[*history,stages[min(len(history),len(stages)-1)]]
+            return json.dumps({"actions":[raw]},ensure_ascii=False),usage
         if "Rate the importance of one memory" in messages[0]["content"]:
             return json.dumps({"score":5,"reason":"Mock importance score for a saved memory."}),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "WONDER_PERSONA_ONLY" in system:
             return json.dumps({"thought":"저녁에는 따뜻한 차를 마셔 볼까?"},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "Summarize up to three brief insights" in messages[0]["content"]:
-            ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed"][-2:]
+            ids=[m["memory_id"] for m in payload.get("memories",[]) if m.get("content_status")=="observed" or m.get("kind")=="observation"][-2:]
             insights=[]
             if ids:insights=[{"summary":"최근 관찰과 행동 기록을 바탕으로 다음 화면에서 조건 적용 여부를 확인합니다.","source_memory_ids":ids}]
             return json.dumps({"insights":insights,"next_focus":"현재 화면과 사용자 조건을 다시 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
@@ -251,32 +282,7 @@ class MockProvider:
         if "FAST_STAGE:plan" in system:
             return json.dumps({"plan":"과업과 페르소나 조건에 맞는 화면 요소를 사용하고 결과를 확인합니다."},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "FAST_STAGE:decision" in system:
-            obs = payload["observation"]
-            memories = payload.get("memories", [])
-            action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
-            inputs, clicks, selects = obs.get("input_elements", []), obs.get("clickable_elements", []), obs.get("select_elements", [])
-            def target(items, name): return next((x for x in items if name in x["name"]), None)
-            action = None
-            if "type" not in action_types:
-                x=target(inputs,"상품 검색")
-                action={"type":"type","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"text":"가방"} if x else None
-            elif "click-search" not in action_types:
-                x=target(clicks,"검색")
-                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
-            elif "select-color" not in action_types:
-                x=target(selects,"색상")
-                action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"검정"} if x else None
-            elif "select-price" not in action_types:
-                x=target(selects,"최대 가격")
-                action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"30000"} if x else None
-            elif "apply-filter" not in action_types:
-                x=target(clicks,"필터 적용")
-                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
-            else:
-                x=target(clicks,"상세 보기")
-                action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
-            finish = {"claim":"give_up","summary":"현재 화면에서 다음 행동 대상을 찾을 수 없습니다."} if action is None else None
-            return json.dumps({"rationale_summary":"현재 관찰과 계획을 바탕으로 다음 행동을 선택합니다.","action":action,"finish":finish},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
+            return self._fixture_decision(payload)
         obs = payload["observation"]
         memories = payload.get("memories", [])
         action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
@@ -309,6 +315,34 @@ class MockProvider:
         if action is None and finish is None:
             finish={"claim":"give_up","summary":"현재 화면에서 다음 행동 대상을 찾을 수 없습니다."}
         return json.dumps({"perception":"현재 페이지의 검색과 상품 정보를 확인했습니다.","plan":"페르소나의 가격과 색상 조건을 적용하고 상세를 확인합니다.","rationale_summary":"조건에 맞는 상품을 단계적으로 확인합니다.","action":action,"finish":finish}, ensure_ascii=False), {"model":"mock-v1","input_tokens":0,"output_tokens":0}
+
+    def _fixture_decision(self, payload):
+        obs = payload["observation"]
+        memories = payload.get("memories", [])
+        action_types = [m.get("action_type") for m in [*memories, *payload.get("recent_actions", [])]]
+        inputs, clicks, selects = obs.get("input_elements", []), obs.get("clickable_elements", []), obs.get("select_elements", [])
+        def target(items, name): return next((x for x in items if name in x["name"]), None)
+        action = None
+        if "type" not in action_types:
+            x=target(inputs,"상품 검색")
+            action={"type":"type","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"text":"가방"} if x else None
+        elif "click-search" not in action_types:
+            x=target(clicks,"검색")
+            action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+        elif "select-color" not in action_types:
+            x=target(selects,"색상")
+            action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"검정"} if x else None
+        elif "select-price" not in action_types:
+            x=target(selects,"최대 가격")
+            action={"type":"select","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"],"option_value":"30000"} if x else None
+        elif "apply-filter" not in action_types:
+            x=target(clicks,"필터 적용")
+            action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+        else:
+            x=target(clicks,"상세 보기")
+            action={"type":"click","observation_id":obs["observation_id"],"tab_id":obs["tab_id"],"target_id":x["id"]} if x else None
+        finish = {"claim":"give_up","summary":"현재 화면에서 다음 행동 대상을 찾을 수 없습니다."} if action is None else None
+        return json.dumps({"rationale_summary":"현재 관찰과 계획을 바탕으로 다음 행동을 선택합니다.","action":action,"finish":finish},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
 
     async def embed(self, texts, model):
         vectors=[]
@@ -359,3 +393,41 @@ class OpenAIProvider:
         ordered=sorted(data["data"],key=lambda item:item["index"])
         usage=data.get("usage",{})
         return [item["embedding"] for item in ordered],{"model":data.get("model",model),"input_tokens":usage.get("prompt_tokens"),"output_tokens":0}
+
+
+class LocalQwenProvider:
+    """OpenAI-compatible Qwen API reached through a local SSH tunnel."""
+
+    model = "persona-qwen"
+
+    async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
+        return await asyncio.to_thread(self._complete, messages, model or self.model, temperature, max_tokens)
+
+    def _complete(self, messages, model, temperature, max_tokens):
+        if model != self.model:
+            raise ValueError("GPU 서버 모델은 persona-qwen이어야 합니다")
+        url = os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
+        parsed = urlsplit(url)
+        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or parsed.username or parsed.password or parsed.path != "/v1/chat/completions"
+                or parsed.query or parsed.fragment or not parsed.port):
+            raise ValueError("PERSONA_QWEN_API_URL은 로컬 SSH 터널의 /v1/chat/completions 주소여야 합니다")
+        body = json.dumps({"model": model, "messages": messages, "temperature": temperature,
+                           "max_tokens": max_tokens, "response_format": {"type": "json_object"}},
+                          ensure_ascii=False).encode()
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                data = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:400]
+            raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise RuntimeError(_transport_error(exc)) from None
+        usage = data.get("usage", {})
+        return data["choices"][0]["message"]["content"], {
+            "provider": "gpu", "model": data.get("model", model),
+            "input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
+
+    async def embed(self, texts, model):
+        raise ValueError("GPU 서버의 임베딩 API는 확인되지 않았습니다")

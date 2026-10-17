@@ -129,7 +129,7 @@ async def test_wonder_adoption_keeps_generated_provenance():
 
 
 @pytest.mark.asyncio
-async def test_wonder_is_not_prioritized_as_next_fast_boundary_memory():
+async def test_completed_wonder_is_published_with_other_shared_memory_outputs():
     slow, store, tasks, stages, draws, calls = slow_loop()
     brain = Brain(None, slow, store, persona())
     slow.schedule_reflection(persona(), "가방 찾기", "obs-1")
@@ -138,7 +138,7 @@ async def test_wonder_is_not_prioritized_as_next_fast_boundary_memory():
 
     boundary = brain.begin_stage("perception", "obs-2")
 
-    assert all(entry["kind"] != "wonder" for entry in boundary)
+    assert any(entry["kind"] == "wonder" for entry in boundary)
     assert any(entry.kind == "wonder" for entry in store.entries)
 
 
@@ -168,8 +168,9 @@ async def test_wonder_does_not_evict_task_memory_at_capacity():
     brain.begin_stage("perception", "obs-2")
 
     assert {entry.memory_id for entry in store.entries} == {entry.memory_id for entry in original}
-    assert any(row["kind"] == "wonder" and row["status"] == "discarded"
-               and row["reason_code"] == "memory_capacity" for row in tasks.records)
+    # The shared store evicts the newly appended Wonder at capacity; the Brain
+    # does not gate its publication or evict any of the original task memories.
+    assert any(row["kind"] == "wonder" and row["status"] == "adopted" for row in tasks.records)
     assert any(row["stage"] == "wonder" for row in stages.records)
 
 

@@ -14,8 +14,8 @@ SEARCH_PROFILES = {
     "slow": (0.2, 0.2, 0.6),
 }
 KIND_WEIGHTS = {
-    "fast_plan": {"action": 10, "plan": 10, "reflection": 10},
-    "fast_decision": {"observation": 0, "action": 10, "reflection": 10},
+    "fast_plan": {"action": 10, "plan": 10, "thought": 10, "reflection": 10},
+    "fast_decision": {"observation": 0, "action": 10, "thought": 10},
 }
 
 class MemoryStore:
@@ -31,11 +31,12 @@ class MemoryStore:
         self.pending_score_ids: set[str] = set()
         self.started = clock()
         self._next_seq = 1
+        self.timestamp = 0
         self.embedding_cache: dict[str, list[float]] = {}
 
     def append(self, kind, text, source_step_ids=None, source_observation_ids=None,
                content_status="observed", based_on_seq=0, importance=None, *,
-               source_memory_ids=None, source_stage_record_id=None):
+               source_memory_ids=None, source_stage_record_id=None, raw_action=None):
         if importance is not None and (isinstance(importance, bool) or
                                        not isinstance(importance, int) or not 1 <= importance <= 10):
             raise ValueError("new memory importance must be 1..10 or null")
@@ -44,7 +45,8 @@ class MemoryStore:
             kind=kind,text=text,source_step_ids=source_step_ids or [],source_observation_ids=source_observation_ids or [],
             source_memory_ids=source_memory_ids or [],source_stage_record_id=source_stage_record_id,
             created_at=datetime.now(timezone.utc).isoformat(),created_monotonic_ms=int((self.clock()-self.started)*1000),
-            based_on_seq=based_on_seq,importance=importance,content_status=content_status)
+            based_on_seq=based_on_seq,importance=importance,content_status=content_status,
+            timestamp=self.timestamp,raw_action=raw_action)
         self._next_seq += 1
         self.entries.append(entry)
         self.known_memory_ids.add(entry.memory_id)
@@ -149,7 +151,7 @@ class MemoryStore:
         self.pending_score_ids.discard(memory_id)
         return True
 
-    def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast"):
+    def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast", *, deduplicate_steps=True):
         if mode not in SEARCH_PROFILES:
             raise ValueError(f"unknown memory search mode: {mode}")
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms
@@ -178,14 +180,14 @@ class MemoryStore:
         scored.sort(key=lambda x:(x[0],x[1].seq),reverse=True)
         chosen=[]; source_steps=set()
         for score,e in scored:
-            if e.source_step_ids and all(s in source_steps for s in e.source_step_ids): continue
+            if deduplicate_steps and e.source_step_ids and all(s in source_steps for s in e.source_step_ids): continue
             chosen.append({**e.model_dump(),"retrieval_score":score})
             source_steps.update(e.source_step_ids)
             if len(chosen)>=limit: break
         return chosen
 
     async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None,
-                                       mode="fast"):
+                                       mode="fast", *, deduplicate_steps=True):
         if not self.entries:return []
         provider_name = "openai" if isinstance(provider, OpenAIProvider) else "mock" if isinstance(provider, MockProvider) else provider_for_model(model)
         query_key="query:"+query
@@ -213,4 +215,4 @@ class MemoryStore:
                     budget.settle(reservation,None)
                     if call_log:call_log({"module":"embedding","provider":provider_name,"model":model,"elapsed_ms":int((time.monotonic()-started)*1000),"input_tokens":None,"output_tokens":None,"estimated":True,"estimated_cost_usd":None,"error":type(exc).__name__})
                 raise
-        return self.retrieve(query,limit,embeddings=self.embedding_cache,mode=mode)
+        return self.retrieve(query,limit,embeddings=self.embedding_cache,mode=mode,deduplicate_steps=deduplicate_steps)

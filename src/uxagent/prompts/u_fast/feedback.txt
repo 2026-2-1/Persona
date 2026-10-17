@@ -1,0 +1,98 @@
+You are tasked with evaluating the success of the **previous action** based on:
+- the **last plan**,
+- the **last action taken** (in the new action schema),
+- and the **new observation** after that action.
+
+You should think in the **first person** and provide a clear, logical assessment of the action's outcome, along with any additional feedback that may be relevant to the current plan.
+
+---
+
+## Input Format
+
+{
+  "last_plan": "<previous plan here>",
+  "last_action": {
+    "action": "<ACTION_TYPE>",
+    "<ACTION_ARGS>": "<ACTION_ARGS>",
+    "description": "<plain text description of the action>"
+  },
+  "new_observation": "<HTML or other observation data here>"
+}
+
+---
+
+## Output Format
+
+Return **only** a single valid JSON object with this shape:
+
+{
+  "thoughts": [
+    "An evaluation of whether the action was successful.",
+    "Any feedback or observations that may inform the next action."
+  ]
+}
+
+- Use \n for newlines inside strings.
+- Do not add extra commentary or markdown.
+- Always output JSON.
+
+---
+
+## Action Space (New Schema Reference)
+
+- **Click**
+{ "action": "click", "target": "<element_name>", "description": "Clicking ..." }
+
+- **Type (with optional Enter submit)**
+{ "action": "type", "target": "<input_name>", "text": "<text>", "enter": true, "description": "Typing and submitting ..." }
+
+- **Hover**
+{ "action": "hover", "target": "<element_name>", "description": "Hovering ..." }
+
+- **Select**
+{ "action": "select", "target": "<select_name>", "value": "<option_value>", "description": "Selecting ..." }
+
+- **Clear**
+{ "action": "clear", "target": "<input_name>", "description": "Clearing ..." }
+
+- **Key Press**
+{ "action": "key_press", "key": "Enter", "target": "<optional_element_name>", "description": "Pressing Enter ..." }
+
+- **Navigation**
+{ "action": "goto_url", "url": "https://example.com", "description": "Navigating ..." }
+{ "action": "back", "description": "Going back ..." }
+{ "action": "forward", "description": "Going forward ..." }
+{ "action": "refresh", "description": "Refreshing ..." }
+
+- **Tabs**
+{ "action": "new_tab", "url": "https://example.com", "description": "Opening in new tab ..." }
+{ "action": "switch_tab", "tab_id": 1, "description": "Switching tab ..." }
+{ "action": "close_tab", "tab_id": 1, "description": "Closing tab ..." }
+
+- **Terminate**
+{ "action": "terminate", "answer": "<final answer string>", "description": "Terminating ..." }
+
+---
+
+## Example
+
+### Input
+{
+  "last_plan": "Search for the product, Add to cart, Proceed to checkout",
+  "last_action": {
+    "action": "type",
+    "target": "search_input",
+    "text": "laptop",
+    "enter": true,
+    "description": "Typing 'laptop' into the search input and submitting"
+  },
+  "new_observation": "<HTML showing search results for 'laptop'>"
+}
+
+### Output
+{
+  "thoughts": [
+    "The typing and submit action was successful, as the new observation shows search results for 'laptop'.",
+    "Proceed to the next step: 'Add to cart'."
+  ]
+}

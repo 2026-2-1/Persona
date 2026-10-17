@@ -1,5 +1,15 @@
 # 개발 환경과 협업
 
+## GPU 서버 Qwen 연결
+
+1. 로그인 서버에서 Slurm GPU를 할당받고 DIS01의 `~/persona-llm`에서 `source .venv-dis01/bin/activate`, `export HF_HUB_OFFLINE=1`, `python -u api_server.py`를 실행한다. 서버와 할당 세션을 유지한다.
+2. 로컬 별도 터미널에서 기존 SSH 점프 경로로 DIS01의 8000번 포트를 전달한다. SSH 비밀번호는 터미널에 직접 입력하거나 SSH 키를 사용한다. 프로젝트 `.env`에 SSH 비밀번호를 저장하지 않는다.
+3. 로컬에서 `curl http://127.0.0.1:8000/health`로 `model: persona-qwen`을 확인한다. 터널의 로컬 포트를 바꾼 경우 `.env`의 `PERSONA_QWEN_API_URL=http://127.0.0.1:<포트>/v1/chat/completions`를 설정한다. URL은 로컬 주소만 허용한다.
+4. 대시보드의 GPU 서버 제공자를 선택하고 **연결 확인**을 누른다. 키 입력은 없다. CLI는 `python3 -m uxagent run --study configs/study-decathlon-live.json --provider gpu --headless`처럼 실행한다. 이 공개 사이트 설정은 검색 결과와 상세 일부만 독립 판정한다.
+5. Slurm 할당이 끝나거나 SSH 터널이 닫히면 이후 모델 요청은 실패한다. 앱의 연결 확인은 원격 할당이나 터널을 자동 시작하지 않는다.
+
+기본 합성 fixture는 로컬 8000번 포트를 사용한다. 합성 fixture와 GPU 모델을 함께 실행할 때는 터널을 로컬 8001번 등으로 열고 `PERSONA_QWEN_API_URL`을 같은 포트로 지정한다. 원격 서버의 포트는 계속 8000번이다. 이 GPU 제공자의 임베딩 API와 모델 비용은 확인되지 않았으므로 임베딩 설정을 사용하지 않고 비용은 미확인으로 남긴다.
+
 ## Windows PowerShell
 
 ```powershell

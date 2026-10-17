@@ -31,25 +31,28 @@ def _provider_opening(product):
         model = "mock-v1"
         clicked = False
 
+        def set_observation(self, observation):
+            self.observation = observation
+
         async def complete(self, messages, *args, **kwargs):
             stage = messages[0]["content"].split("FAST_STAGE:", 1)[1].splitlines()[0] if "FAST_STAGE:" in messages[0]["content"] else None
             payload = json.loads(messages[-1]["content"])
             usage = {"model": "mock-v1", "input_tokens": 1, "output_tokens": 1}
             if stage == "perception":
-                return json.dumps({"perception": "상품 목록 또는 상세 화면입니다."}, ensure_ascii=False), usage
+                return json.dumps({"observations": ["상품 목록 또는 상세 화면입니다."]}, ensure_ascii=False), usage
+            if stage == "feedback":
+                return json.dumps({"thoughts": ["직전 상세 열기 제안을 확인합니다."]}, ensure_ascii=False), usage
             if stage == "plan":
-                return json.dumps({"plan": "상품 상세를 확인합니다."}, ensure_ascii=False), usage
+                return json.dumps({"plan": "상품 상세를 확인합니다.", "rationale": "상품 조건을 확인합니다.", "next_step": "상품 상세 열기"}, ensure_ascii=False), usage
             if stage == "decision":
-                obs = payload["observation"]
+                obs = self.observation.model_dump()
                 target = next((e for e in obs["clickable_elements"] if e["name"] == product + " 상세 보기"), None)
                 if target and not DetailProvider.clicked:
                     DetailProvider.clicked = True
-                    decision = {"rationale_summary": "상품 상세를 엽니다.", "action": {
-                        "type": "click", "observation_id": obs["observation_id"],
-                        "tab_id": obs["tab_id"], "target_id": target["id"]}, "finish": None}
+                    decision = {"actions": [{"action": "click", "target": target["id"],
+                                             "description": "상품 상세를 엽니다."}]}
                 else:
-                    decision = {"rationale_summary": "상세를 확인했습니다.", "action": None,
-                                "finish": {"claim": "completed", "summary": "상세 확인"}}
+                    decision = {"actions": [{"action": "terminate", "description": "상세 확인"}]}
                 return json.dumps(decision, ensure_ascii=False), usage
             if "Rate the importance of one memory" in messages[0]["content"]:
                 return json.dumps({"score": 5, "reason": "상품 확인 기억"}, ensure_ascii=False), usage

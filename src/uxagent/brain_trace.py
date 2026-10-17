@@ -6,7 +6,7 @@ from pathlib import Path
 from .schemas import WonderDrawRecord
 
 TASK_STATES = ('scheduled', 'started', 'completed', 'adopted', 'discarded', 'skipped', 'failed', 'cancelled')
-STAGES = ('perception', 'plan', 'decision', 'importance', 'reflection', 'plan_review', 'wonder')
+STAGES = ('perception', 'feedback', 'plan', 'decision', 'importance', 'reflection', 'plan_review', 'wonder')
 KINDS = STAGES
 
 

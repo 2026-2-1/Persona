@@ -135,22 +135,46 @@ def test_invalid_setup_is_rejected_before_launch(dashboard):
 
 
 @pytest.mark.asyncio
-async def test_batch_reports_browser_failure_instead_of_completion(dashboard, monkeypatch):
+async def test_batch_records_failed_personas_and_continues(dashboard, monkeypatch):
     from types import SimpleNamespace
     from uxagent.cli import _batch
     import uxagent.cli as cli
 
     d, _, _ = dashboard
+    personas_path = d.personas_dir / "personas.jsonl"
+    first = json.loads(personas_path.read_text().strip())
+    second = {**first, "persona_id": "p002"}
+    personas_path.write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in (first, second)) + "\n")
+    calls = []
 
     async def failed_run(*args):
-        return d.runs_dir / "failed-run", {"run_id":"failed-run","termination_reason":"browser_error",
+        run_id = f"failed-run-{len(calls) + 1}"
+        calls.append(args[2].persona_id)
+        return d.runs_dir / run_id, {"run_id":run_id,"termination_reason":"browser_error",
                 "verification":"unknown","llm_request_count":0,"llm_tokens":0,
                 "last_error":{"message":"navigation failed"}}
 
     monkeypatch.setattr(cli, "run_study", failed_run)
     args = SimpleNamespace(study=str(d.study), personas=str(d.personas_dir / "personas.jsonl"),
                            provider="mock", output=str(d.runs_dir))
-    assert await _batch(args) == 1
+    assert await _batch(args) == 0
     summary = json.loads((d.runs_dir / "batch_summary.json").read_text())
-    assert summary["failed"] == 1
+    assert calls == ["p001", "p002"]
+    assert summary["failed"] == 2
+    assert summary["completed_with_failures"] is True
     assert summary["runs"][0]["error"] == "navigation failed"
+
+
+def test_dashboard_marks_finished_batch_with_persona_failures_as_completed(dashboard):
+    d, process, _ = dashboard
+    job = d.start_job("batch")
+    (d.runs_dir / "batch_summary.json").write_text(json.dumps({
+        "study_id": job["study_id"], "requested": 2, "failed": 1,
+        "completed_with_failures": True,
+        "runs": [{"persona_id": "p001", "verification": "unknown",
+                  "termination_reason": "model_error", "error": "model_output_error"}],
+    }))
+    process.returncode = 0
+    state = d.state()["job"]
+    assert state["status"] == "completed"
+    assert state["message"] == "1/2명은 과업 실행에 실패했고 나머지 페르소나 실행을 마쳤습니다."

@@ -177,7 +177,7 @@ async def test_slow_loop_logs_usage_when_provider_returns_invalid_json():
 
 
 @pytest.mark.asyncio
-async def test_runner_schedules_reflection_after_perception_and_review_after_plan(tmp_path):
+async def test_u_runner_starts_slow_after_first_perception_without_plan_review(tmp_path):
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -194,11 +194,12 @@ async def test_runner_schedules_reflection_after_perception_and_review_after_pla
     events = [json.loads(line) for line in (run_dir / "brain_tasks.jsonl").read_text().splitlines()]
     scheduled = [event for event in events
                  if event["status"] == "scheduled" and event["kind"] in {"reflection", "plan_review"}]
-    assert [event["kind"] for event in scheduled] == ["reflection", "plan_review"]
+    assert scheduled and all(event["kind"] == "reflection" for event in scheduled)
+    assert summary["brain"]["slow"]["worker_starts"] == 1
     assert all(any(event["task_id"] == task["task_id"] and
                    event["status"] in {"completed", "cancelled", "failed", "skipped"}
                    for event in events) for task in scheduled)
-    assert summary["brain"]["slow"]["events"]["scheduled"] >= 2
+    assert summary["brain"]["slow"]["events"]["scheduled"] >= 1
     assert any(event["kind"] == "importance" and event["status"] == "completed" for event in events)
     assert summary["brain_status"] in {"completed", "incomplete"}
     assert all(summary["brain"]["fast"][stage]["completed"] == 1

@@ -70,11 +70,16 @@ def test_runner_comparison_persists_actual_usage(tmp_path, monkeypatch, mode):
         assert group['llm_request_count'] == session['llm_request_count']
         assert group['requested'] == 1
         assert group['recording']['attempted'] == session['metrics']['recording']['attempted']
-        assert session['llm_tokens_complete'] is (mode == 'zero')
-        assert group['llm_tokens'] == (0 if mode == 'zero' else None)
+        unknown_calls = provider.attempted_calls - provider.returned_calls
+        complete = mode == 'zero' and unknown_calls == 0
+        assert session['llm_tokens_complete'] is complete
+        assert group['llm_tokens'] == (0 if complete else None)
         assert group['llm_tokens_known_total'] == (0 if mode == 'zero' else None)
-        assert group['input_tokens'] == (10 * provider.returned_calls if mode == 'partial' else 0 if mode == 'zero' else None)
-        assert group['output_tokens'] == (0 if mode == 'zero' else None)
+        expected_input = 10 * provider.returned_calls if mode == 'partial' else 0 if mode == 'zero' else None
+        assert group['input_tokens'] == (expected_input if unknown_calls == 0 else None)
+        assert group['input_tokens_known_total'] == expected_input
+        assert group['output_tokens'] == (0 if complete else None)
+        assert session['llm_tokens_unknown_calls'] >= unknown_calls
 
 @pytest.mark.parametrize('records, requests', [([], 1), ([{'provider':'fake','input_tokens':True,'output_tokens':2}], 1), ([{'provider':'fake','input_tokens':-1,'output_tokens':float('inf')}], 1)])
 def test_unlogged_or_invalid_usage_never_establishes_full_total(records, requests):

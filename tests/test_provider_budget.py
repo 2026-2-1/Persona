@@ -262,7 +262,8 @@ async def test_jev_runner_uses_gemini_generation_and_typesafe_choice(tmp_path, m
     run_dir, summary = await runner.run_study(study, "jev", None, False, tmp_path / "runs")
     calls = [json.loads(line) for line in (run_dir / "llm_calls.jsonl").read_text(encoding="utf-8").splitlines()]
 
-    assert {"perception", "plan", "reflection", "plan_review"} <= {row["stage"] for row in calls}
+    assert {"perception", "feedback", "plan", "reflection"} <= {row["stage"] for row in calls}
+    assert not any(row["stage"] == "plan_review" for row in calls)
     assert any(row["provider"] == "typesafe" and row["model"] == "jev-latest" for row in calls)
     assert all(row["provider"] == "gemini" and row["model"] == "gemini-2.5-flash-lite"
                for row in calls if row["stage"] in {"perception", "plan", "reflection", "plan_review"})

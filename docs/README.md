@@ -4,6 +4,8 @@ AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재
 
 | 문서 | 목적 |
 |---|---|
+| [#84 U Slow·Wonder 반복](tasks/84-u-slow.md) | 실행별 반복·직접 기억 저장·64개 커서·동시 갱신·취소·후속 embedding |
+| [#83 U Fast 전환](tasks/83-u-fast.md) | 최초/후속 호출 순서·U 응답·제안 기억·선행 어댑터·원본 대비 차이 |
 | [prototype squash 병합 준비](handoffs/2026-10-16-prototype-merge-queue.md) | 병합 순서·중복/충돌·보호 설정 허용 대기·준비본 검증 |
 | [계획 검토 폐기 진단](research/2026-10-16-plan-review-discard-diagnosis.md) | 실제 호출 순서·0/2 재현·2/2 대조·입력 도달·후속 정책 |
 | [제출 3항목과 긴급 결정](research/2026-10-16-submission-decision-brief.md) | 데이터 0건·시스템·논문 기여 후보·회의 우선순위 |

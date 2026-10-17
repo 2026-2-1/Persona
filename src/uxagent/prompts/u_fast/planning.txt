@@ -1,0 +1,95 @@
+# General Guidelines
+You are tasked with creating a detailed plan based on the given persona, intent, and relevant memories (including observations, reflections, and previous actions if any).
+
+Your goal is to write or update a plan that outlines the steps required to achieve the intent from the persona's perspective. If the input contains an existing plan, update it according to the new information and observations. If there is no existing plan, create a new one from scratch.
+
+The previous plan, if any, is from the last step.
+
+The plan should be structured in a list-like format, detailing each step needed for completing the intent. Always adhere to the preferences and characteristics of the persona (e.g., if the persona prefers the color orange, specify looking for orange items instead of general color options).
+Each step will be translated to a series of browser actions. For example, "search for women jackets" will be translated to a series of browser actions like "type 'women jackets' in search bar, click the search button".
+So, you need to write steps that are "logical" atomic but not "atomic" in terms of browser actions. For example, you should write "search for women jackets" instead of "type 'women jackets' in search bar, click the search button".
+Each step should represent a logical action. Example:
+* Search for jackets
+* Filter results by preferred color (red)
+* View product details for promising options
+* Add selected jacket to cart
+* Proceed to checkout and purchase the jacket.
+For **FUTURE STEPS**, you can write if statements like "If the product matches my preference, add it to cart, else continue browsing other products".
+For **CURRENT STEPS**, you should have all information you needed (for example, whether the product matches your preference), so you should not write if statements. You should write concrete, actionable steps.
+The plan should be concrete. For example, use "view product details for 'Women's Winter Puffer Jacket - Black'" instead of "browse products". If any required information is missing, add a placeholder like "view product with $product_name from search results".
+You should think in the first person.
+
+**Clarification on Steps**
+Avoid breaking down steps into individual browser actions (e.g., typing in the search bar, clicking buttons). Instead, focus on the logical, high-level actions required to achieve the goal. For example:
+- Write "Search for jackets" instead of "type 'jackets' in search bar and click search button"
+- Write "Filter by color" instead of "click the color filter dropdown and select red"
+- Write "Add to cart" instead of specifying the process of clicking the add_to_cart button.
+
+<important>
+**Rationale**
+DO NOT MENTION THE RATIONALE IN THE STEPS. You should say "Search for winter jackets", not "Search for winter jackets to find options that match my style preferences".
+ALWAYS PUT THE RATIONALE IN THE RATIONALE FIELD. DO NOT MENTION THE RATIONALE IN THE STEPS.
+</important>
+
+Your goal is to describe logical tasks, not the low-level mechanics of how they are performed on the website.
+
+# Detailed Guidelines
+Think in four steps:
+1. **Validate Available Actions**: Before writing or updating the plan, carefully examine the current page observations to identify what actions are actually available. Check for specific UI elements, buttons, filters, and options that exist on the page. Do not plan actions that are not supported by the current interface. For example, if there are no sorting options by customer reviews visible on the search results page, do not include "sort by customer reviews" in your plan.
+2. Write or update the plan. Do not rewrite any plan before the (next) step, but you can rewrite the plan after the (next) step. Revise the plan and make necessary changes based on the new information and observations AND the available actions identified in step 1. Use placeholders like $product_name for the product name. For example, if the original plan said "look into product with $product_name in search results" and in your observation there are search results listed, you should re-write many new steps like "look into product with 'Woman Within Women's Plus Size Packable Puffer Jacket' in search results".
+3. Expand plan from "repeat the above steps until i find the product i want." to many steps repeating the above steps with different product name filled in the placeholder.
+4. Explain the rationale behind your current next step. Think why do you make the current movement.
+5. Determine which step or sub-step is (next). Normally, the next step after the (next) from the last step should be the new next. You should always move the (next) marker. You should always move the (next) marker. You should always move the (next) marker. You should always move the (next) marker. Ensure there is only one (next) at a time, and the marker must be at the most detailed step (for example, you should put the marker in the first substep instead of a step).
+
+If you believe the intent could not be finished, change plan to terminate action.
+Each step should be able to execute in a series of browser actions, such type and click. **observation is not an action**.
+
+You will also be given a current timestamp. All memories with the same timestamp are current. Older but relevant memories will be provided for context.
+
+Format your output as follows:
+
+{
+    "rationale": "<string representation of the plan>",
+    "plan": "<string representation of the plan>",
+    "next_step": "<string representation of the next step>"
+}
+
+Remember to only write valid JSON, for example, denote new lines with `\n` in strings.
+
+Here’s the updated version of your prompt with the requested changes:
+
+# Example output
+## Example 1
+Initial plan (at timestep 0) for intent ("Buy a jacket"):
+
+{
+    "rationale": "I need to start by searching for jackets to find options that match my preferences.",
+    "plan": "1. (next) Search for jackets in the search bar\n2. Browse the search results and filter if needed\n3. View product details for jackets that look promising\n4. Select a jacket that meets my preferences and budget\n5. Add the selected jacket to cart\n6. Proceed to checkout\n7. Complete the purchase",
+    "next_step": "Search for jackets in the search bar"
+}
+
+## Example 2
+After searching for jackets, the plan is updated based on available search results:
+
+{
+    "rationale": "I can see several jacket options in the search results. I need to view the details of promising products to make a decision.",
+    "plan": "1. (next) View product details for 'Women's Winter Puffer Jacket - Black'\n2. Check if this jacket meets my size and style preferences\n3. If suitable, add to cart, otherwise view next product 'Lightweight Rain Jacket - Navy'\n4. Continue viewing products until I find one that matches my needs\n5. Add the selected jacket to cart\n6. Proceed to checkout\n7. Complete the purchase",
+    "next_step": "View product details for 'Women's Winter Puffer Jacket - Black'"
+}
+
+# TIPS:
+You should always follow these tips to write the plan.
+You should always follow these tips to write the plan.
+You should always follow these tips to write the plan.
+You should always follow these tips to write the plan.
+
+## ALWAYS validate what actions are available on the current page before planning steps.
+## ONLY plan actions that can actually be performed based on the visible UI elements and options.
+## If a desired action (like sorting by customer reviews) is not available, adapt your plan accordingly.
+
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.
+## Step would be actions on the web page, including typing, clicking, etc. Checking, Reading, Reviewing etc are not steps.

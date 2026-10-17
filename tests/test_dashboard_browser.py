@@ -235,6 +235,29 @@ def test_loop_trace_shows_generated_work_and_independent_result(local_dashboard)
         browser.close()
 
 
+def test_completed_batch_opens_failed_persona_log_modal(local_dashboard):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        baseline = page.request.get(local_dashboard + '/api/state').json()
+        job = {'job_id':'batch-1','kind':'batch','status':'completed','study_id':'dashboard-batch-1',
+               'message':'실패한 실행을 제외하고 순차 테스트를 마쳤습니다.'}
+        batch = {'study_id':'dashboard-batch-1','requested':4,'failed':1,'completed_with_failures':True,
+                 'runs':[{'persona_id':'p002','run_id':'run-failed','termination_reason':'model_error',
+                          'verification':'unknown','error':'model_output_error: invalid Finish'}]}
+        page.route('**/api/state', lambda route: route.fulfill(json={**baseline,'job':job,'batch':batch}))
+        page.goto(local_dashboard)
+        page.evaluate("pendingJobId='batch-1'; refresh()")
+        dialog = page.locator('#run-failure-dialog')
+        expect(dialog).to_be_visible()
+        expect(dialog).to_contain_text('1 / 4명')
+        expect(dialog).to_contain_text('p002')
+        expect(dialog).to_contain_text('model_output_error: invalid Finish')
+        dialog.get_by_role('button', name='확인').click()
+        expect(dialog).not_to_be_visible()
+        browser.close()
+
+
 def test_scenario_wizard_has_registered_checks_and_no_key_or_generation(local_dashboard):
     with sync_playwright() as p:
         browser=p.chromium.launch()

@@ -1,5 +1,21 @@
 # 평가·기록·결과 계약
 
+## #84 U Slow 계약 (작업 브랜치)
+
+현재 runner는 첫 인식 뒤 `ContinuousSlowLoop` 하나를 시작해 reflect→wonder→memory.update를 반복한다. 새 Reflection/Thought는 공유 기억에 바로 저장하며 stage 경계 채택·plan_review·1% draw가 없다. Wonder 입력은 persona+최근 기억 최대50개+intent, 출력은 0~3개 thoughts다. [#84 계약·한계](tasks/84-u-slow.md)가 아래 과거 Slow/1% 정책 설명보다 우선한다.
+
+`MemoryStore.last_seq/since(cursor)`가 64개 활성 배열과 독립적인 성찰 진행을 보장한다. update는 설정된 embedding과 중요도 산정을 함께 시작하고, 같은 활성 ID에만 늦은 결과를 적용한다. source_memory_evicted는 제거된 항목의 데이터 갱신 폐기이며 성찰 결과 사용 권한 판단이 아니다. memory_update·embedding 사건 kind를 reader에 추가했고 과거 로그 읽기를 유지한다.
+
+새 실행은 prompt_version=u-loops-1, wonder_policy=u_every_cycle이며 seed/draw 파일을 생성하지 않는다. enable_wonder의 과거 false 입력은 true로 정규화하고 wonder_seed/reflection_every_actions는 호환 입력으로만 남긴다. embedding 미설정은 not_configured이며 벡터 완료로 표시하지 않는다. 실제 GPU embedding과 검색 공식은 #85 범위다. 정상 Fast 종료 때도 무한 반복 task는 취소·합류하므로 Slow를 완료로 조작하지 않는다. 요청 응답 전 취소된 토큰·요금은 미확인이다.
+
+## #83 U Fast 계약 (작업 브랜치)
+
+현재 실행기의 Fast 계약은 [#83 구현 명세](tasks/83-u-fast.md)를 따른다. `UPerception.observations`, `UFeedback.thoughts`, `UPlan.plan/rationale/next_step`, `UActions.actions`를 소비한다. 후속 차례의 feedback과 perceive는 같은 현재 HTML에서 동시에 시작하고 공유 기억을 저장한 뒤 plan→act로 진행한다. plan 검색은 intent, act 검색은 next_step이다.
+
+새 `thought` 기억과 모든 Action 제안은 generated다. 기억의 `timestamp`는 차례 순번, Action의 `raw_action`은 U 원본 제안이다. `AgentDecision.proposed_actions`·`next_step`, `BrainStageRecord.model_response`·feedback stage는 추가 필드다. 기록의 perception/plan/decision 이름은 기존 소비용이며 U 원본 응답은 model_response에 남긴다. 원본 필드가 없는 구버전 기록은 기존대로 읽는다. 결과 성공 여부는 Action 기억에 쓰지 않고 steps의 result/evaluation을 확인한다.
+
+observation/tab ID는 실행 어댑터가 현재 관찰에서 붙인다. 모델 응답이나 완료된 Slow 결과를 현재 observation/plan version에 맞춰 강제로 허가하는 Brain gate는 없다. 실행기의 기존 브라우저 접근 정책은 #87, 과업 종료/평가 정책은 #89에서 변경한다. 제안 actions 전부를 기억에 저장하고 첫 번째만 실행하므로 두 번째 이후 제안을 실제 실행으로 집계하지 않는다. `type.enter=true`는 fill 후 Enter 한 번이며, clear는 빈 문자열 type으로 변환한다. 나머지 U 행동 확대와 선택적 key_press target 지원은 #87 범위다.
+
 이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
 
 현재 통합 브랜치는 #79와 #78 후속의 생성 계약을 D/C 소비에 연결했다. Fast 작업 kind와 adopted/discarded를 포함한 8상태, Wonder 추첨·부모 연결을 같은 검증 reader로 읽는다. [통합 검증](handoffs/2026-10-16-latest-pr-integration.md)을 따른다. 실제 입력 소비 계측과 연구용 실험 제어는 별도 후속이다.
@@ -45,6 +61,8 @@ Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현�
 실행 전에 experiment_id, session_id, task_id, condition(general/persona), 구매 제약, persona_id(일반 조건은 없음), environment_id, site_version, model/provider/prompt_version, 예산·반복 수·예정 상태를 확정한다. 성공·실패·미확인은 평가 결과이고, timeout/error/blocked/cancelled/not_started는 종료·실행 상태다. 두 축을 혼합하지 않는다.
 
 성공률 = 독립적으로 확인된 성공 / 사전 등록 평가 세션. 실패·오류·차단·취소·미실행·미확인 개수를 함께 공개하고 계획서의 분모를 유지한다. 모델 완료 선언은 별도 필드로 보존한다. 사이트/모델/환경 조건이 달라진 실행은 같은 비교 블록으로 묶지 않는다.
+
+순차 batch에서 한 페르소나의 `model_error`·`browser_error`는 해당 실행을 종료하고 오류로 집계하되 다음 페르소나 실행을 막지 않는다. 전체 batch는 예정된 순회를 마친 상태와 개별 실행 성공을 구분한다. 개별 오류 때문에 전체 작업을 단일 실패로 표시하지 않으며, 오류 로그와 독립 판정 `unknown`을 함께 제공한다.
 
 ## 행동과 근거
 

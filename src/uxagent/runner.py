@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-import asyncio, hashlib, json, os, secrets, socket, threading, time, uuid
+import asyncio, hashlib, json, os, socket, threading, time, uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit
 from pydantic import ValidationError
-from .schemas import BrainStageRecord, StudyConfig, Persona
+from .schemas import StudyConfig, Persona
 from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
 from .evaluator import evaluate
-from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
+from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, LocalQwenProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
 from .fast_loop import FastLoop
 from .brain import Brain
 from .memory import MemoryStore
-from .slow_loop import SlowLoop
+from .slow_loop import ContinuousSlowLoop
 from .storage import write_json, JsonlWriter
 from .security import normalize_origin
 from .model_catalog import resolve_model
@@ -72,7 +72,7 @@ def load_study(path: str | Path):
 def model_routes(provider_name: str, model: str):
     generator = "gemini" if provider_name == "jev" else "openai" if provider_name == "live" else provider_for_model(model, provider_name)
     routes = {stage: {"provider": generator, "model": model} for stage in
-              ("perception", "plan", "decision", "importance", "reflection", "plan_review", "wonder")}
+              ("perception", "feedback", "plan", "decision", "importance", "reflection", "wonder")}
     if provider_name == "jev":
         routes["decision"] = {"provider": "typesafe", "model": "jev-latest"}
         routes["decision_choice"] = routes["decision"]
@@ -88,6 +88,14 @@ def validate_provider_configuration(provider_name: str, config: StudyConfig):
             raise ValueError("Jev requires a Gemini API key for every generation stage")
     if config.embedding_model and provider_name not in {"mock", "live"}:
         raise ValueError("This provider does not support the configured embedding model")
+
+
+def validate_gpu_fixture_port(start_url: str):
+    page = urlsplit(start_url)
+    api = urlsplit(os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions"))
+    if (page.hostname in {"localhost", "127.0.0.1"} and page.path.endswith(("shop.html", "decathlon.html"))
+            and page.port == api.port):
+        raise ValueError("합성 사이트와 GPU SSH 터널이 같은 로컬 포트를 사용합니다. 터널을 8001번 등으로 열고 PERSONA_QWEN_API_URL을 맞추세요")
 
 
 class FixtureServer:
@@ -114,6 +122,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     profile=json.loads((config_path.parent/config.evaluation_profile_file).read_text(encoding="utf-8")) if config.evaluation_profile_file else None
     model = resolve_model(provider_name, config.provider_model) if config.provider_model is not None else config.model if provider_name == "live" else resolve_model(provider_name)
     validate_provider_configuration(provider_name, config)
+    if provider_name == "gpu":
+        validate_gpu_fixture_port(config.start_url)
     routes = model_routes(provider_name, model)
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
@@ -124,13 +134,12 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     server_started=server.start() if server else False
     run_dir=Path(output_root)/run_id;run_dir.mkdir(parents=True,exist_ok=False)
     now=datetime.now(timezone.utc).isoformat()
-    wonder_seed=config.wonder_seed if config.wonder_seed is not None else secrets.randbits(63)
     write_json(run_dir/"config.json",config.model_dump());write_json(run_dir/"persona.json",persona.model_dump() if persona_mode=="persona" else {"constraints":persona.constraints,"intent":persona.intent,"condition":"general"})
-    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"model_routes":routes,"prompt_version":"brain-3","condition":persona_mode,"wonder_seed":wonder_seed if config.enable_wonder else None,
+    write_json(run_dir/"run.json",{"run_id":run_id,"started_at":now,"study_id":config.study_id,"provider":provider_name,"model":model,"model_routes":routes,"prompt_version":"u-loops-1","condition":persona_mode,"wonder_policy":"u_every_cycle",
         "execution_mode":"ai", "source_kind":"synthetic_fixture" if is_fixture else config.source_kind})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
-    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl");wonder_draw_writer=JsonlWriter(run_dir/"wonder_draws.jsonl")
-    started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;step_history=[];seen={};last_obs=None;slow=None;brain=None
+    brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl")
+    started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;seen={};last_obs=None;slow=None;brain=None
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
     llm_elapsed_total=0
     def log_call(record):
@@ -143,24 +152,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
             record["estimated_cost_usd"]=estimate_cost_usd(record["provider"],record.get("input_tokens"),record.get("output_tokens"),model=record.get("model"))
         record.setdefault("fallback_reason",None)
         calls.write(record)
-    def write_fast_stage(stage, observation, text, source_memory_ids, *, plan_id=None, task_id=None,
-                         action=None, finish=None):
-        record_id=f"stage-{stage}-{uuid.uuid4().hex}"
-        record=BrainStageRecord(record_id=record_id,task_id=task_id,run_id=run_id,stage=stage,
-            observation_id=observation.observation_id,
-            plan_id=plan_id,plan_version=1 if plan_id else None,
-            source_memory_ids=source_memory_ids,text=text,action=action,finish=finish,
-            recorded_at=datetime.now(timezone.utc))
-        brain_stage_writer.write(record.model_dump())
-        return record
-    def with_boundary_memories(retrieved, adopted, limit):
-        selected=[];seen=set()
-        for entry in [*reversed(adopted),*retrieved]:
-            memory_id=entry.get("memory_id")
-            if memory_id in seen:continue
-            selected.append(entry);seen.add(memory_id)
-            if len(selected)>=limit:break
-        return selected
     async def evaluate_current(page):
         try:
             if config.evaluation_expectations is not None or profile is not None:
@@ -181,14 +172,34 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                               **({"budget_reason":budget.last_exceeded_reason} if code=="budget_exceeded" else {})}})
     def stop_requested():
         return stop_file is not None and Path(stop_file).is_file()
-    provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else GeminiProvider()
+    provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else LocalQwenProvider() if provider_name=="gpu" else GeminiProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
-    slow=SlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
-                  memory,brain_task_writer,brain_stage_writer,log_call,defer_adoption=True,
-                  wonder_enabled=config.enable_wonder,wonder_seed=wonder_seed,
-                  wonder_draw_writer=wonder_draw_writer,importance_enabled=True)
-    brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer)
+    slow=ContinuousSlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
+                            memory,brain_task_writer,brain_stage_writer,log_call,
+                            embedding_model=config.embedding_model)
+    brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer,stage_writer=brain_stage_writer)
+    async def retrieve_fast_memories(query, mode):
+        nonlocal previous_error
+        try:
+            if config.embedding_model:
+                selected=await memory.retrieve_with_embeddings(query,config.memory_limit,provider,
+                    budget,config.embedding_model,log_call,mode=mode,deduplicate_steps=False)
+            else:
+                selected=list(memory.retrieve(query,config.memory_limit,mode=mode,deduplicate_steps=False))
+        except BudgetExceeded:
+            raise
+        except Exception as exc:
+            selected=list(memory.retrieve(query,config.memory_limit,mode=mode,deduplicate_steps=False))
+            previous_error={"code":"embedding_error","message":str(exc)[:300]}
+        if mode == "fast_plan":
+            # U prepends recent kinds, then ranked results (duplicates included).
+            recent=[]
+            for kind,window in (("observation",3),("action",5),("plan",5),("thought",5)):
+                recent.extend(entry.model_dump() for entry in memory.entries
+                    if entry.kind==kind and (entry.timestamp or 0)>=memory.timestamp-window)
+            return recent+selected
+        return selected
     evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
     actual_headed=config.headed if headed is None else headed
     try:
@@ -219,28 +230,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     write_unexecuted_step(step_id,observation,pre_observed_at,
                         "cancelled","Run was stopped after observation.")
                     termination="cancelled";break
-                observation_memory=memory.append("observation",observation.html[:600],
-                    [step_id],[observation.observation_id])
-                memory.set_current_stage_memories([observation_memory.memory_id])
-                perception_boundary=brain.begin_stage("perception",observation.observation_id)
-                try:
-                    if config.embedding_model:
-                        memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call)
-                    else:
-                        memories=list(memory.retrieve(config.task,config.memory_limit))
-                except BudgetExceeded:
-                    step_count+=1
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "budget_exceeded","Model request budget was exhausted.")
-                    termination="budget_exceeded";break
-                except Exception as exc:
-                    memories=list(memory.retrieve(config.task,config.memory_limit))
-                    previous_error={"code":"embedding_error","message":str(exc)[:300]}
-                # Keep scored memories and recent actions separate so history cannot displace top-ranked memories.
-                memories=with_boundary_memories(memories,perception_boundary,
-                    4 if hasattr(provider,"choose") else 6)
-                history_tail=step_history[-config.recent_step_count:] if config.recent_step_count else []
-                recent_actions=[{"action_type":h["mock_stage"],"text":h["summary"]} for h in history_tail]
                 try:
                     decision_started=time.monotonic()
                     remaining=run_deadline-time.monotonic()
@@ -250,59 +239,9 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                             "run_timeout","Run deadline was reached before a model decision.")
                         termination="run_timeout";break
                     async with asyncio.timeout(remaining):
-                        perception=await brain.perceive(config.task,observation,memories)
-                        perception_sources=[m["memory_id"] for m in memories if "memory_id" in m]
-                        perception_task_id=brain.fast_task_id("perception")
-                        perception_record=write_fast_stage("perception",observation,perception,
-                            perception_sources,task_id=perception_task_id)
-                        brain.complete_fast("perception",perception_record)
-                        perception_memory=memory.append("observation",perception,[step_id],
-                            [observation.observation_id],"generated",source_memory_ids=perception_sources,
-                            source_stage_record_id=perception_record.record_id)
-                        memory.set_current_stage_memories([
-                            observation_memory.memory_id, perception_memory.memory_id])
-                        brain.schedule_reflection(config.task,observation.observation_id,
-                                                  error=previous_error)
-                        plan_boundary=brain.begin_stage("plan",observation.observation_id)
-                        if config.embedding_model:
-                            plan_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call,mode="fast_plan")
-                        else:
-                            plan_memories=list(memory.retrieve(config.task,config.memory_limit,mode="fast_plan"))
-                        plan_memories=with_boundary_memories(plan_memories,plan_boundary,
-                            4 if hasattr(provider,"choose") else 6)
-                        plan=await brain.plan(config.task,observation,plan_memories,perception,
-                            previous_error,recent_actions,config.max_steps-step_count)
-                        plan_sources=[m["memory_id"] for m in plan_memories if "memory_id" in m]
-                        plan_task_id=brain.fast_task_id("plan")
-                        plan_record=write_fast_stage("plan",observation,plan,plan_sources,
-                            plan_id=f"plan-{uuid.uuid4().hex}",task_id=plan_task_id)
-                        brain.complete_fast("plan",plan_record)
-                        plan_memory=memory.append("plan",plan,[step_id],[observation.observation_id],
-                            "generated",source_memory_ids=plan_sources,
-                            source_stage_record_id=plan_record.record_id)
-                        memory.set_current_stage_memories([
-                            observation_memory.memory_id, perception_memory.memory_id,
-                            plan_memory.memory_id])
-                        brain.schedule_plan_review(config.task,plan,observation.observation_id,
-                                                   plan_record.plan_id,plan_record.plan_version)
-                        decision_boundary=brain.begin_stage("decision",observation.observation_id,
-                            plan_id=plan_record.plan_id,plan_version=plan_record.plan_version)
-                        if config.embedding_model:
-                            decision_memories=await memory.retrieve_with_embeddings(config.task+" "+observation.html[:1500],config.memory_limit,provider,budget,config.embedding_model,log_call,mode="fast_decision")
-                        else:
-                            decision_memories=list(memory.retrieve(config.task,config.memory_limit,mode="fast_decision"))
-                        decision_memories=with_boundary_memories(decision_memories,decision_boundary,
-                            4 if hasattr(provider,"choose") else 6)
-                        decision=await brain.decide_action(config.task,observation,
-                            decision_memories,perception,plan,previous_error,
-                            config.max_steps-step_count,recent_actions=recent_actions)
-                        decision_sources=[m["memory_id"] for m in decision_memories if "memory_id" in m]
-                        decision_task_id=brain.fast_task_id("decision")
-                        decision_record=write_fast_stage("decision",observation,decision.rationale_summary,
-                            decision_sources,plan_id=plan_record.plan_id,
-                            task_id=decision_task_id,
-                            action=decision.action,finish=decision.finish)
-                        brain.complete_fast("decision",decision_record)
+                        if provider_name=="mock" and hasattr(provider,"set_observation"):
+                            provider.set_observation(observation)
+                        decision,decision_sources=await brain.forward(config.task,observation,step_id,retrieve_fast_memories)
                     decision_ms=int((time.monotonic()-decision_started)*1000)
                     memory.set_current_stage_memories([])
                 except BudgetExceeded:
@@ -362,11 +301,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 repeated_key=fingerprint+action_key;seen[repeated_key]=seen.get(repeated_key,0)+1
                 if seen[repeated_key]>=config.repeated_state_action_limit:termination="stuck"
                 summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
-                memory.append("action",summary,[step_id],[observation.observation_id],"observed")
-                mock_stage={"type":"type","click":"click-search","select":"select-color" if decision.action.option_value=="검정" else "select-price" if decision.action.option_value=="30000" else "apply-filter"}.get(decision.action.type,decision.action.type)
-                # use semantic target to distinguish repeated select/click phases
-                if decision.action.type=="click" and decision.action.target_id and "필터" in decision.action.target_id:mock_stage="apply-filter"
-                step_history.append({"mock_stage":mock_stage,"summary":summary})
                 steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"evaluation":evaluation,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
                 if stop_requested():termination="cancelled";break
                 if termination=="stuck":break
@@ -415,5 +349,5 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     summary.update(measured)
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
-    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close();wonder_draw_writer.close()
+    steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close()
     return run_dir,summary

@@ -2,18 +2,91 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import random
 import time
 import uuid
 from collections import deque
 from datetime import datetime, timezone
+from importlib.resources import files
 
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
-from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord
+from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord, UReflection, UWonder, UImportance
+from .fast_loop import FastLoop
 from .setup_guide import _check_sensitive
 
 
-class SlowLoop:
+class _SlowModelIO:
+    """Shared request accounting and append-only events; no scheduling policy."""
+
+    def _event(self, item, status, *, snapshot_seq, source_memory_ids=None,
+               output_record_ids=None, reason_code=None):
+        self.event_counts[status] = self.event_counts.get(status, 0) + 1
+        if self.task_writer is None:
+            return
+        event = BrainTaskEvent(
+            event_id=f"event-{uuid.uuid4().hex}", task_id=item["task_id"],
+            run_id=self.memory.run_id, kind=item["kind"], status=status,
+            snapshot_seq=snapshot_seq, observation_id=item["observation_id"],
+            plan_id=item["plan_id"], plan_version=item["plan_version"],
+            source_memory_ids=source_memory_ids or [], output_record_ids=output_record_ids or [],
+            reason_code=reason_code, recorded_at=datetime.now(timezone.utc),
+        )
+        self.task_writer.write(event.model_dump())
+
+    async def _generate(self, item, system, payload, stage, *, response_model=None):
+        messages = [
+            {"role": "system", "content": system + " Return valid JSON only."},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+        reservation = self.output_tokens + sum(len(message["content"]) for message in messages) // 4
+        started = time.monotonic()
+        self.budget.reserve(reservation)
+        settled = False
+        try:
+            result, usage = await self.provider.complete(messages, self.model,
+                                                         self.temperature, self.output_tokens)
+            input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
+            actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
+            self.budget.settle(reservation, actual)
+            settled = True
+            actual_model = usage.get("model", self.model)
+            actual_provider = usage.get("provider") or provider_for_model(actual_model)
+            record = {"module": "slow", "stage": stage, "provider": actual_provider,
+                               "model": actual_model,
+                               "task_id": item["task_id"],
+                               "elapsed_ms": int((time.monotonic() - started) * 1000),
+                               "input_tokens": input_tokens, "output_tokens": output_tokens,
+                               "estimated": actual is None,
+                               "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
+                                                                        output_tokens, model=actual_model)}
+            try:
+                parsed = json.loads(result)
+                if not isinstance(parsed, dict):
+                    raise ValueError("Slow Loop response must be a JSON object")
+                if response_model is not None:
+                    response_model.model_validate(parsed)
+            except (ValueError, TypeError):
+                record["error"] = "model_output_error"
+                raise
+            finally:
+                if self.call_log:
+                    self.call_log(record)
+            return parsed
+        except BaseException as exc:
+            if not settled:
+                self.budget.settle(reservation, None)
+                if self.call_log:
+                    self.call_log({"module": "slow", "stage": stage,
+                                   "provider": provider_for_model(self.model), "model": self.model,
+                                   "task_id": item["task_id"],
+                                   "elapsed_ms": int((time.monotonic() - started) * 1000),
+                                   "input_tokens": None, "output_tokens": None,
+                                   "estimated": True, "estimated_cost_usd": None,
+                                   "error": type(exc).__name__})
+            raise
+
+class SlowLoop(_SlowModelIO):
     """Run reflection and plan review serially without blocking Fast Loop."""
 
     def __init__(self, provider, budget, model, temperature, output_tokens, memory,
@@ -69,21 +142,6 @@ class SlowLoop:
         if self.worker is None or self.worker.done():
             self.worker = asyncio.create_task(self._run())
         return task_id
-
-    def _event(self, item, status, *, snapshot_seq, source_memory_ids=None,
-               output_record_ids=None, reason_code=None):
-        self.event_counts[status] = self.event_counts.get(status, 0) + 1
-        if self.task_writer is None:
-            return
-        event = BrainTaskEvent(
-            event_id=f"event-{uuid.uuid4().hex}", task_id=item["task_id"],
-            run_id=self.memory.run_id, kind=item["kind"], status=status,
-            snapshot_seq=snapshot_seq, observation_id=item["observation_id"],
-            plan_id=item["plan_id"], plan_version=item["plan_version"],
-            source_memory_ids=source_memory_ids or [], output_record_ids=output_record_ids or [],
-            reason_code=reason_code, recorded_at=datetime.now(timezone.utc),
-        )
-        self.task_writer.write(event.model_dump())
 
     async def _run(self):
         while self.pending:
@@ -281,50 +339,6 @@ class SlowLoop:
         finally:
             self._refresh_status()
 
-    async def _generate(self, item, system, payload, stage):
-        messages = [
-            {"role": "system", "content": system + " Return valid JSON only."},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ]
-        reservation = self.output_tokens + sum(len(message["content"]) for message in messages) // 4
-        started = time.monotonic()
-        self.budget.reserve(reservation)
-        settled = False
-        try:
-            result, usage = await self.provider.complete(messages, self.model,
-                                                         self.temperature, self.output_tokens)
-            input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
-            actual = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
-            self.budget.settle(reservation, actual)
-            settled = True
-            actual_model = usage.get("model", self.model)
-            actual_provider = usage.get("provider") or provider_for_model(actual_model)
-            if self.call_log:
-                self.call_log({"module": "slow", "stage": stage, "provider": actual_provider,
-                               "model": actual_model,
-                               "task_id": item["task_id"],
-                               "elapsed_ms": int((time.monotonic() - started) * 1000),
-                               "input_tokens": input_tokens, "output_tokens": output_tokens,
-                               "estimated": actual is None,
-                               "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
-                                                                        output_tokens, model=actual_model)})
-            parsed = json.loads(result)
-            if not isinstance(parsed, dict):
-                raise ValueError("Slow Loop response must be a JSON object")
-            return parsed
-        except BaseException as exc:
-            if not settled:
-                self.budget.settle(reservation, None)
-                if self.call_log:
-                    self.call_log({"module": "slow", "stage": stage,
-                                   "provider": provider_for_model(self.model), "model": self.model,
-                                   "task_id": item["task_id"],
-                                   "elapsed_ms": int((time.monotonic() - started) * 1000),
-                                   "input_tokens": None, "output_tokens": None,
-                                   "estimated": True, "estimated_cost_usd": None,
-                                   "error": type(exc).__name__})
-            raise
-
     async def _reflect(self, item, snapshot, snapshot_seq):
         persona = item["persona"]
         payload = {"persona": persona, "intent": persona.get("intent"), "task": item["task"],
@@ -456,3 +470,245 @@ class SlowLoop:
                           + sum(not task.done() for task in self.wonder_tasks),
                 "wonder_seed": self.wonder_seed if self.wonder_enabled else None,
                 "wonder_draws": self.wonder_draw_count}
+
+
+class ContinuousSlowLoop(_SlowModelIO):
+    """U's run-scoped loop, independent of the legacy queue/RNG policy."""
+
+    def __init__(self, provider, budget, model, temperature, output_tokens, memory,
+                 task_writer=None, stage_writer=None, call_log=None, *, embedding_model=None):
+        self.provider, self.budget, self.model = provider, budget, model
+        self.temperature, self.output_tokens = temperature, output_tokens
+        self.memory, self.task_writer, self.stage_writer = memory, task_writer, stage_writer
+        self.call_log, self.embedding_model = call_log, embedding_model
+        self.worker = None
+        self.worker_starts = self.cycles = self.reflection_cursor = 0
+        self.status, self.last_error = "idle", None
+        self.closed = False
+        self.event_counts = {key: 0 for key in
+                             ("scheduled", "started", "completed", "adopted", "discarded",
+                              "failed", "skipped", "cancelled")}
+
+    def start(self, persona, intent, observation_id=None, *, plan_getter=lambda: None):
+        if self.closed:
+            raise RuntimeError("Slow loop is closed")
+        if self.worker is not None:
+            return self.worker
+        self.persona = persona.model_dump() if hasattr(persona, "model_dump") else dict(persona)
+        self.intent, self.observation_id, self.plan_getter = intent, observation_id, plan_getter
+        self.worker_starts += 1
+        self.status = "scheduled"
+        self.worker = asyncio.create_task(self._run_continuous(), name=f"slow-{self.memory.run_id}")
+        return self.worker
+
+    async def _run_continuous(self):
+        self.status = "running"
+        try:
+            while True:
+                await self.reflect()
+                await self.wonder()
+                await self.update_memory()
+                self.cycles += 1
+                # Cooperative scheduling only: no delay, frequency cap or RNG policy.
+                await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            self.status = "cancelled"
+            raise
+        except BudgetExceeded:
+            self.status, self.last_error = "budget_exceeded", "budget_exceeded"
+        except Exception as exc:
+            self.status, self.last_error = "failed", type(exc).__name__
+
+    @staticmethod
+    def _prompt(name):
+        return files("uxagent").joinpath(f"prompts/u_slow/{name}.txt").read_text(encoding="utf-8")
+
+    def _persona_text(self):
+        return json.dumps(self.persona, ensure_ascii=False)
+
+    async def _phase(self, kind, entries, operation):
+        seq = max((entry.seq for entry in entries), default=self.memory.last_seq)
+        sources = [entry.memory_id for entry in entries]
+        observation_ids = [obs for entry in entries for obs in entry.source_observation_ids]
+        item = {"task_id": f"slow-{kind}-{uuid.uuid4().hex}", "kind": kind,
+                "observation_id": observation_ids[-1] if observation_ids else self.observation_id,
+                "plan_id": None, "plan_version": None}
+        self._event(item, "scheduled", snapshot_seq=seq, source_memory_ids=sources)
+        self._event(item, "started", snapshot_seq=seq, source_memory_ids=sources)
+        try:
+            records = await operation(item, seq, sources)
+            self._event(item, "completed", snapshot_seq=seq, source_memory_ids=sources,
+                        output_record_ids=records)
+        except asyncio.CancelledError:
+            self._event(item, "cancelled", snapshot_seq=seq, source_memory_ids=sources,
+                        reason_code="run_finished")
+            raise
+        except BudgetExceeded:
+            self._event(item, "skipped", snapshot_seq=seq, source_memory_ids=sources,
+                        reason_code="budget_exceeded")
+            raise
+        except Exception:
+            self._event(item, "failed", snapshot_seq=seq, source_memory_ids=sources,
+                        reason_code=f"{kind}_call_failed")
+            raise
+
+    def _u_record(self, item, seq, entries, response):
+        record = BrainStageRecord(record_id=f"stage-{item['kind']}-{uuid.uuid4().hex}",
+            task_id=item["task_id"], run_id=self.memory.run_id, stage=item["kind"],
+            observation_id=item["observation_id"], snapshot_seq=seq,
+            source_memory_ids=[entry.memory_id for entry in entries],
+            text=json.dumps(response, ensure_ascii=False), model_response=response,
+            recorded_at=datetime.now(timezone.utc))
+        if self.stage_writer:
+            self.stage_writer.write(record.model_dump())
+        return record
+
+    def _publish(self, kind, texts, entries, record):
+        steps = sorted({step for entry in entries for step in entry.source_step_ids})
+        observations = list(dict.fromkeys(obs for entry in entries for obs in entry.source_observation_ids))
+        for text in texts:
+            self.memory.append(kind, text, steps, observations, "generated",
+                source_memory_ids=record.source_memory_ids, source_stage_record_id=record.record_id)
+
+    async def reflect(self):
+        entries = self.memory.since(self.reflection_cursor)
+        self.reflection_cursor = self.memory.last_seq
+
+        async def generate(item, seq, sources):
+            payload = {"current_timestamp": self.memory.timestamp,
+                       "memories": FastLoop.format_memories([entry.model_dump() for entry in entries]),
+                       "persona": self._persona_text()}
+            result = await self._generate(item, "SLOW_STAGE:reflection\n" + self._prompt("reflect"),
+                                          payload, "reflection", response_model=UReflection)
+            record = self._u_record(item, seq, entries, result)
+            self._publish("reflection", result["insights"], entries, record)
+            return [record.record_id]
+
+        await self._phase("reflection", entries, generate)
+
+    async def wonder(self):
+        entries = [entry.model_copy(deep=True) for entry in self.memory.entries[-50:]]
+
+        async def generate(item, seq, sources):
+            payload = {"persona": self._persona_text(), "intent": self.intent,
+                       "memories": FastLoop.format_memories([entry.model_dump() for entry in entries])}
+            result = await self._generate(item, "SLOW_STAGE:wonder\n" + self._prompt("wonder"),
+                                          payload, "wonder", response_model=UWonder)
+            record = self._u_record(item, seq, entries, result)
+            self._publish("thought", result["thoughts"], entries, record)
+            return [record.record_id]
+
+        await self._phase("wonder", entries, generate)
+
+    async def update_memory(self):
+        score_items = {}
+
+        async def score(entries):
+            plan = self.plan_getter()
+            plan_text = plan.plan if hasattr(plan, "plan") else plan
+
+            async def one(entry):
+                result_holder = []
+
+                async def generate(item, seq, sources):
+                    payload = {"persona": self._persona_text(), "intent": self.intent,
+                               "memory": entry.text, "plan": plan_text}
+                    result = await self._generate(item, "SLOW_STAGE:importance\n" + self._prompt("memory_importance"),
+                                                  payload, "importance", response_model=UImportance)
+                    record = self._u_record(item, seq, [entry], result)
+                    score_items[entry.memory_id] = (item, seq, record.record_id)
+                    result_holder.append((entry.memory_id, result["score"], record.record_id))
+                    return [record.record_id]
+
+                await self._phase("importance", [entry], generate)
+                return result_holder[0]
+
+            jobs = [asyncio.create_task(one(entry)) for entry in entries]
+            try:
+                return await asyncio.gather(*jobs)
+            except BaseException:
+                for job in jobs:
+                    if not job.done():
+                        job.cancel()
+                await asyncio.gather(*jobs, return_exceptions=True)
+                raise
+
+        async def update(item, seq, sources):
+            report = await self.memory.update(score, self._embed if self.embedding_model else None)
+            for memory_id in report["evicted_score_ids"]:
+                scored_item, source_seq, record_id = score_items[memory_id]
+                self._event(scored_item, "discarded", snapshot_seq=source_seq,
+                            source_memory_ids=[memory_id], output_record_ids=[record_id],
+                            reason_code="source_memory_evicted")
+            if report["evicted_embedding_ids"]:
+                embedded_item, source_seq = self._embedding_item
+                self._event(embedded_item, "discarded", snapshot_seq=source_seq,
+                            source_memory_ids=report["evicted_embedding_ids"],
+                            reason_code="source_memory_evicted")
+            return []
+
+        await self._phase("memory_update", self.memory.since(0), update)
+
+    async def _embed(self, entries):
+        vectors_by_id = {}
+        if not entries:
+            return vectors_by_id
+
+        async def generate(item, seq, sources):
+            self._embedding_item = (item, seq)
+            texts = [entry.text for entry in entries]
+            reservation = max(1, sum(len(text) for text in texts) * 2 + 128)
+            self.budget.reserve(reservation)
+            started, settled, record = time.monotonic(), False, None
+            provider = provider_for_model(self.embedding_model, provider_for_model(self.model))
+            try:
+                vectors, usage = await self.provider.embed(texts, self.embedding_model)
+                tokens = usage.get("input_tokens")
+                self.budget.settle(reservation, tokens)
+                settled = True
+                record = {"module": "embedding", "stage": "embedding", "task_id": item["task_id"],
+                          "provider": usage.get("provider", provider), "model": usage.get("model", self.embedding_model),
+                          "input_tokens": tokens, "output_tokens": 0, "estimated": tokens is None,
+                          "elapsed_ms": int((time.monotonic()-started)*1000), "estimated_cost_usd": None}
+                if len(vectors) != len(entries) or any(not isinstance(vector, list) or not vector
+                        or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                               for value in vector) for vector in vectors):
+                    raise ValueError("invalid embedding response")
+                if len({len(vector) for vector in vectors}) != 1:
+                    raise ValueError("embedding dimensions differ")
+                vectors_by_id.update({entry.memory_id: vector for entry, vector in zip(entries, vectors)})
+                return []
+            except BaseException as exc:
+                if not settled:
+                    self.budget.settle(reservation, None)
+                    record = {"module": "embedding", "stage": "embedding", "task_id": item["task_id"],
+                              "provider": provider, "model": self.embedding_model, "input_tokens": None,
+                              "output_tokens": None, "estimated": True, "estimated_cost_usd": None,
+                              "elapsed_ms": int((time.monotonic()-started)*1000)}
+                record["error"] = type(exc).__name__
+                raise
+            finally:
+                if self.call_log and record is not None:
+                    self.call_log(record)
+
+        await self._phase("embedding", entries, generate)
+        return vectors_by_id
+
+    async def close(self):
+        self.closed = True
+        if self.worker is not None:
+            if not self.worker.done():
+                self.worker.cancel()
+            await asyncio.gather(self.worker, return_exceptions=True)
+            if self.status in {"scheduled", "running"}:
+                self.status = "cancelled"
+
+    def pop_completed(self):
+        return []
+
+    def summary(self):
+        return {"status": self.status, "mode": "u_continuous", "events": dict(self.event_counts),
+                "pending": 0, "active": int(self.worker is not None and not self.worker.done()),
+                "worker_starts": self.worker_starts, "cycles": self.cycles,
+                "reflection_cursor": self.reflection_cursor, "last_error": self.last_error,
+                "embedding_status": "configured" if self.embedding_model else "not_configured"}

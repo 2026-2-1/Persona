@@ -406,3 +406,53 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 
 - 준비 조건 보완 후 #74 범위의 전체 **377 passed in 159.10s**, 최종 A/B/C/D 통합 범위의 전체 **418 passed in 176.77s**였다. 전체 검증 범위를 줄이지 않았다.
 - 두 운영체제 원격 검사는 최신 PR head와 최종 prototype에서 별도로 확인한다. 진단용 부분 검사와 로컬 통과 기록은 원격 필수 CI 통과를 대신하지 않는다.
+
+## 2026-10-16 로컬 GPU Qwen 연결
+
+- 사용자 로컬 SSH 터널의 `/health`가 HTTP 200과 `{"status":"ok","model":"persona-qwen"}`을 반환했다. `/v1/chat/completions`는 기본 요청과 `response_format=json_object` 요청 모두 HTTP 200, `choices[0].message.content`와 `usage`를 반환했다.
+- 새 `gpu` 제공자 코드의 실제 짧은 요청은 `{"ok":true}`와 입력 24·출력 8토큰을 반환했다. 대시보드의 연결 확인 경로도 실제 서버에서 `configured=true`, `validated=true`를 반환했다. 이 결과는 채팅 연결 확인이며 전체 과업 성공이나 모델 품질 검증이 아니다. 호출 비용은 미확인이다.
+- 새 제공자·설정 도우미·대시보드·모델 선택 집중 검사는 **65 passed, 1 deselected**였다. 선택 모델의 전체 runner 검사는 합성 fixture가 로컬 8000번 포트를 필요로 해 제외했다. Node 구문과 Python compileall 통과.
+- 전체 pytest는 GPU 터널이 합성 fixture와 같은 로컬 8000번 포트를 점유한 상태에서 **407 passed, 15 failed**였다. 실패한 mock 실행은 합성 페이지 제목 대신 빈 제목을 관찰했고, 같은 환경의 `/health`는 GPU API를 반환했다. 포트 분리 후 전체 재검사는 남아 있다.
+
+## 2026-10-16 대시보드 평가 프로필 경로 수정
+
+- 실제 실행 `dashboard-321082b0c6`의 두 세션 모두 `runs/.dashboard/decathlon_live_profile.json` 파일 없음으로 실패했고, 생성된 임시 study에 `evaluation_profile_file: decathlon_live_profile.json`이 남아 있음을 확인했다.
+- 대시보드 실행용 study에는 원본 `configs/study-decathlon-live.json` 위치를 기준으로 해석한 절대 평가 프로필 경로를 저장한다.
+- 전용 회귀는 수정 전 실패하고 수정 후 통과했다. GPU 제공자·대시보드 MVP·모델 선택 인접 검사는 **19 passed, 1 deselected**였다. 제외한 1개는 현재 GPU 터널과 같은 8000번 포트를 요구하는 전체 runner 검사다.
+
+## 2026-10-16 개별 실행 실패 후 batch 계속 진행
+
+- 실제 GPU 실행 `20261016T083126-9ee286d9`는 6단계에서 Qwen의 잘못된 `finish` 필드 때문에 `model_output_error`로 종료됐고 독립 판정은 `unknown`이었다. 이 실행 오류와 batch 전체 상태를 구분한다.
+- 가짜 runner로 두 페르소나가 연속 실패하는 조건에서 두 호출이 모두 수행되고 실패 2건과 로그가 보존되며 batch가 완료 상태를 반환하는 회귀를 추가했다.
+- 완료된 batch의 실패 모달에서 실패 수, 페르소나 ID, `model_output_error` 로그를 확인하고 닫는 브라우저 회귀를 추가했다. batch 계속 실행과 모달의 신규 회귀 2개는 수정 전 실패하고 수정 후 통과했다. 대시보드 완료 상태 회귀를 포함한 관련 검사는 최종 **18 passed in 4.15s**였다.
+
+## 2026-10-17 Qwen 적용 PR 준비 검증
+
+- `feat/90-qwen-application`에서 기존 수정 17개와 신규 `tests/test_gpu_provider.py`를 함께 검토했다. GPU 연결·모델 전달·평가 프로필 경로·개별 오류를 포함한 batch 완료·실패 모달 회귀를 포함한다.
+- 로컬 8000번 포트가 비어 있는 환경에서 `python3 -m pytest -q`: **426 passed in 206.72s**. 앞선 포트 충돌 상태의 407 passed / 15 failed와 구분한다. Python 3.14.5 / pytest 8.4.2 / Playwright 1.55.0 Chromium에서 실행했으며, Python 3.11에는 pytest와 런타임 의존성이 없어 해당 버전 로컬 검사는 수행하지 않았다. Ubuntu 3.11 / Windows 3.13 검증은 원격 CI 결과를 별도로 확인한다.
+- `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. 첫 샌드박스 실행은 Chromium의 macOS Mach port 권한 제한으로 실패했고 브라우저 실행을 허용한 환경에서 재검사해 통과했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless --output runs/qwen-pr-mock-2026-10-17`: `verified_success`, 독립 `success`, 6행동·기록 6/6·58 mock 요청. GPU나 실제 공개 사이트의 성공을 뜻하지 않는다.
+- `python3 scripts/check_repo.py`는 0 problems, Python compileall·Node 구문 검사·`git diff --check`도 통과했다. push 전 staged 경로·민감정보 검사와 파일 목록을 다시 확인한다.
+- 이번 검증에서는 실제 GPU/유료 API/공개 데카트론을 새로 호출하지 않았다. 2026-10-16의 짧은 실제 GPU 연결 성공 및 전체 과업의 `model_output_error`·독립 `unknown` 기록을 그대로 유지한다. GPU 임베딩과 비용은 미확인이다.
+
+## 2026-10-17 #83 U Fast 판단 전환
+
+- 브랜치 `feat/83-u-transition-01`, 선행 Qwen 커밋 `264bd985ce3bd1744d4e692af52efdc719e61b00`, U 기준 `4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd`. 구현 범위와 U 대비 차이는 [#83 작업 문서](tasks/83-u-fast.md)를 따른다. 이 기록은 prototype 병합이나 #84~#90 완료를 뜻하지 않는다.
+- 새 U 회귀 8개는 구현 전 실패, 구현 후 통과했다. 첫 전체 검사는 **426 passed / 8 failed in 198.43s**였다. 기존 응답 형식/Slow 예약 정책의 fake와 Mock 내부 재호출 집계 문제를 확인했다. 같은 잘못된 종료·반복·선택 모델·독립 평가 상황을 U 응답으로 옮기고 Mock 내부 변환을 실제 요청과 분리한 뒤 집중 **42 passed in 13.75s**였다.
+- 최종 제품 코드의 전체 `python3 -m pytest -q --tb=short`: **439 passed in 203.56s**. 이후 추가한 가짜 GPU HTTP 두 차례 통합 1개도 통과했다. 해당 추가 사례를 포함한 `tests/test_u_fast.py` 전체는 **14 passed in 2.68s**이며 13개는 앞선 전체 검사와 겹친다. 이를 전체 440개 일괄 실행 결과로 표현하지 않는다.
+- 신규 회귀는 Event 기반 후속 feedback/perceive 동시 시작·같은 HTML·첫 feedback 금지, old_plan/next_step 질의·계획 rationale/Thought 순서, 빈/복수 actions, 빈 observations, 잘못된 plan/JSON의 실제 토큰 기록·예산, 동시 호출 실패/취소의 형제 정리, 일반 조건 persona 비노출, 미지원 행동 원본 보존을 확인했다. 실제 Chromium type+Enter 제출과 도구 실패 이전의 제안 기억 파일 존재도 확인했다.
+- 가짜 GPU HTTP 통합은 실제 `LocalQwenProvider`의 HTTP 요청/응답 처리와 runner·Chromium을 사용했다. 두 차례 클릭과 한 차례 feedback, persona-qwen 모델 유지·U 제안 및 도구 결과를 확인했다. 실제 GPU 서버 응답이나 공개 사이트 성공 검증은 아니다.
+- doctor: Python **3.14.5**, Playwright **1.55.0** Chromium available, study_errors 없음. 무료 Mock 통합은 `verified_success`, 독립 success, **6행동·기록 6/6·28 mock 요청**, perception/plan/decision 각 6회와 feedback 5회 완료였다. 기존 성공 시 조기 종료 평가 정책은 #89까지 유지한다.
+- `pip wheel --no-deps --no-build-isolation --no-index --no-cache-dir`로 패키징했다. wheel 안의 U 프롬프트 4개가 고정 원문과 byte 단위로 같고, 격리 Python의 wheel import에서 리소스를 읽는 것을 확인했다. repo 검사 0 problems, Python compileall·Node 구문·diff 공백 검사 통과. push 전 staged 검사와 파일 목록을 재확인한다.
+- 실제 로컬 GPU `/health`는 URLError로 응답을 얻지 못했다. 실제 GPU 채팅·공개 데카트론 과업은 실행하지 않았다. Qwen 문맥/출력 한도, 큰 페이지 인식 완전성, 실제 과업 성능은 미검증이다. 선행 #91의 원격 Ubuntu/Python 3.11·Windows/Python 3.13 CI는 성공했지만 #83 head의 원격 결과를 대신하지 않는다.
+
+## 2026-10-17 #84 U Slow·Wonder 반복
+
+- 브랜치 `feat/84-u-transition-02`, 선행 Fast `4e42109a94898fb772a7c214221115ce25b75d66`와 Qwen #91을 포함한다. [작업 문서](tasks/84-u-slow.md)의 범위이며 prototype 병합·#85~#90 완료와 구분한다. 환경은 Python 3.14.5 / pytest 8.4.2 / Playwright 1.55.0 Chromium이다.
+- 신규 7개는 구현 전 실패했고 신규 회귀 전체 **11 passed**였다. Event로 두 번 이상 순환·Fast 병행·최근50개·64개 이후 cursor·빈 입력/출력·ID 제거 뒤 늦은 응답·두 run 분리·취소/JSON/예산 실패를 검증했다. 새/옛 Slow **21 passed, 1 deselected**, 관련 Fast/Slow/모델/기억 **87 passed in 21.18s**였다.
+- 첫 전체 `python3 -m pytest -q --tb=short`: **448 passed / 3 failed in 208.54s**. 종료 시 아직 응답하지 않은 Slow 요청의 usage도 측정됐다고 기대하던 테스트를 실제 시도/반환 횟수·미확인 전체값·측정 부분합을 확인하도록 수정했다. 제품의 usage 집계 정책은 바꾸지 않았다. 관련 **26 passed in 12.61s**였다.
+- 두 번째 전체: **450 passed / 1 failed in 202.73s**. 반복 상태 판정 전에 `Page.screenshot`이 30초 시간 초과로 browser_error를 반환했다. 같은 사례 단독 **1 passed in 3.45s**였다. 브라우저 정책이나 제한을 수정하지 않았다.
+- 마지막 전체: **448 passed / 3 failed in 217.96s**. 대시보드 클릭 30초, Chromium launch 180초 시간 초과와 모델 호출 전 브라우저 관찰 실패가 발생했다. 실패한 `test_check_status_rows_keep_distinct_states_and_open_evidence`, `test_demo_states_keep_verification_termination_and_missing_evidence[failure-scenario_failed-checks2]`, `test_runner_comparison_persists_actual_usage[missing]`를 이어 재실행해 **3 passed in 14.70s**였다. **전체 일괄 통과는 확보하지 못했으며** Chromium 전체 검사 안정성을 PR의 남은 검증으로 명시한다. 부분 재실행을 전체 통과로 합산하지 않는다.
+- doctor: Chromium available, study_errors 없음. Mock CLI 합성 통합은 verified_success / 독립 success, **6행동·기록 6/6·1,302 mock 요청**이었다. Slow worker 1개·623회 순환, 종료 후 active/pending 0·cancelled·reserved_tokens 0·embedding_status=not_configured였다. 응답 전 취소 1건의 토큰은 미확인이며 brain 상태는 incomplete로 보존됐다. Mock의 빠른 응답/반복/요청 수는 GPU 속도·비용 지표가 아니다.
+- 로컬 wheel 빌드에서 U Slow 프롬프트 3개가 고정 원문과 byte 단위로 같고 격리 import에서 읽힘을 확인했다. repo 검사 0 problems, Python compileall·git diff 공백 검사 통과. push 전 staged 검사·파일 목록을 확인한다. 별도 lint/typecheck 설정은 없다.
+- 실제 GPU 채팅·embedding·공개 데카트론은 이번 작업에서 호출하지 않았다. GPU embedding은 미지원이며 설정 없이는 importance만 갱신한다. urllib의 이미 시작된 원격 HTTP 강제 취소·실제 과금 중단은 보장하지 않는다. #91/#92의 Ubuntu/Windows CI 통과는 이 브랜치의 새 head CI 결과를 대신하지 않는다.

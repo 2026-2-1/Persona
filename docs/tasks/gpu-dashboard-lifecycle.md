@@ -36,7 +36,7 @@ python3 -m uxagent dashboard --no-gpu
 
 ## 인증
 
-비밀번호는 OpenSSH의 사용자 터미널 프롬프트에서 입력한다. 앱·환경 변수·JSON·요청·로그에 보관하지 않는다. 실행 중에는 인증한 login master를 ProxyCommand로 재사용하고 agent forwarding을 켜지 않는다. 완전 무인 시작은 운영자가 허용하는 SSH 키 인증을 로그인·계산 노드에 준비해야 한다. 초기 BatchMode 점검은 Permission denied였다. 이후 사용자 터미널의 비밀번호 인증으로 실제 Qwen health200과 소유 Slurm 작업 반환을 확인했다. 키 전용 인증은 최초 등록 후 별도로 검증한다. 기본 런타임은 키 등록을 수행하지 않는다. 아래 최초 설정 명령만 사용자가 명시 실행할 때 공개 키를 등록한다.
+비밀번호는 OpenSSH의 사용자 터미널 프롬프트에서 입력한다. 앱·환경 변수·JSON·요청·로그에 보관하지 않는다. 실행 중에는 인증한 login master를 ProxyCommand로 재사용하고 agent forwarding을 켜지 않는다. 무인 시작은 아래 SSH 키 인증 또는 macOS 키체인 비밀번호 저장 방식을 선택한다. 초기 BatchMode 점검은 Permission denied였다. 이후 사용자 터미널의 비밀번호 인증으로 실제 Qwen health200과 소유 Slurm 작업 반환을 확인했다. 키 전용 인증은 최초 등록 후 별도로 검증한다. 기본 런타임은 키 등록을 수행하지 않는다. 아래 최초 설정 명령만 사용자가 명시 실행할 때 공개 키를 등록한다.
 
 ## 임베딩 최초 준비
 
@@ -91,3 +91,24 @@ python3 -m uxagent gpu-key-unlock
 macOS의 해제된 Keychain에서는 저장한 키 암호를 사용할 수 있다. 사용자 지정 키는 gpu-key-setup --identity-file로 지정하며 저장소 밖이어야 한다. Windows는 기존 agent 서비스가 필요하고 실제 SSH/Slurm은 미검증이다. 소켓/PID 설정은 비공개 파일에만 둔다. 런타임은 공개 키 등록을 수행하지 않는다.
 
 근거: [ssh-add](https://man.openbsd.org/ssh-add), [IdentityFile/IdentityAgent/BatchMode](https://man.openbsd.org/ssh_config), [macOS 시스템 ssh-add·Keychain](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).
+
+
+## macOS 서버 비밀번호 저장과 자동 접속
+
+사용자 추가 결정: 매 실행마다 입력하지 않고 저장한 서버 비밀번호를 사용한다. macOS에서는 평문 파일 대신 로그인 키체인에 두 서버의 비밀번호를 저장한다. 키 등록과 별개의 선택 경로이며 원격 authorized_keys를 수정하지 않는다.
+
+```sh
+python3 -m uxagent gpu-password-setup
+python3 -m uxagent dashboard
+```
+
+1. 최초 명령은 사용자 터미널에서 로그인 서버·계산 서버 비밀번호와 각각의 확인 값을 숨김 입력으로 받는다. 앞서 SSH에 입력한 비밀번호는 회수/재사용할 수 없어 최초 저장 입력은 필요하다.
+2. Security.framework를 직접 호출해 service=uxagent.gpu.ssh, account=user@host:port의 키체인 항목에 저장/갱신한다. 비밀번호를 명령 인자·파일·JSON·환경 변수·앱 로그에 넣지 않는다. private config에는 ssh_password_store=macos-keychain만 저장한다.
+3. dashboard의 각 SSH master가 임시 askpass 실행 파일과 비밀이 없는 account 식별자를 사용한다. helper가 키체인에서 값을 읽어 OpenSSH 전용 pipe에만 전달한다. login master는 jump에 재사용하며 agent forwarding은 켜지 않는다.
+4. 이 모드는 BatchMode=no, password/keyboard-interactive, 인증 프롬프트1회로 동작한다. 비밀번호와 다른 prompt·빈 항목·키체인 오류는 자동 응답하지 않는다. host key 검증은 StrictHostKeyChecking=yes로 강제한다. 이미 신뢰한 호스트가 필요하며 알 수 없는/변경된 host key를 자동 승인하지 않는다.
+5. macOS 로그인 키체인이 잠겼거나 접근 허가가 필요하면 OS가 해제/허가를 요구할 수 있다. OTP/MFA·비표준 prompt·비밀번호 만료 변경은 자동화 범위가 아니다. 다른 OS에서는 이 설정을 명시 오류로 거부한다.
+6. 서버 비밀번호 변경 후 같은 setup 명령으로 갱신한다. 저장/조회는 인증 성공을 의미하지 않는다. 실제 health와 소유 Slurm 반환은 별도로 검증한다. 비밀번호를 채팅·이슈·공유 문서에 보내지 않는다.
+
+근거: [Apple Keychain 저장 API](https://developer.apple.com/documentation/security/seckeychainaddgenericpassword(_:_:_:_:_:_:_:_:)), [Keychain 조회 API](https://developer.apple.com/documentation/security/seckeychainfindgenericpassword(_:_:_:_:_:_:_:_:)), [OpenSSH SSH_ASKPASS_REQUIRE](https://man.openbsd.org/ssh).
+
+2026-10-18 실제 검증: 사용자가 최초 저장한 뒤 Codex의 비대화형 시작에서 추가 입력 없이 HTTP200/status=ok/model=persona-qwen과 자기 Slurm 작업19347 반환을 확인했다. 키체인 저장/실제 설정/원자료는 공개 저장소에 포함하지 않는다. Qwen-only health 검사이며 embedding·생성 추론·데카트론 성공은 미검증이다.

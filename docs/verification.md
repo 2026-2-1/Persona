@@ -486,3 +486,16 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 후속 전체 로컬 검사 **497 passed in207.93s**. 그 뒤 공개 키 추가 중 외부 프로세스의 동시 append를 덮어쓰는 실패를 재현해 O_APPEND로 수정했다. 수정 후 관련 **32 passed in0.28s**이며, 이 마지막 변경을 포함한 전체 결과는 새 head CI에서 확인한다.
 - doctor: Python3.14.5/Playwright1.55.0 Chromium available·study_errors 없음. Mock CLI는 verified_success/독립 success,6행동·기록6/6·1,238 mock 요청이었다. 실제 GPU 추론·임베딩 결과가 아니다.
 - 최종 wheel 빌드·새 모듈 byte 비교·격리 import와 inspect 기반 원격 공개 키 설치 코드 생성, repo0 problems·compileall·diff 검사를 확인했다. 사용자 실제 키 등록과 무인 원격 시작 검증은 사용자 터미널의 최초 설정 완료 후 수행한다.
+
+
+## 2026-10-18 macOS 저장 비밀번호 자동 인증
+
+- 사용자 후속 결정에 따라 서버 비밀번호를 OS 키체인에 한 번 저장하고 이후 SSH에 자동 전달하는 경로를 추가했다. 신규 모듈 부재 실패 후 기존 키/GPU 경로와 관련 **36 passed in0.26s**.
+- 실제 macOS Security.framework로 임시 테스트 자격증명 생성/조회/갱신, 생성된 askpass 실행 파일의 실제 pipe 전달과 host 확인 prompt 거부를 확인했다. 테스트용 키체인 항목을 삭제했다. 사용자 비밀번호/기존 키체인 항목은 읽거나 변경하지 않았다.
+- 사용자가 자기 터미널에서 최초 저장한 뒤, Codex가 비대화형으로 Qwen-only smoke를 실행했다. 추가 비밀번호 입력 없이 실제 localhost8001/health HTTP200/status=ok/model=persona-qwen, Slurm 작업19347의 squeue 소멸·released=true·복구 파일 삭제를 확인했다. 앞선 수동 비밀번호 smoke와 구분하며 embedding·생성 추론은 호출하지 않았다. 증거/실제 설정은 runs/private에만 둔다.
+
+- 확인 입력 불일치 회귀 보강 후 관련 **37 passed in0.38s**, repo0 problems·compileall·diff 검사·CLI help 통과. 최종 wheel의 gpu_passwords.py/gpu_session.py/cli.py byte 비교를 통과했다.
+
+- 로컬 전체 **502 passed in209.58s**. 이후 확인 값 불일치·키 방식 명시 전환 회귀를 보강했다. 비밀번호 저장 상태에서 gpu-key-setup을 완료해도 이전 저장 방식이 남는 실패를 재현해 성공 시 선택 모드를 해제했다. 최종 head 전체는 원격 CI에서 확인한다. 임시 agent 검사는 기본 sandbox에서 소켓 생성이 차단되므로 허용 환경 결과와 구분한다.
+
+- 최종 관련 **38 passed in0.46s**. 자동 승인 검토 시간 초과로 한 차례 실행이 취소되어 재시도했고, 실제 코드 수정과 임시 agent 허용 환경 검사 이후 통과를 확인했다.

@@ -152,3 +152,8 @@ run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes
 키 최초 등록은 사용자 터미널에서 명시 실행한다. 개인 키는 저장소 밖에 두고 앱은 공개 키만 읽어 기존 원격 행을 보존하며 추가한다. 양쪽 새 publickey 전용 연결과 자기 임시 할당 반환 후에만 private config의 batch mode를 활성화한다. 암호는 OpenSSH·OS Keychain/agent가 처리한다. 실패 시 앱에 비밀번호를 받아 fallback하지 않는다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
 
 실제 Qwen health200·persona-qwen과 작업 반환은 서비스 연결 증거이며 키 등록·임베딩·생성 추론·과업 성공과 구분한다.
+
+
+### macOS 저장 비밀번호 인증 (사용자 후속 결정)
+
+명시적인 gpu-password-setup은 두 서버 비밀번호를 macOS 키체인에 저장하며 이후 SSH askpass pipe로 전달한다. config에는 저장 방식/서버 식별자만 둔다. 비밀번호 평문 파일·JSON·env·argv·로그를 만들지 않는다. host key 자동 승인·OTP 응답은 하지 않는다. 저장 성공과 실제 원격 인증/health/반환 성공을 구분한다. 기존 키 인증과 별도 선택 경로다.

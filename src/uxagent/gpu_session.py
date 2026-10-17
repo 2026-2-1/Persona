@@ -1,4 +1,4 @@
-"""Dashboard-owned SSH/Slurm lifecycle. Credentials stay with OpenSSH."""
+"""Dashboard-owned SSH/Slurm lifecycle with OpenSSH/OS credential storage."""
 from __future__ import annotations
 
 import json
@@ -12,6 +12,7 @@ import tempfile
 import time
 import urllib.request
 import uuid
+from typing import Literal
 from importlib.resources import files
 from pathlib import Path
 
@@ -44,6 +45,7 @@ class GpuSessionConfig(BaseModel):
     identity_file: str | None = None
     identity_agent: str | None = None
     ssh_batch_mode: bool = False
+    ssh_password_store: Literal['macos-keychain'] | None = None
 
     @field_validator('login_host', 'compute_host', 'user', 'partition', 'node', 'gres', 'memory')
     @classmethod
@@ -126,16 +128,25 @@ class GpuSession:
         return result.stdout.strip()
 
     def _master(self, host, control, extra=()):
-        # Authentication prompts use the user's terminal. Never capture a password.
+        # Password mode uses a dedicated askpass pipe; terminal mode remains available.
+        password_mode = self.config.ssh_password_store == 'macos-keychain'
+        options = {}
+        if password_mode:
+            from .gpu_passwords import askpass_environment
+            options = {'env':askpass_environment(self.config, host, self.temp.name),
+                       'stdin':subprocess.DEVNULL}
+            extra = [*extra, '-o', 'StrictHostKeyChecking=yes',
+                     '-o', 'NumberOfPasswordPrompts=1', '-o', 'PubkeyAuthentication=no',
+                     '-o', 'PreferredAuthentications=password,keyboard-interactive']
         args = ['ssh', '-M', '-S', str(control), '-fN', '-o', 'ControlPersist=no',
                 '-o', 'ExitOnForwardFailure=yes', '-o', 'ServerAliveInterval=15',
                 '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', *extra,
                 *self.identity_options(),
-                '-o', 'BatchMode=' + ('yes' if self.config.ssh_batch_mode else 'no'),
+                '-o', 'BatchMode=' + ('yes' if self.config.ssh_batch_mode and not password_mode else 'no'),
                 '-p', str(self.config.ssh_port), f'{self.config.user}@{host}']
-        result = subprocess.run(args, timeout=self.config.ssh_timeout, check=False)
+        result = subprocess.run(args, timeout=self.config.ssh_timeout, check=False, **options)
         if result.returncode:
-            raise RuntimeError('SSH 인증/터널 연결에 실패했습니다. 실행 터미널 또는 SSH 키 설정을 확인하세요.')
+            raise RuntimeError('SSH 인증/터널 연결에 실패했습니다. 저장한 자격증명·호스트 신뢰·SSH 설정을 확인하세요.')
 
     def _check_ports(self):
         ports = [self.config.local_port]
@@ -272,7 +283,10 @@ class GpuSession:
         self.authentication_only = authentication_only
         if not authentication_only:
             self._check_ports()
-        print('GPU SSH 인증과 Slurm 할당을 시작합니다. 암호는 터미널에서만 입력하세요.', flush=True)
+        if self.config.ssh_password_store:
+            print('키체인에 저장한 비밀번호로 GPU SSH 인증과 Slurm 할당을 시작합니다.', flush=True)
+        else:
+            print('GPU SSH 인증과 Slurm 할당을 시작합니다. 암호는 터미널에서만 입력하세요.', flush=True)
         try:
             self.open_login()
             self._save()

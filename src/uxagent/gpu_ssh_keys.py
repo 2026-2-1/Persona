@@ -198,7 +198,7 @@ def setup_gpu_key(config_path, *, key_path='~/.ssh/uxagent_gpu_ed25519', repo_ro
     if path.read_bytes() != original:
         raise RuntimeError('설정 파일이 작업 중 바뀌어 자동 인증 설정을 저장하지 않았습니다')
     updated = config.model_dump()
-    updated.update(identity_file=str(key), identity_agent=agent, ssh_batch_mode=True)
+    updated.update(identity_file=str(key), identity_agent=agent, ssh_batch_mode=True, ssh_password_store=None)
     _write_private_json(path, updated)
     print('두 서버의 새 키 인증과 테스트 할당 반환을 확인했습니다. 무인 SSH 인증을 활성화했습니다.', flush=True)
 

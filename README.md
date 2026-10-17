@@ -10,6 +10,8 @@
 
 #83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·종료 후 평가의 후속 전환은 남아 있습니다.
 
+macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 번 `python3 -m uxagent gpu-password-setup`을 실행합니다. 로그인·계산 서버 비밀번호는 OS 키체인에 저장되며 이후 대시보드 실행마다 입력하지 않습니다. [저장 방식](docs/tasks/gpu-dashboard-lifecycle.md#macos-서버-비밀번호-저장과-자동-접속)을 참고하세요.
+
 SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent gpu-key-setup`으로 등록합니다. 이후 대시보드는 전용 키/agent를 사용합니다. [설정과 초기 인증](docs/tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증)을 참고하세요.
 
 #85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. SSH 인증과 원격 임베딩 최초 준비 후 사용할 수 있습니다. 실제 GPU/Slurm 검증은 남아 있으며 테스트와 구분합니다.

@@ -33,6 +33,8 @@ def _parser():
     group=p.add_mutually_exclusive_group()
     group.add_argument("--gpu-config", help="Private SSH/Slurm configuration; auto-detect runs/private/gpu-session.json")
     group.add_argument("--no-gpu",action="store_true",help="Disable automatic GPU allocation for this dashboard")
+    p=sub.add_parser('gpu-password-setup',help='Save GPU SSH passwords once in macOS Keychain')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
     p=sub.add_parser('gpu-key-setup',help='Enroll a dedicated SSH public key once for automatic GPU startup')
     p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
     p.add_argument('--identity-file',default='~/.ssh/uxagent_gpu_ed25519')
@@ -158,6 +160,10 @@ def main():
             if not args.no_gpu and gpu_config is None and Path('runs/private/gpu-session.json').is_file():
                 gpu_config = 'runs/private/gpu-session.json'
             serve_dashboard(args.port,args.runs,args.personas_dir,args.study,gpu_config=gpu_config)
+            return 0
+        if args.command=='gpu-password-setup':
+            from .gpu_passwords import setup_passwords
+            setup_passwords(args.gpu_config)
             return 0
         if args.command=='gpu-key-setup':
             from .gpu_ssh_keys import setup_gpu_key

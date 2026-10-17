@@ -93,11 +93,14 @@ def fake_setup(tmp_path,monkeypatch,*,failure=False):
     return events
 
 
-def test_configuration_is_enabled_only_after_both_fresh_auth_checks_and_release(tmp_path,monkeypatch):
+@pytest.mark.parametrize('previous_store',[None,'macos-keychain'])
+def test_configuration_is_enabled_only_after_both_fresh_auth_checks_and_release(tmp_path,monkeypatch,previous_store):
     path=write_config(tmp_path);events=fake_setup(tmp_path,monkeypatch)
+    initial=json.loads(path.read_text());initial['ssh_password_store']=previous_store;path.write_text(json.dumps(initial))
     setup_gpu_key(path,key_path=tmp_path/'identity',repo_root=tmp_path/'repo')
     saved=json.loads(path.read_text())
     assert saved['ssh_batch_mode'] is True and saved['identity_file']==str(tmp_path/'identity')
+    assert saved['ssh_password_store'] is None
     assert events==['login','install_login','verify_login.test','allocate','install_compute','verify_node.test','release']
 
 

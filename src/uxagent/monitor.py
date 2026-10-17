@@ -81,6 +81,7 @@ class Dashboard:
         self.review_store = ReviewStore(runs_dir)
         self.guide_busy = False
         self.connection_models = {}
+        self.gpu_embedding_model = None
         # start_job returns _job_state while holding this lock, so it must be reentrant.
         self.job_lock = threading.RLock()
 
@@ -450,6 +451,9 @@ class Dashboard:
         if evaluation_checks is not None:
             config = StudyConfig.model_validate({**config.model_dump(),"evaluation_checks":evaluation_checks})
         if kind in {"batch", "compare"}:
+            if provider == 'gpu' and self.gpu_embedding_model:
+                config = StudyConfig.model_validate({**config.model_dump(),
+                    'embedding_provider':'local', 'embedding_model':self.gpu_embedding_model})
             if provider == "mock" and not fixture:
                 raise ValueError("Mock은 기본 데모 사이트 전용입니다. 외부 사이트에는 Jev 또는 Gemini를 선택하세요.")
             required = {"jev": ("TYPESAFE_API_KEY", "GEMINI_API_KEY"), "gemini": ("GEMINI_API_KEY",),
@@ -640,13 +644,59 @@ def make_handler(dashboard: Dashboard):
     return Handler
 
 
-def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", study="configs/study.json"):
+def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", study="configs/study.json", *, gpu_config=None):
     dashboard = Dashboard(runs_dir, personas_dir, study)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(dashboard))
-    print(f"UXAgent dashboard: http://127.0.0.1:{port}", flush=True)
+    gpu = None
+    previous_sigterm = None
     try:
+        if gpu_config:
+            import signal
+            from .gpu_session import GpuSession, GpuSessionConfig
+            config = GpuSessionConfig.model_validate_json(Path(gpu_config).read_text())
+            gpu = GpuSession(config)
+            if threading.current_thread() is threading.main_thread():
+                previous_sigterm = signal.getsignal(signal.SIGTERM)
+                def terminate(_signum, _frame):
+                    raise KeyboardInterrupt
+                signal.signal(signal.SIGTERM, terminate)
+            gpu.start()
+            dashboard.gpu_embedding_model = config.embedding_model
+            dashboard.connect('gpu', None, model='persona-qwen')
+        print(f"UXAgent dashboard: http://127.0.0.1:{port}", flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        server.server_close()
+        try:
+            if gpu and dashboard.job and dashboard.job['process'].poll() is None:
+                # Finish local run records before returning the model allocation.
+                process = dashboard.job['process']
+                try:
+                    dashboard.stop_job()
+                except ValueError:
+                    if process.poll() is None:
+                        raise
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    import signal
+                    if os.name == 'nt':
+                        subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], check=False, capture_output=True)
+                    else:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        if os.name != 'nt':
+                            os.killpg(process.pid, signal.SIGKILL)
+                        process.wait(timeout=5)
+        finally:
+            server.server_close()
+            try:
+                if gpu:
+                    gpu.close()
+            finally:
+                if previous_sigterm is not None:
+                    import signal
+                    signal.signal(signal.SIGTERM, previous_sigterm)

@@ -1,5 +1,7 @@
 # 개발 순서
 
+2026-10-17 #85 작업 브랜치: U 기억 검색·사용자 확정 제거 순서·분리 GPU embedding·사용자 후속 대시보드 SSH/Slurm 수명주기를 구현한다. 실제 인증/원격 모델 준비·GPU 시작/반환 확인은 남아 있으며 #86~#90은 별도 후속이다. [검색 계약](tasks/85-u-memory.md), [자동 시작·반환](tasks/gpu-dashboard-lifecycle.md).
+
 ## 현재 진행 상태
 
 2026-10-17 #84 작업 브랜치: U Slow 반복·매회 Wonder·공유 기억 저장·64개 순번 cursor·활성 ID 갱신/취소를 연결한다. 실제 GPU embedding과 검색 점수는 #85, 나머지 전환은 #86~#90에서 진행한다. [구현 계약](tasks/84-u-slow.md), 실제 검증은 verification을 따른다.

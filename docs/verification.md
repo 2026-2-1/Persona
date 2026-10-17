@@ -456,3 +456,23 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - doctor: Chromium available, study_errors 없음. Mock CLI 합성 통합은 verified_success / 독립 success, **6행동·기록 6/6·1,302 mock 요청**이었다. Slow worker 1개·623회 순환, 종료 후 active/pending 0·cancelled·reserved_tokens 0·embedding_status=not_configured였다. 응답 전 취소 1건의 토큰은 미확인이며 brain 상태는 incomplete로 보존됐다. Mock의 빠른 응답/반복/요청 수는 GPU 속도·비용 지표가 아니다.
 - 로컬 wheel 빌드에서 U Slow 프롬프트 3개가 고정 원문과 byte 단위로 같고 격리 import에서 읽힘을 확인했다. repo 검사 0 problems, Python compileall·git diff 공백 검사 통과. push 전 staged 검사·파일 목록을 확인한다. 별도 lint/typecheck 설정은 없다.
 - 실제 GPU 채팅·embedding·공개 데카트론은 이번 작업에서 호출하지 않았다. GPU embedding은 미지원이며 설정 없이는 importance만 갱신한다. urllib의 이미 시작된 원격 HTTP 강제 취소·실제 과금 중단은 보장하지 않는다. #91/#92의 Ubuntu/Windows CI 통과는 이 브랜치의 새 head CI 결과를 대신하지 않는다.
+
+## 2026-10-17 #85 U 기억 검색 선행 구현 (진행 중)
+
+- `feat/85-u-transition-03`에서 [작업 문서](tasks/85-u-memory.md)의 순수 검색 수식·최근 목록·query embedding 계측을 구현했다. 실제 embedding 경로와 64개 초과 제거 순서는 이슈에서 요구한 사용자 결정 대기 상태다. PR/전체 구현 완료가 아니다.
+- 점수/최근 경계/중복/top20/미준비/차원 8개 구현 전 실패 → 통과. query 호출·사용량/검증 오류 2개도 구현 전 실패 → 통과. 취소와 run 캐시 분리 포함 신규 전체 **11 passed in 0.16s**. 관련 순수 회귀 **36 passed in 0.25s**였다.
+- Chromium 통합 첫 검사 **31 passed / 1 failed in 11.75s**. 임베딩 미설정인데 예전 단어 검색의 Action 4개 이상 입력을 기대한 사례였다. U 최근 목록만 반환하는 조건으로 기대값을 바꾸되 입력 Action 존재·원본/점수/제거·출처 검증은 유지했다. 해당 메모리 통합+신규 검색 **14 passed in 6.63s**였다.
+- repo 검사0 problems·compileall·diff 공백 검사 통과. 전체 pytest·doctor·Mock CLI·실제 embedding·새 head CI는 아직 실행하지 않았다. 실제 GPU/데카트론 호출도 수행하지 않았다. 남은 결정을 반영한 뒤 실행한다.
+
+- 후속 사용자 결정: 64개 초과는 중요도 낮은 순·동점 오래된 seq 순. 종류/단계 보호를 제거하는 신규2개가 변경 전 실패 후 통과했다. 검색·제거·점수·Slow 관련 **39 passed in 0.20s**. 미산정 null은 제거 순서에만0으로 취급하고 원본 null을 유지한다. 원격 GPU 임베딩 사용 의사는 확인했지만 실제 서버/모델/포트는 확인 중이며 SSH 비밀번호를 앱에 저장하지 않는 연결 안내를 development에 추가했다.
+
+## 2026-10-17 #85 추가 결정·대시보드 GPU 수명주기
+
+- 사용자 결정: 중요도 낮은 순·동점 오래된 seq 순. 이후 미산정0 우선 제거 시 채점된64개 뒤 새 기억이 성찰 전에 사라지는 실패를 재현했고, 사용자가 채점 전 임시 최상위 보존을 확정했다. 신규 회귀는 변경 전 실패 후 통과했다. 앞선0점 순서 기록은 이 최종 결정을 뜻하지 않는다.
+- 사용자 제공 srun 옵션과 서버 실행법에 맞춰 sbatch/SSH master/분리 임베딩/준비 검사/소유 작업 반환을 추가했다. 기존 Qwen 환경은 수정하지 않는다. 상세 계약과 최초 준비는 [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)에 있다.
+- 수명주기10개와 분리 embedding7개, U memory14개가 신규이며 모듈/메서드 부재·정책 차이 실패를 먼저 확인했다. 신규·기존 Slow/제거/중요도 집중 **52 passed in 0.92s**였다. 사용자 최종 결정 이전의 통합+신규 관련 검사는 **57 passed in 9.30s**였다. 첫 전체는 **477 passed / 3 failed in 207.10s**로 기존 종류/단계 보호·Wonder 우선 제거 기대와 새 중요도 정책이 달랐다. 해당 회귀의 입력/원본 기록 보존·점수·상한 검증은 유지하고 새 기대값으로 갱신했다.
+- 임베딩 HTTP 검사는 실제 로컬 HTTPServer/urllib 전송을 쓰되 encoder와 벡터는 가짜다. 별도 embedding transport가 채팅의 embed를 호출하지 않고 같은 예산에 반영됨을 확인했다. 실제 CUDA/한국어 모델 품질 검증이 아니다.
+- 원격 SSH 읽기 전용 점검은 BatchMode/StrictHostKeyChecking으로 수행했고 Permission denied(publickey,password)로 종료됐다. Slurm 명령/서버/GPU에는 접근·변경하지 않았다. 실제 Slurm 할당·서버 설치·모델 다운로드·GPU API/반환·공개 데카트론은 미검증이다. 로컬 비공개 설정과 첫 실행 안내를 runs/private에 준비했으며 저장소에 포함하지 않는다.
+- 최종 정책 반영 전체 `python3 -m pytest -q --tb=short`: **482 passed in 224.32s**. 이 전체 실행 도중 반환 직전의 squeue 작업ID·고유 이름 동시 대조를 보강했고, 해당 보강 이후 신규/Slow/제거/중요도 집중 **52 passed in 0.81s**였다. 새 커밋 전체 원격 CI 결과는 PR에서 별도로 확인한다.
+- doctor: Python3.14.5 / Playwright1.55.0 Chromium available, study_errors 없음. Mock CLI 합성 통합: verified_success / 독립 success, **6행동·기록6/6·1,262 mock 요청**, 단일 Slow worker·603회 순환·종료후active/pending0·cancelled. 임베딩 미설정/not_configured 조건이며 실제 GPU 임베딩이나 성능 지표가 아니다. 종료 취소 usage는 미확인으로 보존한다.
+- wheel 빌드 후 gpu_session.py/embeddings.py/embedding_server.py가 현재 파일과 byte 단위로 같고 격리 import에서 원격 helper 리소스를 읽는 것을 확인했다. 예시 설정으로 생성한 원격 job script의 bash -n 통과. repo 검사0 problems·Python compileall·diff 공백 검사 통과. 별도 lint/typecheck 설정은 없다. staged 검사와 실제 파일 목록을 push 전에 확인한다.

@@ -6,6 +6,9 @@
 
 ## 구현됨
 
+- #85 작업 브랜치는 U dot-product·단계 exp 최신성·중요도/10·종류 가중치, ranked20·plan 최근 목록 중복을 적용한다. 활성64개는 미산정 우선 보존 후 채점 중요도 낮은 순·동점 오래된 순으로 제거한다. [상세](tasks/85-u-memory.md).
+- 사용자 후속 요청으로 [대시보드 GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)를 추가했다. 비공개 설정이 있으면 SSH/sbatch·채팅/분리 임베딩·터널·준비 확인 후 대시보드를 제공하고 Ctrl+C/SIGTERM에 소유 작업만 반환한다. 비밀번호는 OpenSSH 터미널 인증이며 앱에 보관하지 않는다. 실제 원격 검증은 SSH 인증 실패로 남아 있고, GPU/데카트론 성공으로 표시하지 않는다.
+
 - #84 작업 브랜치의 실행기는 첫 인식 뒤 실행별 단일 Slow task가 reflect→wonder→memory.update를 반복한다. 성찰/Thought는 즉시 공유 기억에 저장하며 stage 채택·plan_review·1% draw가 없다. 단조 seq cursor·64개 상한·활성 ID 기반 점수/벡터 갱신과 취소 합류를 포함한다. [현재 계약과 남은 범위](tasks/84-u-slow.md)가 아래 과거 정책보다 우선한다. 실제 GPU embedding과 검색 공식은 #85에서 연결해야 한다.
 - #83 작업 브랜치의 실행기는 `Brain.forward`로 U Fast 응답을 소비한다. 최초 perceive, 이후 feedback/perceive 동시 실행 후 plan/act를 호출하고, rationale Thought·Plan·모든 Action 제안을 실행 전에 저장한다. 첫 제안만 실행하며 모델은 observation/tab ID를 생성하지 않는다. 기록은 `u-fast-1`로 구분한다. [계약·제한](tasks/83-u-fast.md)이 아래 과거 #41/#43 Fast 정책보다 우선한다.
 - #83에서 현재 observation·plan version 기반 Brain 채택 게이트와 강제 우선 기억 삽입, 실행 후 결과를 Action 기억으로 만드는 경로를 제거했다. 첫 인식 직후 Slow 시작은 #84의 계속되는 U 반복으로 연결했다. 도구 결과와 독립 판정은 기존 steps에 보존한다.

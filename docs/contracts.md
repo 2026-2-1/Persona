@@ -1,5 +1,12 @@
 # 평가·기록·결과 계약
 
+## #85 현재 검색·제거·GPU 연결 계약
+
+새 runner는 U 점수 `(dot(memory,query)+exp(timestamp-current)+importance/10)*kind_weight`와 ranked20/plan 최근 prefix를 사용한다. source-step 중복 제거·cosine·벽시계 반감기·단어 fallback을 사용하지 않는다. 미준비 시 최근 목록만 반환한다. 활성 상한64는 유지하며 사용자 결정으로 미산정 우선 임시 보존, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순 제거다. 종류/관찰 단계/최근10개/Slow snapshot 보호는 없다. 원본 null·로그·점수 사건은 보존한다.
+
+채팅과 임베딩 제공자를 분리하고 Qwen chat은 persona-qwen으로 유지한다. managed 대시보드는 비공개 SSH/Slurm 설정으로 자기 작업만 시작·반환한다. 실제 원격 인증·모델/차원·할당/반환 성공을 가짜 HTTP/transport 테스트로 대체하지 않는다. [#85](tasks/85-u-memory.md), [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)의 구체 계약이 아래 이전 검색/보호 정책보다 우선한다.
+
+
 ## #84 U Slow 계약 (작업 브랜치)
 
 현재 runner는 첫 인식 뒤 `ContinuousSlowLoop` 하나를 시작해 reflect→wonder→memory.update를 반복한다. 새 Reflection/Thought는 공유 기억에 바로 저장하며 stage 경계 채택·plan_review·1% draw가 없다. Wonder 입력은 persona+최근 기억 최대50개+intent, 출력은 0~3개 thoughts다. [#84 계약·한계](tasks/84-u-slow.md)가 아래 과거 Slow/1% 정책 설명보다 우선한다.

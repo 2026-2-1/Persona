@@ -116,9 +116,10 @@ class StudyConfig(StrictModel):
     enable_wonder: bool = Field(default=True, description="Legacy field; U Wonder runs every Slow cycle.")
     wonder_seed: int | None = Field(default=None, ge=0, le=2**63-1, description="Legacy input; unused by U Slow.")
     reflection_every_actions: int = Field(default=5, gt=0, description="Legacy input; unused by U Slow.")
-    memory_limit: int = Field(default=8, gt=0)
+    memory_limit: int = Field(default=20, gt=0, description="Ranked U memories, before the recent prefix.")
     max_active_memories: int = Field(default=64, ge=10, le=64)
     embedding_model: str | None = None
+    embedding_provider: Literal["local"] | None = None
     model: str = "gpt-4o-mini"
     provider_model: str | None = None
     temperature: float = Field(default=0.2, ge=0, le=2)

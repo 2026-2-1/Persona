@@ -412,3 +412,12 @@
 - 취소 시 usage 응답이 없으면 budget.tokens에는 보수적 예약 추정이 포함될 수 있다. 이를 실제 토큰으로 표시하지 말고 llm_tokens_complete·unknown_calls·measured_total을 함께 읽는다. 정상 반환한 Mock 요청의 측정 토큰은 0이며 취소된 요청은 미확인이다. 원격 urllib 요청 자체의 강제 중단이나 요금 중단을 검증한 것은 아니다.
 
 - 추가 검증: 두 번째 전체 450 passed / 1 failed의 반복 판정 사례는 screenshot 30초 timeout으로 종료됐고 단독 1 passed였다. 마지막 전체 448 passed / 3 failed에서는 UI 클릭/Chromium launch timeout과 모델 호출 전 관찰 실패가 발생했다. 해당 3개 재실행은 3 passed였다. 브라우저 정책을 완화하지 않았으며 전체 일괄 통과 미확보 상태와 실제 명령은 verification에 남겼다. doctor·Mock 통합은 통과했다.
+
+## 2026-10-17 #85 U 검색·기억 제거와 GPU 시작/반환
+
+- 증상: 기존 검색은 단어 겹침/cosine 변환·60초 반감기·종류 최대값 정규화였고, 활성 제거는 종류/단계/최근 기억 보호를 우선했다. Qwen 수동 연결에는 할당/서버 시작/터널/반환을 각각 실행해야 했다.
+- 원인: 기존 검색·제거 정책이 U 수식과 사용자 확정 중요도 순 정책과 달랐고, 대시보드가 원격 자원 생명주기를 소유하지 않았다. 새 기억의 미산정을0으로 두면 채점된64개 이후 새 입력이 바로 제거되는 경계도 확인했다.
+- 해결: U dot-product·단계 exp·importance/10·kind weight와 ranked20/최근 prefix를 연결한다. 사용자 추가 결정으로 미산정은 채점 전 임시 최상위, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순이다. 모두 미산정이면 오래된 순이며 실제 중요도null을 조작하지 않는다. SSH master·고유 Slurm 작업·분리 embedding·터널·준비 확인·Ctrl+C/SIGTERM 반환을 추가했다.
+- 함께 확인할 회귀: 미준비/최근 경계/중복/차원/응답 오류 usage, 채점64개 뒤 새 기억·늦은 ID 갱신, 별도 채팅/embedding과 공유 예산, 시작 실패 rollback·응답 유실 복구·다른 세션 취소 방지·반환 실패 상태 보존·환경 복원·대시보드 종료.
+- 실제 검증 결과: 검색8개와 query 계측2개는 변경 전 실패 후 통과했고, 제거2개 및 채점64개 후 새 기억 사례도 변경 전 실패 후 통과했다. GPU 수명주기·분리 임베딩은 모듈 부재 실패 후 통과했다. 첫 전체477 passed/3 failed는 예전 보호/Wonder 우선 제거 기대였고 같은 근거 보존 검증을 새 정책에 맞췄다. 최종 전체/집중 검사 결과는 verification을 따른다.
+- 실제 SSH BatchMode 읽기 전용 접속은 Permission denied였다. 원격 Slurm/API/모델/할당/반환을 성공으로 표시하지 않는다. 비밀번호는 터미널 인증이며 실제 사용 설정/주소는 runs/private에 둔다. 인증/모델 최초 준비 및 강제 종료 한계는 [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)를 따른다.

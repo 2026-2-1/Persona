@@ -17,21 +17,21 @@ class Writer:
         self.records.append(record)
 
 
-def test_current_stage_memory_survives_recent_ten_at_capacity_ten():
+def test_current_stage_does_not_override_importance_at_capacity_ten():
     changes = Writer()
     store = MemoryStore("run", max_active_memories=10, change_writer=changes)
-    current = store.append("observation", "현재 화면")
+    current = store.append("observation", "현재 화면", importance=1)
     store.set_current_stage_memories([current.memory_id])
     for index in range(10):
         store.append("action", f"후속 {index}", importance=5)
 
     assert len(store.entries) == 10
-    assert current.memory_id in {row.memory_id for row in store.entries}
-    assert any(row["reason_code"] == "recent_capacity_for_current_stage"
+    assert current.memory_id not in {row.memory_id for row in store.entries}
+    assert any(row["reason_code"] == "active_capacity_importance_then_oldest"
                for row in changes.records)
 
 
-def test_pending_score_is_kept_over_old_scored_memory_if_capacity_allows():
+def test_unscored_is_kept_until_scored_without_fabricating_an_importance():
     changes = Writer()
     store = MemoryStore("run", max_active_memories=12, change_writer=changes)
     scored = store.append("observation", "오래된 점수", importance=8)
@@ -44,19 +44,20 @@ def test_pending_score_is_kept_over_old_scored_memory_if_capacity_allows():
     assert pending.memory_id in active
     assert scored.memory_id not in active
     assert changes.records[0]["memory_id"] == scored.memory_id
+    assert pending.importance is None
 
 
-def test_pending_score_yields_to_recent_ten_and_removal_preserves_original():
+def test_all_unscored_ties_remove_oldest_and_preserve_original():
     originals, changes = Writer(), Writer()
     store = MemoryStore("run", originals, max_active_memories=10, change_writer=changes)
     pending = store.append("observation", "점수 대기")
     for index in range(10):
-        store.append("action", f"최근 {index}", importance=5)
+        store.append("action", f"최근 {index}")
 
     assert pending.memory_id not in {row.memory_id for row in store.entries}
     assert originals.records[0]["memory_id"] == pending.memory_id
     assert changes.records[0]["memory_id"] == pending.memory_id
-    assert changes.records[0]["reason_code"] == "pending_importance_capacity"
+    assert changes.records[0]["reason_code"] == "active_capacity_importance_then_oldest"
     assert store.update_importance(pending.memory_id, 9, "stage-late") is False
 
 
@@ -71,7 +72,7 @@ async def test_embedding_result_does_not_restore_evicted_memory_cache():
             return [[1.0, 0.0] for _ in texts], {"model": model, "input_tokens": len(texts)}
 
     store = MemoryStore("run", max_active_memories=10)
-    old = store.append("observation", "오래된 기억")
+    old = store.append("observation", "오래된 기억", importance=1)
     task = asyncio.create_task(store.retrieve_with_embeddings(
         "질의", 8, Provider(), BudgetManager(None, None), "mock-v1"))
     await started.wait()
@@ -114,7 +115,7 @@ async def test_evicted_slow_snapshot_keeps_original_source_ids():
 
     assert old.memory_id not in {row.memory_id for row in store.entries}
     assert originals.records[0]["memory_id"] == old.memory_id
-    assert changes.records[0]["reason_code"] == "slow_snapshot_capacity"
+    assert changes.records[0]["reason_code"] == "active_capacity_importance_then_oldest"
     assert any(row["kind"] == "reflection" and row["status"] == "completed" and
                old.memory_id in row["source_memory_ids"] for row in tasks.records)
     assert stages.records[0]["source_memory_ids"] == [old.memory_id]

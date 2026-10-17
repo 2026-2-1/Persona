@@ -10,7 +10,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 
-from .llm import BudgetManager, ClaudeProvider, GeminiProvider, OpenAIProvider, estimate_cost_usd
+from .llm import BudgetManager, ClaudeProvider, GeminiProvider, OpenAIProvider, LocalQwenProvider, estimate_cost_usd
 from .model_catalog import catalog_payload, resolve_model
 
 
@@ -90,7 +90,7 @@ def _check_sensitive(value):
 
 
 def _provider(name):
-    return {"live": OpenAIProvider, "claude": ClaudeProvider, "gemini": GeminiProvider}[name]()
+    return {"live": OpenAIProvider, "claude": ClaudeProvider, "gemini": GeminiProvider, "gpu": LocalQwenProvider}[name]()
 
 
 SYSTEM = """You provide setup advice only, never actions, selectors, code, or evaluation answers.
@@ -176,10 +176,10 @@ class SetupGuide:
                     "task_suggestion": None, "source": "template", "source_note": DISCLAIMER,
                     "provider": provider, "model": None, "usage": self._usage(provider, 0, 0)}
         actual_provider = "gemini" if provider == "jev" else provider
-        if actual_provider not in ("live", "claude", "gemini"):
+        if actual_provider not in ("live", "claude", "gemini", "gpu"):
             raise ValueError("setup_guide_invalid_provider")
         selected_model = resolve_model(provider, model)
-        if self._require_server_key:
+        if self._require_server_key and actual_provider != "gpu":
             key_name = {"live": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}[actual_provider]
             if not os.environ.get(key_name, "").strip():
                 raise ValueError("setup_guide_key_required")

@@ -406,3 +406,31 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 
 - 준비 조건 보완 후 #74 범위의 전체 **377 passed in 159.10s**, 최종 A/B/C/D 통합 범위의 전체 **418 passed in 176.77s**였다. 전체 검증 범위를 줄이지 않았다.
 - 두 운영체제 원격 검사는 최신 PR head와 최종 prototype에서 별도로 확인한다. 진단용 부분 검사와 로컬 통과 기록은 원격 필수 CI 통과를 대신하지 않는다.
+
+## 2026-10-16 로컬 GPU Qwen 연결
+
+- 사용자 로컬 SSH 터널의 `/health`가 HTTP 200과 `{"status":"ok","model":"persona-qwen"}`을 반환했다. `/v1/chat/completions`는 기본 요청과 `response_format=json_object` 요청 모두 HTTP 200, `choices[0].message.content`와 `usage`를 반환했다.
+- 새 `gpu` 제공자 코드의 실제 짧은 요청은 `{"ok":true}`와 입력 24·출력 8토큰을 반환했다. 대시보드의 연결 확인 경로도 실제 서버에서 `configured=true`, `validated=true`를 반환했다. 이 결과는 채팅 연결 확인이며 전체 과업 성공이나 모델 품질 검증이 아니다. 호출 비용은 미확인이다.
+- 새 제공자·설정 도우미·대시보드·모델 선택 집중 검사는 **65 passed, 1 deselected**였다. 선택 모델의 전체 runner 검사는 합성 fixture가 로컬 8000번 포트를 필요로 해 제외했다. Node 구문과 Python compileall 통과.
+- 전체 pytest는 GPU 터널이 합성 fixture와 같은 로컬 8000번 포트를 점유한 상태에서 **407 passed, 15 failed**였다. 실패한 mock 실행은 합성 페이지 제목 대신 빈 제목을 관찰했고, 같은 환경의 `/health`는 GPU API를 반환했다. 포트 분리 후 전체 재검사는 남아 있다.
+
+## 2026-10-16 대시보드 평가 프로필 경로 수정
+
+- 실제 실행 `dashboard-321082b0c6`의 두 세션 모두 `runs/.dashboard/decathlon_live_profile.json` 파일 없음으로 실패했고, 생성된 임시 study에 `evaluation_profile_file: decathlon_live_profile.json`이 남아 있음을 확인했다.
+- 대시보드 실행용 study에는 원본 `configs/study-decathlon-live.json` 위치를 기준으로 해석한 절대 평가 프로필 경로를 저장한다.
+- 전용 회귀는 수정 전 실패하고 수정 후 통과했다. GPU 제공자·대시보드 MVP·모델 선택 인접 검사는 **19 passed, 1 deselected**였다. 제외한 1개는 현재 GPU 터널과 같은 8000번 포트를 요구하는 전체 runner 검사다.
+
+## 2026-10-16 개별 실행 실패 후 batch 계속 진행
+
+- 실제 GPU 실행 `20261016T083126-9ee286d9`는 6단계에서 Qwen의 잘못된 `finish` 필드 때문에 `model_output_error`로 종료됐고 독립 판정은 `unknown`이었다. 이 실행 오류와 batch 전체 상태를 구분한다.
+- 가짜 runner로 두 페르소나가 연속 실패하는 조건에서 두 호출이 모두 수행되고 실패 2건과 로그가 보존되며 batch가 완료 상태를 반환하는 회귀를 추가했다.
+- 완료된 batch의 실패 모달에서 실패 수, 페르소나 ID, `model_output_error` 로그를 확인하고 닫는 브라우저 회귀를 추가했다. batch 계속 실행과 모달의 신규 회귀 2개는 수정 전 실패하고 수정 후 통과했다. 대시보드 완료 상태 회귀를 포함한 관련 검사는 최종 **18 passed in 4.15s**였다.
+
+## 2026-10-17 Qwen 적용 PR 준비 검증
+
+- `feat/90-qwen-application`에서 기존 수정 17개와 신규 `tests/test_gpu_provider.py`를 함께 검토했다. GPU 연결·모델 전달·평가 프로필 경로·개별 오류를 포함한 batch 완료·실패 모달 회귀를 포함한다.
+- 로컬 8000번 포트가 비어 있는 환경에서 `python3 -m pytest -q`: **426 passed in 206.72s**. 앞선 포트 충돌 상태의 407 passed / 15 failed와 구분한다. Python 3.14.5 / pytest 8.4.2 / Playwright 1.55.0 Chromium에서 실행했으며, Python 3.11에는 pytest와 런타임 의존성이 없어 해당 버전 로컬 검사는 수행하지 않았다. Ubuntu 3.11 / Windows 3.13 검증은 원격 CI 결과를 별도로 확인한다.
+- `python3 -m uxagent doctor --study configs/study.json`: Chromium available, study_errors 없음. 첫 샌드박스 실행은 Chromium의 macOS Mach port 권한 제한으로 실패했고 브라우저 실행을 허용한 환경에서 재검사해 통과했다.
+- `python3 -m uxagent run --study configs/study.json --provider mock --headless --output runs/qwen-pr-mock-2026-10-17`: `verified_success`, 독립 `success`, 6행동·기록 6/6·58 mock 요청. GPU나 실제 공개 사이트의 성공을 뜻하지 않는다.
+- `python3 scripts/check_repo.py`는 0 problems, Python compileall·Node 구문 검사·`git diff --check`도 통과했다. push 전 staged 경로·민감정보 검사와 파일 목록을 다시 확인한다.
+- 이번 검증에서는 실제 GPU/유료 API/공개 데카트론을 새로 호출하지 않았다. 2026-10-16의 짧은 실제 GPU 연결 성공 및 전체 과업의 `model_output_error`·독립 `unknown` 기록을 그대로 유지한다. GPU 임베딩과 비용은 미확인이다.

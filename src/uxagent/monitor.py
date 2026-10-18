@@ -533,13 +533,15 @@ def make_handler(dashboard: Dashboard):
     class Handler(BaseHTTPRequestHandler):
         server_version = "UXAgentDashboard/1.0"
 
-        def _send(self, status, body, content_type="application/json; charset=utf-8"):
+        def _send(self, status, body, content_type="application/json; charset=utf-8", *, filename=None):
             payload = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            if filename:
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.end_headers()
             self.wfile.write(payload)
 
@@ -567,7 +569,8 @@ def make_handler(dashboard: Dashboard):
                 kind=parse_qs(urlsplit(self.path).query).get("format",["json"])[0]
                 types={"json":"application/json","csv":"text/csv","md":"text/markdown","html":"text/html"}
                 if kind not in types: return self._send(400,{"error":"unsupported_format"})
-                return self._send(200,export_report(detail,kind).encode("utf-8"),types[kind]+"; charset=utf-8")
+                run_id=unquote(path.removeprefix("/api/export/"))
+                return self._send(200,export_report(detail,kind).encode("utf-8"),types[kind]+"; charset=utf-8", filename=f"{run_id}.{kind}")
             if path.startswith("/api/run/"):
                 detail = dashboard.run_detail(unquote(path.removeprefix("/api/run/")))
                 return self._send(200, detail) if detail else self._send(404, {"error": "run_not_found"})

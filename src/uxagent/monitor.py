@@ -70,6 +70,12 @@ def _jsonl_file(path: Path):
     return rows
 
 
+def _public_call_record(record):
+    """Keep raw prompts/results confined to the local run directory."""
+    return {key: value for key, value in record.items()
+            if key not in {"request", "response", "retrieve_result", "evidence_redacted"}}
+
+
 class Dashboard:
     def __init__(self, runs_dir="runs", personas_dir="runs/personas", study="configs/study.json"):
         self.runs_dir = Path(runs_dir).resolve()
@@ -253,8 +259,9 @@ class Dashboard:
             "persona": _json_file(folder / "persona.json", {}),
             "config": _json_file(folder / "config.json", {}),
             "summary": _json_file(folder / "summary.json"),
+            "final_evaluation": _json_file(folder / "final_evaluation.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
-            "calls": _jsonl_file(folder / "llm_calls.jsonl"),
+            "calls": [_public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
             "brain_stages": stages,
             "brain_tasks": tasks,
             "memories": memories,

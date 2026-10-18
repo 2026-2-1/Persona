@@ -1,5 +1,19 @@
 # 평가·기록·결과 계약
 
+## U 모델 호출 trace v2 (#90)
+
+새 `llm_calls.jsonl` 행은 기존 사용량 필드에 아래 로컬 전용 근거를 더한다. 기존 행은 읽을 때 변경하지 않으며 새 필드 없이도 그대로 소비한다.
+
+```json
+{"schema_version":"2.0","call_id":"call-…","module":"fast","stage":"plan","method_name":"planning","recorded_at":"UTC ISO-8601","request":[{"role":"system","content":"…"},{"role":"user","content":"…"}],"response":"원본 모델 응답","retrieve_result":[{"memory_id":"…"}]}
+```
+
+`request`/`response`는 로컬 실행 폴더의 재현 자료다. 인증정보로 보이는 입력·출력은 기록 전에 값 전체를 치환한다. 대시보드 상세 API에서는 `request`, `response`, `retrieve_result` 및 redaction 진단 필드를 제외하고, JSON/CSV/Markdown/HTML 결과에도 이 로컬 원문을 넣지 않는다. 사용량/provider/model·오류·시간·단계 메타데이터는 기존 집계·조회와 호환된다. 설문 응답 원문도 로컬 호출 파일에서만 보존한다.
+
+새 U Fast의 `feedback` stage와 `thought` memory는 생성 기록이며 실행된 행동·관찰 사실·독립 evaluator 결과를 뜻하지 않는다. `brain_trace`는 과거 `perception`/`plan_review`/`wonder` 및 `adopted`/`discarded` 이벤트를 계속 읽고, 새 실행에 없는 draw/adoption 행을 만들어내지 않는다. 기록의 출처 ID는 추적용이고 모델 결과 채택 또는 행동 허가가 아니다.
+
+`summary.json`의 독립 `verification`은 `termination_reason`과 분리한다. `final_evaluation.json`은 해당 판정의 termination step과 최종 observation ID/URL/시각을 보존하며, 조회와 JSON 내보내기에서 읽는다. 이전 실행에 파일이 없으면 `final_evaluation: null`이고 파일을 보충/수정하지 않는다.
+
 ## #85 현재 검색·제거·GPU 연결 계약
 
 새 runner는 U 점수 `(dot(memory,query)+exp(timestamp-current)+importance/10)*kind_weight`와 ranked20/plan 최근 prefix를 사용한다. source-step 중복 제거·cosine·벽시계 반감기·단어 fallback을 사용하지 않는다. 미준비 시 최근 목록만 반환한다. 활성 상한64는 유지하며 사용자 결정으로 미산정 우선 임시 보존, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순 제거다. 종류/관찰 단계/최근10개/Slow snapshot 보호는 없다. 원본 null·로그·점수 사건은 보존한다.

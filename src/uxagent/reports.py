@@ -116,6 +116,7 @@ def build_cards(detail):
 def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
+                   "final_evaluation":detail.get("final_evaluation"),
                    "wonder":detail.get("wonder",{}),
                    "trace":detail.get("trace",[]),
                    "brain_stages":detail.get("brain_stages",[]),
@@ -134,8 +135,9 @@ def export_report(detail, kind):
         fields=["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"]
         brain=safe["brain"]
         include_brain=bool(brain.get("available"))
+        include_evidence=include_brain or isinstance(safe.get("final_evaluation"), dict)
         evidence_fields=["record_type","record_id","brain_record","stage_or_kind","status","text","observation_id","source_memory_ids"]
-        columns=fields + (evidence_fields if include_brain else [])
+        columns=fields + (evidence_fields if include_evidence else [])
         def safe_cell(value):
             value=str(value if value is not None else "")
             return "'"+value if value.lstrip().startswith(("=","+","-","@")) else value
@@ -143,12 +145,14 @@ def export_report(detail, kind):
         for card in safe["cards"]:
             row={**card,"record_type":"candidate","run_id":safe["run"].get("run_id","")}
             writer.writerow([safe_cell(row.get(key,"")) for key in columns])
-        if include_brain:
+        if include_evidence:
             groups=[("stages","brain_stage"),("task_events","brain_task_event"),
                     ("memories","memory"),("memory_changes","memory_change"),
                     ("wonder_draws","wonder_draw"),("warnings","brain_warning")]
             evidence=[(record_type,record) for group,record_type in groups for record in brain.get(group,[])]
             evidence.extend(("step",record) for record in safe["trace"])
+            if isinstance(safe.get("final_evaluation"), dict):
+                evidence.append(("final_evaluation", safe["final_evaluation"]))
             for record_type,record in evidence:
                 row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,
                      "record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or record.get("draw_index") or record.get("step_id") or "",

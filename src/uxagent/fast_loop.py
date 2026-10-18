@@ -7,6 +7,7 @@ import uuid
 from importlib.resources import files
 
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
+from .call_evidence import call_evidence
 from .schemas import Action, AgentDecision, Finish, UPerception, UFeedback, UPlan, UActions
 
 
@@ -212,6 +213,7 @@ class FastLoop:
                         "fallback_reason": fallback_reason,
                         "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
                                                                  output_tokens, model=actual_model)}
+                record.update(call_evidence(stage, messages, payload, response))
                 try:
                     result = json.loads(response)
                     if not isinstance(result, dict):
@@ -236,7 +238,8 @@ class FastLoop:
                             "elapsed_ms": int((time.monotonic() - started) * 1000),
                             "input_tokens": None, "output_tokens": None,
                             "estimated": True, "estimated_cost_usd": None,
-                            "error": type(exc).__name__, "fallback_reason": fallback_reason})
+                            "error": type(exc).__name__, "fallback_reason": fallback_reason,
+                            **call_evidence(stage, messages, payload, response)})
                 raise
             except Exception as exc:
                 if not settled:
@@ -248,7 +251,8 @@ class FastLoop:
                             "input_tokens": None, "output_tokens": None,
                             "estimated": True, "estimated_cost_usd": None,
                             "error": type(exc).__name__,
-                            "fallback_reason": fallback_reason})
+                            "fallback_reason": fallback_reason,
+                            **call_evidence(stage, messages, payload, response)})
                 message = str(exc)
                 transient = "provider_transient" in message or any(
                     f"provider_http_{code}" in message for code in ("429", "500", "502", "503", "504"))

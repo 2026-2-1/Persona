@@ -12,6 +12,7 @@ from .llm import (BudgetExceeded, BudgetManager, ClaudeProvider, GeminiProvider,
                   LocalQwenProvider, MockProvider, OpenAIProvider, estimate_cost_usd,
                   load_env_file, provider_for_model)
 from .security import check_sensitive_input
+from .call_evidence import call_evidence
 from .storage import write_json
 
 
@@ -298,6 +299,7 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                     "model": actual_model, "elapsed_ms": int((time.monotonic() - started) * 1000),
                     "input_tokens": None, "output_tokens": None, "estimated": True,
                     "estimated_cost_usd": None, "error": type(exc).__name__,
+                    **call_evidence("questionnaire", messages, {"memories": trace}),
                 })
             else:
                 usage = dict(usage or {})
@@ -334,6 +336,8 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                     "estimated": actual_tokens is None,
                     "estimated_cost_usd": cost,
                 }
+                call_record.update(call_evidence("questionnaire", messages,
+                                                 {"memories": trace}, raw_response))
                 if error:
                     call_record["error"] = ("invalid_json_response" if error["code"] == "invalid_json"
                                              else "model_output_error")

@@ -448,3 +448,11 @@
 - 해결: macOS gpu-password-setup으로 OS 키체인 저장, 별도 askpass helper로 SSH 자동 전달을 제공한다. 원격 공개 키 등록은 필요하지 않다.
 - 회귀: 명령 인자/환경/JSON 비밀 제외, 확인 값 불일치·빈 값 거부, 알 수 없는 host 자동 승인 금지, 기존 키/수동 인증·소유 Slurm 반환을 함께 확인한다.
 - 실제 검증: 모듈 부재 실패 후 관련36개 통과. 네이티브 키체인 임시 테스트 항목 생성/조회/갱신·실제 helper pipe 전달·비밀번호 외 prompt 거부·항목 삭제를 확인했다. 사용자가 자신의 터미널에서 저장한 뒤, Codex의 비대화형 실행에서 추가 입력 없는 실제 Qwen health200/persona-qwen·작업19347 반환을 확인했다. 비밀번호 본문은 출력/열람하지 않았다.
+
+## 2026-10-18 #90 호출 근거·최종 평가 출력 호환
+
+- 증상: U Fast의 `feedback`/`thought`와 종료 후 독립 판정은 생성되지만, U 호출별 요청·원본 응답·검색 결과를 기존 `llm_calls.jsonl`/출력과 연결해 재현할 공통 형식이 없었다. 새 최종 평가 JSON도 기존 상세 조회에서 직접 읽지 않았다.
+- 원인: 호출 기록은 사용량 중심이고, 로컬 raw call evidence와 외부 API/내보내기 경계가 정해져 있지 않았다.
+- 해결: Fast/Slow/설문 호출에 schema v2 call id·method·시각·request/response/retrieve_result를 로컬에 남긴다. 인증정보로 판단되는 값은 원문 전체를 치환한다. Dashboard API는 call raw evidence를 빼고, 내보내기는 final evaluation provenance만 추가한다. 구형 run에 final JSON이 없으면 null로 읽는다.
+- 함께 확인할 회귀: feedback stage와 thought 출처, legacy Brain/Memory 기록·symlink/오염 행, raw evidence local-only, secret 치환, final evaluation detail·JSON/CSV, 부분/누락 usage와 Qwen model/provider 필드.
+- 실제 검증 결과는 [#90 통합 검증](verification.md#2026-10-18-90-u-계약-로그-출력-통합)에 기록한다. 라이브 Qwen·Decathlon 호출은 포함하지 않았다.

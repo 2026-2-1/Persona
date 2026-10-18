@@ -104,6 +104,13 @@ async def test_first_turn_uses_u_payloads_and_saves_proposals_before_execution()
     assert decision.proposed_actions[0].description == "러닝화 검색"
     assert stages.rows[-1]["model_response"]["actions"][0]["target"] == "search"
     assert len(calls) == 3 and all(c["provider"] == "gpu" for c in calls)
+    assert [call["method_name"] for call in calls] == ["perceive", "planning", "action"]
+    assert all(call["schema_version"] == "2.0" and call["call_id"].startswith("call-") for call in calls)
+    assert all(call["recorded_at"].endswith("+00:00") for call in calls)
+    assert calls[1]["request"][1]["content"]
+    assert json.loads(calls[1]["request"][1]["content"])["memories"]
+    assert calls[1]["retrieve_result"]
+    assert json.loads(calls[1]["response"])["plan"] == "검색 후 결과 확인"
     assert sources
 
 
@@ -351,6 +358,11 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
     assert summary['brain']['fast']['feedback']['completed'] == 1
     calls = [json.loads(line) for line in (folder / 'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
     assert summary['llm_request_count'] == len(calls) >= len(requests)
+    fast_calls = [call for call in calls if call.get("module") == "fast"]
+    assert fast_calls and all(call["schema_version"] == "2.0" for call in fast_calls)
+    assert all("request" in call and "response" in call and "method_name" in call
+               and "recorded_at" in call for call in fast_calls)
+    assert all("retrieve_result" in call for call in fast_calls)
     assert all(request['model'] == 'persona-qwen' for request in requests)
     steps = [json.loads(line) for line in (folder / 'steps.jsonl').read_text(encoding='utf-8').splitlines()]
     assert all(step['decision']['proposed_actions'][0]['action'] == 'click' for step in steps)

@@ -533,3 +533,12 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 실제 GPU Qwen 추론과 Decathlon 브라우저 과업은 실행하지 않았다. 라이브 상품 상태와 실제 모델 종료 행동/최종 성공률은 미검증이다.
 - 확인 범위: 중간 success 뒤 탐색 지속, 종료 뒤 Slow close 및 최종 capture 다음 evaluator 1회, final capture/evaluator exception의 unknown 처리, timeout/cancel/기존 browser error 사유 유지, 종료/최종 관찰/evaluator provenance를 비교 기록에 전달한다. 공개 Decathlon 평가기는 기존 상품명·80,000원 상세 프로필만 사용한다.
 - 전체 suite 뒤 shutdown 실패 회귀를 추가한 집중 runner/comparison 재검사 **10 passed in 16.06s**. 그 후 전체 suite는 재실행하지 않았다.
+
+## 2026-10-18 #90 U 계약·로그·출력 통합
+
+- 회귀는 호출 원문 근거가 없고 dashboard detail에서 run-local log 경계를 검증하지 않는 상태로 시작했다. 새 회귀는 method/time/request/response/retrieve_result, secret 감지 시 원문 제거, API raw-call 숨김, final evaluation detail/JSON/CSV 연결, U `feedback` trace 출력을 검사한다.
+- 구현 중 새 feedback fixture로 인해 legacy 오염행 검사 기대 개수가 달라졌고 시간 필드 이름 변경 테스트도 갱신이 필요했다. 잘못된 cross-run·손상 행·symlink 경고 확인은 유지한 채 새 feedback 항목과 `recorded_at`으로 수정했다.
+- 통합 집중 실행: `python3 -m pytest -q tests/test_call_evidence.py tests/test_u_fast.py tests/test_slow_loop.py tests/test_survey.py tests/test_brain_schema.py tests/test_brain_trace.py tests/test_loop_record_consumers.py tests/test_reports.py tests/test_latest_brain_integration.py tests/test_runner_flow.py tests/test_memory_integration.py` → **71 passed in 73.04s**.
+- 전체 실행: 승인된 로컬 브라우저/fixture-server 환경의 `python3 -m pytest -q` → **534 passed in 381.75s**. 전체 실행 중 final-evaluation CSV 근거가 Brain 파일 없는 단순 run에서도 포함되도록 보완했다. 그 최종 수정에 대한 `tests/test_call_evidence.py`, `test_brain_trace.py`, `test_reports.py`, `test_loop_record_consumers.py` 재검사 → **12 passed in 0.20s**.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 이 환경에는 별도 lint/typecheck 설정이 없다. 최초 sandbox 실행은 로컬 포트/Chromium 권한 때문에 실행 환경 오류가 났으며 허용 환경에서 통과했다.
+- 검증한 흐름은 fake provider/Qwen fake HTTP + 기존 local fixture다. 실제 GPU Qwen 생성·공개 Decathlon 브라우저 과업 및 원격 Ubuntu/Windows CI는 이 변경에서 실행하지 않았다. 사용자에게 성공으로 표시하지 않는다. 개인 `runs/` 자료와 `.env`는 stage하지 않는다.

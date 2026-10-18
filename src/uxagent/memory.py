@@ -63,6 +63,12 @@ class MemoryStore:
                 raise
             scores, vectors = results[0], results[1] if embed_new is not None else {}
             active_ids = {entry.memory_id for entry in self.entries}
+            existing = [vector for memory_id, vector in self.embedding_cache.items() if memory_id in active_ids]
+            dimension = len(existing[0]) if existing else None
+            for vector in [*existing, *vectors.values()]:
+                self.validate_embedding(vector, dimension)
+                if dimension is None:
+                    dimension = len(vector)
             for memory_id, vector in vectors.items():
                 if memory_id in active_ids:
                     self.embedding_cache[memory_id] = vector
@@ -106,47 +112,16 @@ class MemoryStore:
 
     def _enforce_active_limit(self):
         while len(self.entries) > self.max_active_memories:
-            recent_ids = {entry.memory_id for entry in
-                          [row for row in self.entries if row.kind != "wonder"][-10:]}
-
             def retention_key(entry):
-                if entry.kind == "wonder":
-                    protection = 0
-                elif entry.memory_id in self.current_stage_ids:
-                    protection = 5
-                elif entry.memory_id in recent_ids:
-                    protection = 4
-                elif entry.memory_id in self.pending_score_ids:
-                    protection = 3
-                elif entry.memory_id in self.slow_snapshot_ids:
-                    protection = 2
-                else:
-                    protection = 1
-                if entry.importance is None:
-                    return (protection, 0.0, entry.seq)
                 maximum = 5 if entry.schema_version == "1.0" else 10
-                return (protection, entry.importance / maximum, entry.seq)
+                # Owner decision: retain pending memories above scored ones until
+                # importance arrives. Pending ties still evict the oldest at cap.
+                score = entry.importance / maximum if entry.importance is not None else 1
+                return entry.importance is None, score, entry.seq
 
-            ranked = sorted(self.entries, key=retention_key)
-            victim = ranked[0]
-            # Keep the recorded score consistent with importance-first ordering.
-            oldest_seq, newest_seq = self.entries[0].seq, self.entries[-1].seq
-            recency = (victim.seq - oldest_seq) / max(1, newest_seq - oldest_seq)
-            if victim.importance is None:
-                retention_score = (0.05 * recency) / 2.05
-            else:
-                maximum = 5 if victim.schema_version == "1.0" else 10
-                retention_score = (1 + victim.importance / maximum + 0.05 * recency) / 2.05
-            if victim.kind == "wonder":
-                reason = "wonder_lower_priority"
-            elif victim.memory_id in recent_ids and self.current_stage_ids:
-                reason = "recent_capacity_for_current_stage"
-            elif victim.memory_id in self.pending_score_ids:
-                reason = "pending_importance_capacity"
-            elif victim.memory_id in self.slow_snapshot_ids:
-                reason = "slow_snapshot_capacity"
-            else:
-                reason = "active_capacity_importance_then_recency"
+            victim = min(self.entries, key=retention_key)
+            retention_score = retention_key(victim)[1]
+            reason = "active_capacity_importance_then_oldest"
             event = MemoryChangeEvent(
                 event_id=f"memory-change-{uuid.uuid4().hex}", run_id=self.run_id,
                 memory_id=victim.memory_id, memory_seq=victim.seq, change="evicted",
@@ -191,6 +166,7 @@ class MemoryStore:
         return True
 
     def retrieve(self, query: str, limit=8, now_ms=None, embeddings: dict[str,list[float]]|None=None, mode="fast", *, deduplicate_steps=True):
+        """Legacy search API; the U runner uses retrieve_u."""
         if mode not in SEARCH_PROFILES:
             raise ValueError(f"unknown memory search mode: {mode}")
         now_ms = int((self.clock()-self.started)*1000) if now_ms is None else now_ms
@@ -224,6 +200,82 @@ class MemoryStore:
             source_steps.update(e.source_step_ids)
             if len(chosen)>=limit: break
         return chosen
+
+    @staticmethod
+    def validate_embedding(vector, dimension=None):
+        if (not isinstance(vector, list) or not vector
+                or any(isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x)
+                       for x in vector)
+                or (dimension is not None and len(vector) != dimension)):
+            raise ValueError("invalid or incompatible embedding")
+
+    def retrieve_u(self, query, limit=20, *, query_vector=None, mode="fast_plan"):
+        """U recent-prefix plus ranked memories, without deduplication or fallback."""
+        if mode not in KIND_WEIGHTS:
+            raise ValueError(f"unknown U memory search mode: {mode}")
+        if limit <= 0:
+            raise ValueError("memory limit must be positive")
+        recent = []
+        if mode == "fast_plan":
+            for kind, window in (("observation", 3), ("action", 5), ("plan", 5), ("thought", 5)):
+                recent.extend(entry.model_dump() for entry in self.entries
+                              if entry.kind == kind and entry.timestamp is not None
+                              and entry.timestamp >= self.timestamp - window)
+        ready = [entry for entry in self.entries if entry.memory_id in self.embedding_cache]
+        if not ready:
+            return recent
+        self.validate_embedding(query_vector)
+        ranked = []
+        for entry in ready:
+            vector = self.embedding_cache[entry.memory_id]
+            self.validate_embedding(vector, len(query_vector))
+            similarity = sum(a * b for a, b in zip(vector, query_vector))
+            recency = math.exp((entry.timestamp or 0) - self.timestamp)
+            maximum = 5 if entry.schema_version == "1.0" else 10
+            importance = entry.importance / maximum if entry.importance is not None else 0
+            score = (similarity + recency + importance) * KIND_WEIGHTS[mode].get(entry.kind, 1)
+            if not math.isfinite(score):
+                raise ValueError("non-finite embedding score")
+            ranked.append((score, entry))
+        # Preserve insertion order for equal scores; do not privilege recent seq twice.
+        ranked.sort(key=lambda row: -row[0])
+        return recent + [{**entry.model_dump(), "retrieval_score": score}
+                         for score, entry in ranked[:limit]]
+
+    async def retrieve_u_with_embeddings(self, query, provider, budget, model, call_log=None,
+                                         *, mode="fast_plan", limit=20):
+        # U plan/act set trigger_update=False. Slow owns memory vector updates.
+        if not any(entry.memory_id in self.embedding_cache for entry in self.entries):
+            return self.retrieve_u(query, limit, mode=mode)
+        reservation = max(1, len(query) * 2 + 128)
+        budget.reserve(reservation)
+        started, settled = time.monotonic(), False
+        record = {"module": "embedding", "stage": "query_embedding",
+                  "provider": getattr(provider, 'provider_name', provider_for_model(model)), "model": model,
+                  "input_tokens": None, "output_tokens": None,
+                  "estimated": True, "estimated_cost_usd": None}
+        try:
+            vectors, usage = await provider.embed([query], model)
+            tokens = usage.get("input_tokens")
+            budget.settle(reservation, tokens)
+            settled = True
+            record.update(provider=usage.get("provider", record["provider"]),
+                          model=usage.get("model", model), input_tokens=tokens,
+                          output_tokens=0, estimated=tokens is None)
+            if usage.get('model', model) != model or usage.get('response_error'):
+                raise ValueError('invalid embedding response model/payload')
+            if len(vectors) != 1:
+                raise ValueError("invalid query embedding count")
+            return self.retrieve_u(query, limit, query_vector=vectors[0], mode=mode)
+        except BaseException as exc:
+            if not settled:
+                budget.settle(reservation, None)
+            record["error"] = type(exc).__name__
+            raise
+        finally:
+            record["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+            if call_log:
+                call_log(record)
 
     async def retrieve_with_embeddings(self, query, limit, provider, budget, model, call_log=None,
                                        mode="fast", *, deduplicate_steps=True):

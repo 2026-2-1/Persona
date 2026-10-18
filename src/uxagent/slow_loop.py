@@ -476,11 +476,12 @@ class ContinuousSlowLoop(_SlowModelIO):
     """U's run-scoped loop, independent of the legacy queue/RNG policy."""
 
     def __init__(self, provider, budget, model, temperature, output_tokens, memory,
-                 task_writer=None, stage_writer=None, call_log=None, *, embedding_model=None):
+                 task_writer=None, stage_writer=None, call_log=None, *, embedding_model=None, embedding_provider=None):
         self.provider, self.budget, self.model = provider, budget, model
         self.temperature, self.output_tokens = temperature, output_tokens
         self.memory, self.task_writer, self.stage_writer = memory, task_writer, stage_writer
         self.call_log, self.embedding_model = call_log, embedding_model
+        self.embedding_provider = embedding_provider if embedding_provider is not None else provider
         self.worker = None
         self.worker_starts = self.cycles = self.reflection_cursor = 0
         self.status, self.last_error = "idle", None
@@ -660,9 +661,10 @@ class ContinuousSlowLoop(_SlowModelIO):
             reservation = max(1, sum(len(text) for text in texts) * 2 + 128)
             self.budget.reserve(reservation)
             started, settled, record = time.monotonic(), False, None
-            provider = provider_for_model(self.embedding_model, provider_for_model(self.model))
+            provider = getattr(self.embedding_provider, 'provider_name',
+                               provider_for_model(self.embedding_model, provider_for_model(self.model)))
             try:
-                vectors, usage = await self.provider.embed(texts, self.embedding_model)
+                vectors, usage = await self.embedding_provider.embed(texts, self.embedding_model)
                 tokens = usage.get("input_tokens")
                 self.budget.settle(reservation, tokens)
                 settled = True
@@ -670,6 +672,8 @@ class ContinuousSlowLoop(_SlowModelIO):
                           "provider": usage.get("provider", provider), "model": usage.get("model", self.embedding_model),
                           "input_tokens": tokens, "output_tokens": 0, "estimated": tokens is None,
                           "elapsed_ms": int((time.monotonic()-started)*1000), "estimated_cost_usd": None}
+                if usage.get('model', self.embedding_model) != self.embedding_model or usage.get('response_error'):
+                    raise ValueError('invalid embedding response model/payload')
                 if len(vectors) != len(entries) or any(not isinstance(vector, list) or not vector
                         or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
                                for value in vector) for vector in vectors):

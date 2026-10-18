@@ -1,0 +1,23 @@
+{
+  "login_host": "login.example.org",
+  "compute_host": "compute.internal",
+  "user": "USER",
+  "ssh_port": 10000,
+  "partition": "p02",
+  "node": "DIS01",
+  "gres": "gpu:A6000:1",
+  "cpus": 4,
+  "memory": "48G",
+  "walltime": "04:00:00",
+  "remote_dir": "persona-llm",
+  "venv_dir": ".venv-dis01",
+  "server_script": "api_server.py",
+  "local_port": 8001,
+  "remote_port": 8000,
+  "startup_timeout": 600,
+  "ssh_timeout": 60,
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "embedding_venv": ".venv-persona-embedding",
+  "embedding_local_port": 8002,
+  "embedding_remote_port": 8002
+}

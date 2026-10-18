@@ -81,12 +81,17 @@ def model_routes(provider_name: str, model: str):
 
 
 def validate_provider_configuration(provider_name: str, config: StudyConfig):
+    if config.embedding_provider == "local":
+        from .embeddings import LocalEmbeddingProvider
+        if not config.embedding_model:
+            raise ValueError("local embedding requires an embedding model")
+        LocalEmbeddingProvider()
     if provider_name == "jev":
         if not os.environ.get("TYPESAFE_API_KEY"):
             raise ValueError("Jev requires a TypeSafe API key before execution")
         if not os.environ.get("GEMINI_API_KEY"):
             raise ValueError("Jev requires a Gemini API key for every generation stage")
-    if config.embedding_model and provider_name not in {"mock", "live"}:
+    if config.embedding_model and not config.embedding_provider and provider_name not in {"mock", "live"}:
         raise ValueError("This provider does not support the configured embedding model")
 
 
@@ -125,6 +130,10 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     if provider_name == "gpu":
         validate_gpu_fixture_port(config.start_url)
     routes = model_routes(provider_name, model)
+    if config.embedding_model:
+        routes['embedding'] = {'provider':'local_embedding' if config.embedding_provider == 'local'
+                               else 'mock' if provider_name == 'mock' else 'openai',
+                               'model':config.embedding_model}
     if persona_override is not None: persona=persona_override
     run_id=run_id_override or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")+"-"+uuid.uuid4().hex[:8]
     if not isinstance(run_id,str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in run_id):
@@ -173,33 +182,21 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     def stop_requested():
         return stop_file is not None and Path(stop_file).is_file()
     provider=MockProvider() if provider_name=="mock" else JevProvider() if provider_name=="jev" else OpenAIProvider() if provider_name=="live" else ClaudeProvider() if provider_name=="claude" else LocalQwenProvider() if provider_name=="gpu" else GeminiProvider()
+    embedding_provider = provider
+    if config.embedding_provider == "local":
+        from .embeddings import LocalEmbeddingProvider
+        embedding_provider = LocalEmbeddingProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
     slow=ContinuousSlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
                             memory,brain_task_writer,brain_stage_writer,log_call,
-                            embedding_model=config.embedding_model)
+                            embedding_model=config.embedding_model, embedding_provider=embedding_provider)
     brain=Brain(fast,slow,memory,persona,persona_mode,brain_task_writer,stage_writer=brain_stage_writer)
     async def retrieve_fast_memories(query, mode):
-        nonlocal previous_error
-        try:
-            if config.embedding_model:
-                selected=await memory.retrieve_with_embeddings(query,config.memory_limit,provider,
-                    budget,config.embedding_model,log_call,mode=mode,deduplicate_steps=False)
-            else:
-                selected=list(memory.retrieve(query,config.memory_limit,mode=mode,deduplicate_steps=False))
-        except BudgetExceeded:
-            raise
-        except Exception as exc:
-            selected=list(memory.retrieve(query,config.memory_limit,mode=mode,deduplicate_steps=False))
-            previous_error={"code":"embedding_error","message":str(exc)[:300]}
-        if mode == "fast_plan":
-            # U prepends recent kinds, then ranked results (duplicates included).
-            recent=[]
-            for kind,window in (("observation",3),("action",5),("plan",5),("thought",5)):
-                recent.extend(entry.model_dump() for entry in memory.entries
-                    if entry.kind==kind and (entry.timestamp or 0)>=memory.timestamp-window)
-            return recent+selected
-        return selected
+        if config.embedding_model:
+            return await memory.retrieve_u_with_embeddings(query, embedding_provider, budget,
+                config.embedding_model, log_call, mode=mode, limit=config.memory_limit)
+        return memory.retrieve_u(query, config.memory_limit, mode=mode)
     evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
     actual_headed=config.headed if headed is None else headed
     try:

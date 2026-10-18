@@ -30,6 +30,16 @@ def _parser():
     p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs");p.add_argument("--stop-file")
     p=sub.add_parser("scenario",help="Run a preregistered browser scenario without any LLM API");p.add_argument("--config",default="configs/scenarios/decathlon-flow.json");p.add_argument("--output",default="runs");p.add_argument("--headed",action="store_true");p.add_argument("--defect",choices=["search","filter","reset","detail"]);p.add_argument("--study-id")
     p=sub.add_parser("dashboard",help="Open the local UXAgent run dashboard");p.add_argument("--port",type=int,default=8765);p.add_argument("--runs",default="runs");p.add_argument("--personas-dir",default="runs/personas");p.add_argument("--study",default="configs/study.json")
+    group=p.add_mutually_exclusive_group()
+    group.add_argument("--gpu-config", help="Private SSH/Slurm configuration; auto-detect runs/private/gpu-session.json")
+    group.add_argument("--no-gpu",action="store_true",help="Disable automatic GPU allocation for this dashboard")
+    p=sub.add_parser('gpu-password-setup',help='Save GPU SSH passwords once in macOS Keychain')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
+    p=sub.add_parser('gpu-key-setup',help='Enroll a dedicated SSH public key once for automatic GPU startup')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
+    p.add_argument('--identity-file',default='~/.ssh/uxagent_gpu_ed25519')
+    p=sub.add_parser('gpu-key-unlock',help='Load the existing GPU SSH key into ssh-agent')
+    p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
     p=sub.add_parser("review");p.add_argument("--run",required=True)
     p=sub.add_parser("survey");p.add_argument("--run",required=True)
     p=sub.add_parser("interview");p.add_argument("--run",required=True);p.add_argument("--at-step",type=int,required=True);p.add_argument("--question",required=True)
@@ -146,7 +156,22 @@ def main():
             return 1 if summary["termination_reason"] in ("browser_error","scenario_action_error","run_timeout") else 0
         if args.command=="dashboard":
             from .monitor import serve_dashboard
-            serve_dashboard(args.port,args.runs,args.personas_dir,args.study)
+            gpu_config = args.gpu_config
+            if not args.no_gpu and gpu_config is None and Path('runs/private/gpu-session.json').is_file():
+                gpu_config = 'runs/private/gpu-session.json'
+            serve_dashboard(args.port,args.runs,args.personas_dir,args.study,gpu_config=gpu_config)
+            return 0
+        if args.command=='gpu-password-setup':
+            from .gpu_passwords import setup_passwords
+            setup_passwords(args.gpu_config)
+            return 0
+        if args.command=='gpu-key-setup':
+            from .gpu_ssh_keys import setup_gpu_key
+            setup_gpu_key(args.gpu_config,key_path=args.identity_file)
+            return 0
+        if args.command=='gpu-key-unlock':
+            from .gpu_ssh_keys import unlock_gpu_key
+            unlock_gpu_key(args.gpu_config)
             return 0
         if args.command=="review":
             file,issues=create_review(args.run);print(json.dumps({"review":str(file),"issue_candidates":len(issues)},ensure_ascii=False));return 0

@@ -1,5 +1,12 @@
 # 평가·기록·결과 계약
 
+## #85 현재 검색·제거·GPU 연결 계약
+
+새 runner는 U 점수 `(dot(memory,query)+exp(timestamp-current)+importance/10)*kind_weight`와 ranked20/plan 최근 prefix를 사용한다. source-step 중복 제거·cosine·벽시계 반감기·단어 fallback을 사용하지 않는다. 미준비 시 최근 목록만 반환한다. 활성 상한64는 유지하며 사용자 결정으로 미산정 우선 임시 보존, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순 제거다. 종류/관찰 단계/최근10개/Slow snapshot 보호는 없다. 원본 null·로그·점수 사건은 보존한다.
+
+채팅과 임베딩 제공자를 분리하고 Qwen chat은 persona-qwen으로 유지한다. managed 대시보드는 비공개 SSH/Slurm 설정으로 자기 작업만 시작·반환한다. 실제 원격 인증·모델/차원·할당/반환 성공을 가짜 HTTP/transport 테스트로 대체하지 않는다. [#85](tasks/85-u-memory.md), [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)의 구체 계약이 아래 이전 검색/보호 정책보다 우선한다.
+
+
 ## #84 U Slow 계약 (작업 브랜치)
 
 현재 runner는 첫 인식 뒤 `ContinuousSlowLoop` 하나를 시작해 reflect→wonder→memory.update를 반복한다. 새 Reflection/Thought는 공유 기억에 바로 저장하며 stage 경계 채택·plan_review·1% draw가 없다. Wonder 입력은 persona+최근 기억 최대50개+intent, 출력은 0~3개 thoughts다. [#84 계약·한계](tasks/84-u-slow.md)가 아래 과거 Slow/1% 정책 설명보다 우선한다.
@@ -139,3 +146,14 @@ run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes
 ## Wonder seed 표시용 DTO
 
 `brain.wonder_seed_texts`는 검증된 `wonder_draws`와 순서가 같은 10진 문자열 배열이다. 원본 draw의 `seed` 정수 및 로그 스키마는 바꾸지 않는다. 화면은 JavaScript Number 반올림을 피하기 위해 이 문자열을 사용한다. 파일이 없거나 유효 draw가 없으면 빈 배열이며, 저장·재실행에 쓸 seed는 원본 값과 같아야 한다.
+
+## SSH 키 최초 등록 계약 (2026-10-18)
+
+키 최초 등록은 사용자 터미널에서 명시 실행한다. 개인 키는 저장소 밖에 두고 앱은 공개 키만 읽어 기존 원격 행을 보존하며 추가한다. 양쪽 새 publickey 전용 연결과 자기 임시 할당 반환 후에만 private config의 batch mode를 활성화한다. 암호는 OpenSSH·OS Keychain/agent가 처리한다. 실패 시 앱에 비밀번호를 받아 fallback하지 않는다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
+
+실제 Qwen health200·persona-qwen과 작업 반환은 서비스 연결 증거이며 키 등록·임베딩·생성 추론·과업 성공과 구분한다.
+
+
+### macOS 저장 비밀번호 인증 (사용자 후속 결정)
+
+명시적인 gpu-password-setup은 두 서버 비밀번호를 macOS 키체인에 저장하며 이후 SSH askpass pipe로 전달한다. config에는 저장 방식/서버 식별자만 둔다. 비밀번호 평문 파일·JSON·env·argv·로그를 만들지 않는다. host key 자동 승인·OTP 응답은 하지 않는다. 저장 성공과 실제 원격 인증/health/반환 성공을 구분한다. 기존 키 인증과 별도 선택 경로다.

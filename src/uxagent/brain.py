@@ -76,10 +76,10 @@ class Brain:
         else:
             perception = await perceive()
         if not self.slow_started:
-            self.schedule_reflection(intent, observation.observation_id)
+            self.slow.start(self._slow_persona(), intent, observation.observation_id,
+                            plan_getter=lambda: self.current_plan)
             self.slow_started = True
 
-        self._consume_u_completed()
         plan_memories = await retrieve(intent, "fast_plan")
         plan = await self._u_call("plan", observation, plan_memories, lambda: self.fast.make_plan(
             self.persona, intent, plan_memories, self.memory.timestamp, self.current_plan, self.persona_mode))
@@ -89,7 +89,6 @@ class Brain:
         self._u_memory("thought", plan.rationale, step_id, observation, plan_record)
         self._u_memory("plan", plan.plan, step_id, observation, plan_record)
 
-        self._consume_u_completed()
         action_memories = await retrieve(plan.next_step, "fast_decision")
         proposed = await self._u_call("decision", observation, action_memories, lambda: self.fast.act(
             self.persona, intent, observation, action_memories, plan, self.persona_mode))
@@ -132,9 +131,8 @@ class Brain:
             source_memory_ids=record.source_memory_ids, source_stage_record_id=record.record_id,
             raw_action=raw_action)
 
-    def _consume_u_completed(self):
-        # Temporary bridge to #84's scheduler: publish completed outputs directly to
-        # shared memory. No observation/plan-version gate or priority insertion.
+    def _consume_legacy_completed(self):
+        # Compatibility for explicit old queue callers. U writes shared memory directly.
         adopted_memories = []
         for result in self.slow.pop_completed():
             for output in result["outputs"]:
@@ -154,7 +152,7 @@ class Brain:
             self.current_plan_id = self.current_plan_version = None
         if stage == "decision":
             self.current_plan_id, self.current_plan_version = plan_id, plan_version
-        return self._consume_u_completed()
+        return self._consume_legacy_completed()
 
     async def perceive(self, task, observation, memories):
         task_id = self._start_fast("perception", observation.observation_id, memories)

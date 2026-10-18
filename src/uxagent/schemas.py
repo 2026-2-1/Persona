@@ -113,9 +113,9 @@ class StudyConfig(StrictModel):
     max_observation_elements: int = Field(default=100, gt=0)
     screenshot_input: Literal[False] = False
     enable_slow_loop: bool = Field(default=True, description="Legacy field; Slow Loop is always enabled.")
-    enable_wonder: bool = True
-    wonder_seed: int | None = Field(default=None, ge=0, le=2**63-1)
-    reflection_every_actions: int = Field(default=5, gt=0)
+    enable_wonder: bool = Field(default=True, description="Legacy field; U Wonder runs every Slow cycle.")
+    wonder_seed: int | None = Field(default=None, ge=0, le=2**63-1, description="Legacy input; unused by U Slow.")
+    reflection_every_actions: int = Field(default=5, gt=0, description="Legacy input; unused by U Slow.")
     memory_limit: int = Field(default=8, gt=0)
     max_active_memories: int = Field(default=64, ge=10, le=64)
     embedding_model: str | None = None
@@ -132,10 +132,10 @@ class StudyConfig(StrictModel):
             raise ValueError('evaluation check IDs must be unique')
         return checks
 
-    @field_validator("enable_slow_loop", mode="before")
+    @field_validator("enable_slow_loop", "enable_wonder", mode="before")
     @classmethod
     def slow_loop_is_required(cls, _value):
-        # Keep accepting older study files while making the #43 behavior explicit.
+        # Accept older study files while making the mandatory U loop explicit.
         return True
 
     @field_validator("start_url")
@@ -277,6 +277,19 @@ class UFeedback(StrictModel):
     thoughts: list[str]
 
 
+class UReflection(StrictModel):
+    insights: list[str]
+
+
+class UWonder(StrictModel):
+    thoughts: list[str] = Field(max_length=3)
+
+
+class UImportance(StrictModel):
+    score: int = Field(strict=True, ge=1, le=10)
+    rationale: str = ""
+
+
 class UPlan(StrictModel):
     plan: str = Field(min_length=1)
     rationale: str = Field(min_length=1)
@@ -385,7 +398,7 @@ class BrainTaskEvent(StrictModel):
     event_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    kind: Literal["perception", "feedback", "plan", "decision", "importance", "reflection", "plan_review", "wonder"]
+    kind: Literal["perception", "feedback", "plan", "decision", "importance", "reflection", "plan_review", "wonder", "memory_update", "embedding"]
     status: Literal["scheduled", "started", "skipped", "completed", "adopted", "discarded", "failed", "cancelled"]
     snapshot_seq: int = Field(ge=0)
     observation_id: str | None = Field(default=None, min_length=1)

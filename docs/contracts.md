@@ -1,5 +1,13 @@
 # 평가·기록·결과 계약
 
+## #84 U Slow 계약 (작업 브랜치)
+
+현재 runner는 첫 인식 뒤 `ContinuousSlowLoop` 하나를 시작해 reflect→wonder→memory.update를 반복한다. 새 Reflection/Thought는 공유 기억에 바로 저장하며 stage 경계 채택·plan_review·1% draw가 없다. Wonder 입력은 persona+최근 기억 최대50개+intent, 출력은 0~3개 thoughts다. [#84 계약·한계](tasks/84-u-slow.md)가 아래 과거 Slow/1% 정책 설명보다 우선한다.
+
+`MemoryStore.last_seq/since(cursor)`가 64개 활성 배열과 독립적인 성찰 진행을 보장한다. update는 설정된 embedding과 중요도 산정을 함께 시작하고, 같은 활성 ID에만 늦은 결과를 적용한다. source_memory_evicted는 제거된 항목의 데이터 갱신 폐기이며 성찰 결과 사용 권한 판단이 아니다. memory_update·embedding 사건 kind를 reader에 추가했고 과거 로그 읽기를 유지한다.
+
+새 실행은 prompt_version=u-loops-1, wonder_policy=u_every_cycle이며 seed/draw 파일을 생성하지 않는다. enable_wonder의 과거 false 입력은 true로 정규화하고 wonder_seed/reflection_every_actions는 호환 입력으로만 남긴다. embedding 미설정은 not_configured이며 벡터 완료로 표시하지 않는다. 실제 GPU embedding과 검색 공식은 #85 범위다. 정상 Fast 종료 때도 무한 반복 task는 취소·합류하므로 Slow를 완료로 조작하지 않는다. 요청 응답 전 취소된 토큰·요금은 미확인이다.
+
 ## #83 U Fast 계약 (작업 브랜치)
 
 현재 실행기의 Fast 계약은 [#83 구현 명세](tasks/83-u-fast.md)를 따른다. `UPerception.observations`, `UFeedback.thoughts`, `UPlan.plan/rationale/next_step`, `UActions.actions`를 소비한다. 후속 차례의 feedback과 perceive는 같은 현재 HTML에서 동시에 시작하고 공유 기억을 저장한 뒤 plan→act로 진행한다. plan 검색은 intent, act 검색은 next_step이다.

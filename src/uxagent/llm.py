@@ -240,6 +240,20 @@ class MockProvider:
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
         payload = json.loads(messages[-1]["content"])
         system = messages[0]["content"]
+        if system.startswith("SLOW_STAGE:"):
+            # Synthetic transport latency for the fixture provider only. The real
+            # scheduler has no delay/rate gate; empty later outputs are valid U JSON.
+            await asyncio.sleep(0.001)
+            stage = system.split(":", 1)[1].splitlines()[0]
+            if stage == "reflection":
+                result = {"insights": [] if getattr(self, "fixture_reflected", False) else ["최근 기억을 참고해 화면 조건을 확인합니다."]}
+                self.fixture_reflected = True
+            elif stage == "wonder":
+                result = {"thoughts": [] if getattr(self, "fixture_wondered", False) else ["현재 기억과 과업을 떠올립니다."]}
+                self.fixture_wondered = True
+            else:
+                result = {"score": 5, "rationale": "Mock importance score."}
+            return json.dumps(result, ensure_ascii=False), {"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "FAST_STAGE:perception" in system and isinstance(payload, str):
             return json.dumps({"observations":[payload]},ensure_ascii=False),{"model":"mock-v1","input_tokens":0,"output_tokens":0}
         if "FAST_STAGE:feedback" in system:

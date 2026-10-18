@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math, time, uuid
+import asyncio, math, time, uuid
 from datetime import datetime, timezone
 from .llm import MockProvider, OpenAIProvider, provider_for_model
 from .schemas import MemoryChangeEvent, MemoryEntry
@@ -33,6 +33,45 @@ class MemoryStore:
         self._next_seq = 1
         self.timestamp = 0
         self.embedding_cache: dict[str, list[float]] = {}
+        self.update_lock = asyncio.Lock()
+
+    @property
+    def last_seq(self):
+        return self._next_seq - 1
+
+    def since(self, cursor):
+        """Active memories after a monotonic cursor, even when the array is full."""
+        return [entry.model_copy(deep=True) for entry in self.entries if entry.seq > cursor]
+
+    async def update(self, score_new, embed_new=None):
+        """Update a fixed set of IDs concurrently; never apply by array position."""
+        async with self.update_lock:
+            unscored = [entry.model_copy(deep=True) for entry in self.entries
+                        if entry.schema_version == "2.0" and entry.importance is None]
+            unembedded = [entry.model_copy(deep=True) for entry in self.entries
+                          if entry.memory_id not in self.embedding_cache]
+            jobs = [asyncio.create_task(score_new(unscored))]
+            if embed_new is not None:
+                jobs.append(asyncio.create_task(embed_new(unembedded)))
+            try:
+                results = await asyncio.gather(*jobs)
+            except BaseException:
+                for job in jobs:
+                    if not job.done():
+                        job.cancel()
+                await asyncio.gather(*jobs, return_exceptions=True)
+                raise
+            scores, vectors = results[0], results[1] if embed_new is not None else {}
+            active_ids = {entry.memory_id for entry in self.entries}
+            for memory_id, vector in vectors.items():
+                if memory_id in active_ids:
+                    self.embedding_cache[memory_id] = vector
+            evicted_scores = []
+            for memory_id, score, record_id in scores:
+                if not self.update_importance(memory_id, score, record_id):
+                    evicted_scores.append(memory_id)
+            return {"evicted_score_ids": evicted_scores,
+                    "evicted_embedding_ids": [key for key in vectors if key not in active_ids]}
 
     def append(self, kind, text, source_step_ids=None, source_observation_ids=None,
                content_status="observed", based_on_seq=0, importance=None, *,

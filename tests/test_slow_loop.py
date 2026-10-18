@@ -194,7 +194,8 @@ async def test_u_runner_starts_slow_after_first_perception_without_plan_review(t
     events = [json.loads(line) for line in (run_dir / "brain_tasks.jsonl").read_text().splitlines()]
     scheduled = [event for event in events
                  if event["status"] == "scheduled" and event["kind"] in {"reflection", "plan_review"}]
-    assert [event["kind"] for event in scheduled] == ["reflection"]
+    assert scheduled and all(event["kind"] == "reflection" for event in scheduled)
+    assert summary["brain"]["slow"]["worker_starts"] == 1
     assert all(any(event["task_id"] == task["task_id"] and
                    event["status"] in {"completed", "cancelled", "failed", "skipped"}
                    for event in events) for task in scheduled)

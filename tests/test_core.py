@@ -210,7 +210,10 @@ async def test_mock_run_completes_and_review_artifacts_are_safe(tmp_path):
     document=path.read_text()
     assert "<script>" not in document
     assert list((run_dir/"observations").glob("*.png"))
-    assert summary["llm_tokens"]==0
+    # Continuous Slow may be cancelled before returning usage. Budget estimates
+    # for those requests are separate from the measured zero-token Mock subtotal.
+    assert summary["llm_tokens_measured_total"] == 0
+    assert summary["llm_tokens_complete"] is (summary["llm_tokens_unknown_calls"] == 0)
     assert summary["evaluator"]["verification"]=="success"
     survey=create_survey(run_dir)
     assert all(x["response"]["data_type"]=="simulated_self_report" for x in survey)

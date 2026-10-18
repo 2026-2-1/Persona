@@ -401,3 +401,14 @@
 - 해결: Brain.forward가 최초 perceive, 후속 feedback/perceive gather, plan/act와 U 원본 응답 기록을 연결한다. Thought·Plan·raw Action 제안은 실행 전에 저장하고 실제 도구 결과는 steps에 별도로 남긴다. 모델이 observation/tab ID를 만들지 않도록 호스트 어댑터에서 붙인다. 자세한 차이는 [#83](tasks/83-u-fast.md)을 따른다.
 - 함께 확인할 회귀: Event 기반 동시 실행, 첫 feedback 미호출, 빈/잘못된 응답, 실제 사용량/예산/취소 정산, 제안 뒤 도구 실패, 일반 조건 개인 배경 제외, type+Enter 실제 제출, 데카트론 상품 일치/불일치와 평가 프로필 전달, 기존 사람 검토/출력.
 - 실제 검증 결과: 새 U 회귀 8개가 구현 전 실패하고 구현 후 통과했다. 한쪽 실패·취소·JSON 사용량·실행 어댑터 회귀까지 확장한 13개가 통과했다. 첫 전체 검사는 426 passed / 8 failed였고 기존 계약을 사용하는 테스트와 Mock 내부 재호출 계측을 확인했다. Mock은 네트워크 요청이 아닌 내부 변환을 순수 helper로 바꿔 사용량 중복 집계를 해결했고, 해당 실패와 인접 회귀 42개가 통과했다. 최종 전체 결과는 [verification](verification.md)에 기록한다.
+
+## 2026-10-17 #84 U Slow 반복과 취소 사용량
+
+- 증상: 기존 Slow는 reflection/plan_review 큐·1% Wonder·stage 경계 채택을 사용했다. #83의 최초 reflection만으로는 U의 계속되는 reflect/wonder/update와 64개 배열 이후 성찰을 재현할 수 없었다.
+- 원인: 배열 길이 기반 진행과 기존 worker 종료·사용량 완료 가정이 U의 실행별 무한 반복·종료 취소와 달랐다.
+- 해결: 단일 ContinuousSlowLoop가 최초 인식 뒤 reflect→wonder→memory.update를 반복한다. 생성물은 공유 기억에 직접 쓰며 단조 seq cursor와 활성 ID로 갱신한다. 갱신 오류/취소 시 형제 task를 취소·합류한다. 모델 호출·사건 helper는 legacy 큐 정책과 분리했다.
+- 함께 확인할 회귀: 두 번 이상 순환과 Fast 병행, 빈 결과·최근 50개·64개 상한, 오래된 source의 생성 결과 직접 사용, 늦은 점수/벡터, JSON 실패·예산·시작 직후 취소, 두 run 분리, 과거 draw/plan_review reader, 실제/미확인 usage 집계.
+- 실제 검증 결과: 신규 7개가 구현 전 실패하고 구현 후 통과했다. 확장한 11개와 legacy 인접 21개, Fast/Slow/모델/기억 관련 87개가 통과했다. 첫 전체는 448 passed / 3 failed였다. 종료 취소된 요청의 actual usage를 모두 측정했다고 기대하던 테스트 세 개를 확인했고, 미확인 전체값과 측정 부분합·실제 호출 수를 독립 계측으로 검증하도록 갱신한 뒤 관련 26개가 통과했다. 최종 전체 결과는 verification을 따른다.
+- 취소 시 usage 응답이 없으면 budget.tokens에는 보수적 예약 추정이 포함될 수 있다. 이를 실제 토큰으로 표시하지 말고 llm_tokens_complete·unknown_calls·measured_total을 함께 읽는다. 정상 반환한 Mock 요청의 측정 토큰은 0이며 취소된 요청은 미확인이다. 원격 urllib 요청 자체의 강제 중단이나 요금 중단을 검증한 것은 아니다.
+
+- 추가 검증: 두 번째 전체 450 passed / 1 failed의 반복 판정 사례는 screenshot 30초 timeout으로 종료됐고 단독 1 passed였다. 마지막 전체 448 passed / 3 failed에서는 UI 클릭/Chromium launch timeout과 모델 호출 전 관찰 실패가 발생했다. 해당 3개 재실행은 3 passed였다. 브라우저 정책을 완화하지 않았으며 전체 일괄 통과 미확보 상태와 실제 명령은 verification에 남겼다. doctor·Mock 통합은 통과했다.

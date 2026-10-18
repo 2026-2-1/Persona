@@ -115,7 +115,7 @@ async def test_jev_input_fallback_accepts_finish_claim():
 @pytest.mark.asyncio
 async def test_runner_records_fast_stages_and_saves_them_before_next_stage(tmp_path):
     run_dir, summary = await run_study(ROOT / "configs/study.json", "mock", None, False, tmp_path)
-    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["prompt_version"] == "u-fast-1"
+    assert json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["prompt_version"] == "u-loops-1"
     stages = [json.loads(line) for line in (run_dir / "brain_stages.jsonl").read_text().splitlines()]
     step = json.loads((run_dir / "steps.jsonl").read_text().splitlines()[0])
 

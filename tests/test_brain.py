@@ -10,7 +10,7 @@ from uxagent.llm import BudgetManager
 from uxagent.memory import MemoryStore
 from uxagent.runner import run_study
 from uxagent.schemas import Persona
-from uxagent.slow_loop import SlowLoop
+from uxagent.slow_loop import SlowLoop, ContinuousSlowLoop
 
 
 class RecordingWriter:
@@ -93,17 +93,16 @@ async def test_u_runner_does_not_force_adopted_reflection_into_retrieval(monkeyp
     original_plan = FastLoop.make_plan
     original_decide = FastLoop.act
     original_retrieve = MemoryStore.retrieve
-    original_schedule = SlowLoop.schedule_reflection
+    original_reflect = ContinuousSlowLoop.reflect
+    reflection_ready = asyncio.Event()
     decision_memories = []
-    reflection_workers = []
 
-    def capture_reflection_worker(self, *args, **kwargs):
-        task_id = original_schedule(self, *args, **kwargs)
-        reflection_workers.append(self.worker)
-        return task_id
+    async def reflect_and_signal(self):
+        await original_reflect(self)
+        reflection_ready.set()
 
     async def plan_after_reflection(self, *args, **kwargs):
-        await reflection_workers[-1]
+        await asyncio.wait_for(reflection_ready.wait(), timeout=2)
         return await original_plan(self, *args, **kwargs)
 
     async def capture_decision(self, persona, task, observation, memories, *args, **kwargs):
@@ -118,13 +117,15 @@ async def test_u_runner_does_not_force_adopted_reflection_into_retrieval(monkeyp
     monkeypatch.setattr(FastLoop, "make_plan", plan_after_reflection)
     monkeypatch.setattr(FastLoop, "act", capture_decision)
     monkeypatch.setattr(MemoryStore, "retrieve", retrieve_without_reflection)
-    monkeypatch.setattr(SlowLoop, "schedule_reflection", capture_reflection_worker)
+    monkeypatch.setattr(ContinuousSlowLoop, "reflect", reflect_and_signal)
 
-    _, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
+    folder, summary = await run_study(study_path, "mock", None, False, tmp_path / "runs")
 
     assert summary["termination_reason"] == "max_steps", {
         "termination": summary["termination_reason"], "error": summary.get("last_error")}
-    assert summary["brain"]["adoption"]["reflection"] >= 1
+    assert summary["brain"]["adoption"]["reflection"] == 0
+    memories = [json.loads(line) for line in (folder / "memory.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(row["kind"] == "reflection" for row in memories)
     assert not any(entry["kind"] == "reflection" for entry in decision_memories)
 
 

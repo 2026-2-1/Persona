@@ -242,11 +242,12 @@ async def test_cancelling_parallel_phase_leaves_no_requests_or_tasks_in_flight()
 
 
 @pytest.mark.asyncio
-async def test_unsupported_executor_action_keeps_the_original_proposal():
+async def test_forward_action_is_supported_and_keeps_the_original_proposal():
     brain, obs, retrieve, provider, memories, stages, *_ = setup()
     provider.overrides["decision"] = {"actions": [{"action": "forward", "description": "앞으로 이동"}]}
-    with pytest.raises(ValueError, match="unsupported_u_action"):
-        await brain.forward("러닝화 찾기", obs, 1, retrieve)
+    decision, _ = await brain.forward("러닝화 찾기", obs, 1, retrieve)
+    assert decision.action.type == "forward"
+    assert decision.proposed_actions[0].action == "forward"
     assert memories.rows[-1]["raw_action"]["action"] == "forward"
     assert stages.rows[-1]["model_response"]["actions"][0]["action"] == "forward"
 

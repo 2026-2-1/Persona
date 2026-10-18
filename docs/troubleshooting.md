@@ -17,7 +17,7 @@
 | 최신 화면이 안 보임 | step 연결 전 observation, 중첩 runs 검색 | test_latest_observation_and_nested_run_are_visible |
 | 실패를 완료로 표시 | subprocess 결과와 run 종료 사유 전달 | test_batch_reports_browser_failure_instead_of_completion |
 | 실패 로그에 키 노출 | 서버 오류 메시지에서 값 제거; API 상태에 내부 필드 제외 | test_failed_job_explains_error_without_exposing_key |
-| 잘못된 대상/외부 이동 | 최신 observation만 허용; 허용 origin 검사 | test_observation_hides_hidden_text_and_stale_ids_are_rejected |
+| 이전 대상 ID / 외부 이동 | AI ActionExecutor에서 registry·origin 사전 차단 제거; 실제 DOM·Playwright 실패는 유지 | test_observation_hides_hidden_text_and_old_observation_ids_do_not_authorize_targets; test_executor_supports_navigation_redirect_history_and_tabs_across_origins |
 | 잘못된 모델 완료/무한 반복 | 독립 evaluator; 같은 상태 행동 반복 종료 | test_runner_distinguishes_false_finish_and_repeated_state |
 | 한도 초과 추가 요청 | reserve/settle 공통 예산 | test_mock_run_stops_when_request_budget_is_exhausted |
 

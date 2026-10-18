@@ -8,7 +8,7 @@
 
 2026-10-17 Qwen 적용 준비본은 로컬 전체 **426개** 검사와 doctor·무료 Mock 통합을 통과했습니다. 실제 GPU/공개 데카트론은 이번에 재호출하지 않았으며, 원격 CI 및 과업 성공과 구분합니다. 상세 환경과 한계는 [검증 기록](docs/verification.md)을 따릅니다.
 
-#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·종료 후 평가의 후속 전환은 남아 있습니다.
+#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색은 #84–#87에서 연결했고 종료 후 평가·최종 호환 검증은 후속입니다.
 
 macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 번 `python3 -m uxagent gpu-password-setup`을 실행합니다. 로그인·계산 서버 비밀번호는 OS 키체인에 저장되며 이후 대시보드 실행마다 입력하지 않습니다. [저장 방식](docs/tasks/gpu-dashboard-lifecycle.md#macos-서버-비밀번호-저장과-자동-접속)을 참고하세요.
 
@@ -16,9 +16,9 @@ SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent g
 
 #85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. 실제 임베딩 GPU health·벡터 응답과 Slurm 반환을 확인했습니다.
 
-#86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다.
+#86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다. #87은 [U 행동 계약](docs/tasks/87-u-actions.md)에 따라 전체 dispatcher와 AI 경로 접근 정책을 연결합니다.
 
-#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85의 GPU embedding·U 검색은 연결됐고 DOM 관찰·전체 행동·종료 후 평가는 후속입니다.
+#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85 GPU embedding·U 검색, #86 DOM 관찰, #87 U 행동 집합은 연결됐고 종료 후 평가·전체 호환 검증은 후속입니다.
 
 ## 빠른 시작 (Windows)
 
@@ -117,7 +117,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 모의 행동·응답은 실제 사용자 증언이나 인간 행동 재현의 증거가 아닙니다. 문제 후보는 사람 검토 전이며, 후보가 없다고 사이트에 문제가 없다는 뜻도 아닙니다. 비교의 mock 결과는 시스템 흐름 검증용이고 페르소나 효과 측정 결과가 아닙니다.
 
-viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력은 미지원입니다. 제한된 keypress와 명시적으로 활성화한 최대 ±900px scroll을 지원합니다. custom combobox는 관찰된 클릭/키보드/option 요소만 조작하며 native select와 같은 범용 지원을 보장하지 않습니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Brain은 모든 실제 AI 실행에 Fast·Slow를 구성합니다. Slow는 단일 worker에서 비동기로 돌며 대기열 제한은 없고, 실행 종료 시 남은 작업은 취소합니다. Wonder는 기본 활성화되며 시작된 Slow 작업마다 1% 추첨 후 별도 비동기 요청으로 가정된 생각을 만듭니다. `enable_wonder=false`로 끄고 `wonder_seed`로 추첨을 재현할 수 있습니다. 일반 AI 조건에는 공통 제약만 전달합니다. 새 기억은 미산정 상태로 저장하고 Slow가 공통 예산을 써서 1~10점 중요도를 산정합니다. 산정 전 또는 실패 후에도 검색할 수 있습니다. Fast 계획·행동 결정과 Slow 성찰은 서로 다른 기억 검색 우선순위를 사용하며 현재 관찰·계획은 별도로 전달합니다. 활성 기억 상한을 지키면서 현재 단계와 비동기 출처를 보호하고 제거 이유를 기록합니다. 상한 10·64의 mock 실행으로 원본 기억과 점수·제거·출처 기록을 함께 검증합니다.
+viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM은 완전히 처리하지 않습니다. U action 실행 전 AI 경로의 allowed-origin·최신 observation/registry·capability 제한은 제거됐습니다. 모델이 제안한 URL 이동도 브라우저에서 시도하며 Playwright 실패는 도구 오류로 남깁니다. `allowed_origins`는 이전 study 파일의 호환 입력이고 scripted offline scenario는 별도 origin/read-only 경계를 유지합니다. 예산·timeout·사용자 stop, GPU API URL·local server bind·파일 경로·인증정보 보호는 유지합니다. custom combobox의 범용 지원을 보장하지 않으며 실제 Qwen 생성/데카트론 과업 성공은 별도 검증 대상입니다.
 
 2026-10-11 공개 데카트론의 사전 지정 검색 결과 → 8만원 상한 → 킵코어 상세 79,900원 부분 점검을 실제 Python 실행기에서 확인했습니다. 홈페이지 한글 검색 폼 제출은 별도 시도에서 미확인이었습니다. 색상·사이즈·재고·픽업·전체 상품 목록은 성공 범위에 포함하지 않습니다. 상세 결과는 [검증 기록](docs/verification.md)에 남깁니다.
 

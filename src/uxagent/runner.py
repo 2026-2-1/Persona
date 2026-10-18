@@ -17,7 +17,6 @@ from .brain import Brain
 from .memory import MemoryStore
 from .slow_loop import ContinuousSlowLoop
 from .storage import write_json, JsonlWriter
-from .security import normalize_origin
 from .model_catalog import resolve_model
 
 
@@ -57,9 +56,6 @@ def load_study(path: str | Path):
     path=Path(path).resolve()
     raw=json.loads(path.read_text(encoding="utf-8"))
     config=StudyConfig.model_validate(raw)
-    start_origin=normalize_origin(config.start_url)
-    if start_origin not in config.allowed_origins:
-        raise ValueError("start_url origin must be listed in allowed_origins")
     persona_path=Path(config.persona_file)
     if not persona_path.is_absolute():
         # Resolve config-relative first; support repository-root paths as fallback.
@@ -202,7 +198,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     try:
         async with BrowserSession(actual_headed,config.viewport.width,config.viewport.height) as browser:
             executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll)
-            await browser.set_allowed_origins(config.allowed_origins)
             page=browser.active
             await page.goto(config.start_url,wait_until="domcontentloaded",timeout=config.action_timeout_ms)
             if not is_fixture:
@@ -218,7 +213,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 observation,registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
                 pre_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=observation
-                executor.publish(registry)
                 evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
                 verification="unknown"
                 step_id=step_count+1
@@ -290,7 +284,6 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     termination="browser_error";break
                 post_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=next_obs
-                executor.publish(next_registry)
                 evaluation=await evaluate_current(browser.active);verification=evaluation["verification"]
                 fingerprint_state=next_obs.model_dump(exclude={"observation_id","capture","error","tabs"})
                 fingerprint=hashlib.sha256(json.dumps(fingerprint_state,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

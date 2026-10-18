@@ -1,5 +1,15 @@
 # 검증 기록
 
+## 2026-10-18 #87 U 행동 집합·AI 실행 정책
+
+- `feat/87-u-transition-05`에서 U dispatcher의 행동(semantic click/type/raw type, 좌표 click, 방향 scroll, hover/select/clear, 전역·대상 key press, URL/history/reload, 탭 열기·전환·닫기)을 `ActionExecutor`에 연결했다. AI 행동 경로의 allowed-origin, 최신 observation/registry, capability 및 option 사전 제한을 제거하고, DOM/session 부재와 Playwright 실행 오류는 도구 결과로 남긴다. `allowed_origins` 호환 입력과 scripted offline scenario의 별도 origin guard는 보존했다.
+- API/서버 bind 제한, 로컬 파일 경로 검사, credential redaction, 예산·timeout·action 한도 및 stop 동작은 유지했다. 마지막 탭 닫기 거부는 브라우저 세션 생명주기 조건이다.
+- 변경 전 집중 테스트에서 기존 stale observation·origin 제한·키보드/입력 정책과 U 동작 차이가 실패로 재현됐다. 집중 회귀: `tests/test_u_actions.py tests/test_extended_actions.py tests/test_core.py tests/test_u_fast.py tests/test_runner_flow.py tests/test_offline_scenarios.py` **77 passed in 71.02s**.
+- 전체 회귀 최초 실행은 **515 passed, 2 failed**였다. U 안내 프롬프트 교체에서 OpenAI 호환 단계의 rationale/finish/action field 설명이 빠진 것을 확인하고 복원했다. 해당 회귀 **2 passed** 후 전체 suite를 다시 실행해 **517 passed in 278.25s**를 확인했다.
+- `python3 -m compileall -q src/uxagent tests`, `python3 scripts/check_repo.py` (PASS, 0 problems), `git diff --check` 통과.
+- 브라우저 동작은 로컬 테스트 서버 두 개에서 cross-origin redirect/history와 offline scenario 경계를 확인했다. GPU Qwen 라이브 생성, 공개 Decathlon 과업 성공, 실제 사용자 사이트 행동은 수행하지 않았다.
+- 이 브랜치는 선행 #86 커밋 `94b6890`에서 갈라졌으며 #83–#86 변경을 포함한다. PR은 prototype 대상으로 stacked diff임을 알리고 리뷰를 요청한다.
+
 ## 2026-10-16 최신 Brain + D/C 통합 (#69/#47/#36)
 
 - `codex/latest-pr-integration-20261015`에 #79 고정 head `1f82379b0139`, 별도 분기된 #78 `28f912b90a7f` 및 #75 `9c397b4f94e1` 후속을 통합했다. D #68/C 측정/문서 #80을 보존했다. [통합 범위·재현·한계](handoffs/2026-10-16-latest-pr-integration.md)를 따른다.

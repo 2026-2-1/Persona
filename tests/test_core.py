@@ -223,12 +223,11 @@ async def test_mock_run_completes_and_review_artifacts_are_safe(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_observation_hides_hidden_text_and_stale_ids_are_rejected():
+async def test_observation_hides_hidden_text_and_old_observation_ids_do_not_authorize_targets():
     config,_,_=load_study(ROOT/"configs/study.json")
     server=FixtureServer(8000);started=server.start()
     try:
         async with BrowserSession(False,config.viewport.width,config.viewport.height) as browser:
-            await browser.set_allowed_origins(config.allowed_origins)
             await browser.active.goto(config.start_url)
             first,registry=await observe(browser)
             assert "정답은 상품 내부 코드" not in first.html
@@ -243,16 +242,10 @@ async def test_observation_hides_hidden_text_and_stale_ids_are_rejected():
             executor.publish(second_registry)
             old_target=first.input_elements[0]
             result=await executor.execute(Action(type="type",observation_id=first.observation_id,tab_id=first.tab_id,target_id=old_target.id,text="가방"))
-            assert not result.ok and result.error["code"]=="stale_observation"
+            assert result.ok
             executor.publish(second_registry)
-            blocked=await executor.execute(Action(type="navigate",observation_id=second.observation_id,tab_id=second.tab_id,url="http://127.0.0.1:8000/not-observed.html"))
-            assert not blocked.ok and blocked.error["code"]=="target_not_found"
-            # An allowed origin still cannot redirect navigation to an unobserved path.
-            await browser.active.evaluate("""() => {const a=document.createElement('a');a.href='https://example.invalid/';a.textContent='External';document.querySelector('main').append(a)}""")
-            third,third_registry=await observe(browser);executor.publish(third_registry)
-            external=next(x for x in third.clickable_elements if x.name=="External")
-            result=await executor.execute(Action(type="click",observation_id=third.observation_id,tab_id=third.tab_id,target_id=external.id))
-            assert not result.ok and result.error["code"]=="navigation_blocked"
+            navigated=await executor.execute(Action(type="navigate",observation_id=second.observation_id,tab_id=second.tab_id,url="http://127.0.0.1:8000/not-observed.html"))
+            assert navigated.ok and browser.active.url.endswith("/not-observed.html")
     finally:
         if started:server.close()
 

@@ -6,7 +6,6 @@ from uxagent.browser import wait_for_settle
 
 
 async def open_markup(browser, markup):
-    await browser.set_allowed_origins(["https://shop.test"])
     await browser.context.route(
         "https://shop.test/**",
         lambda route: route.fulfill(body=markup, content_type="text/html; charset=utf-8"),

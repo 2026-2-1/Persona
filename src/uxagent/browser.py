@@ -4,7 +4,6 @@ import asyncio
 from importlib.resources import files
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from .security import origin_allowed
 
 
 class BrowserSession:
@@ -15,7 +14,6 @@ class BrowserSession:
         self.context: BrowserContext | None = None
         self.pages: list[Page] = []
         self.active: Page | None = None
-        self.blocked_navigations: list[str] = []
 
     async def __aenter__(self):
         self.playwright = await async_playwright().start()
@@ -42,17 +40,6 @@ class BrowserSession:
     async def activate(self, page: Page):
         self.active = page
         await page.bring_to_front()
-
-    async def set_allowed_origins(self, allowed_origins: list[str]):
-        async def guard(route):
-            request = route.request
-            main_document = request.is_navigation_request() and request.frame.parent_frame is None
-            if main_document and not origin_allowed(request.url, allowed_origins):
-                self.blocked_navigations.append(request.url)
-                await route.abort()
-            else:
-                await route.continue_()
-        await self.context.route("**/*", guard)
 
     async def __aexit__(self, exc_type, exc, tb):
         if self.context:

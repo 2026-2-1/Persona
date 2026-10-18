@@ -24,7 +24,7 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 - 기록 단계 이름은 perception/feedback/plan/decision으로 남기고 실제 U JSON을 보존한다. ID와 plan version은 호스트의 연결 정보이며 모델에게 생성하도록 요구하지 않는다.
 - Brain의 현재 관찰·계획 버전 gate와 Slow 결과 우선 삽입을 제거했다. 완료된 기존 Slow 결과는 공유 기억으로 발행하고 이후 정상 검색에 맡긴다. 첫 인식 직후 기존 reflection 시작만 연결한다. 기존 plan_review를 Fast마다 예약하지 않는다.
 - 기억 검색 질의와 최근 포함 창은 U에 맞춘다. plan은 intent, Observation 최근 3차례와 Action/Plan/Thought 최근 5차례를 먼저 포함한 뒤 순위 검색 결과를 덧붙인다. U처럼 같은 기억의 중복 포함도 보존한다. act는 next_step으로 검색하며 같은 source step이라는 이유로 서로 다른 기억을 제거하지 않는다. plan 종류 가중치는 action/plan/thought/reflection=10, act는 observation=0·action/thought=10이다.
-- 액션 어댑터는 click/type/hover/select/clear/key_press/goto_url/back/switch_tab/close_tab/terminate를 현재 실행 모델로 변환한다. 현재 실행기가 지원하지 않는 forward/refresh/new_tab 또는 target 없는 key_press는 제안 원본을 먼저 보존하고 명시적인 오류를 반환한다. 전체 행동 집합은 #87에서 확장한다. type+enter는 이번에 실제 실행까지 연결했다.
+- 액션 어댑터는 click/type/hover/select/clear/key_press/goto_url/back/switch_tab/close_tab/terminate를 현재 실행 모델로 변환한다. #87 후속으로 forward/refresh/new_tab·target 없는 key_press와 전체 U action 집합을 연결했다. type+enter는 fill 후 Enter로 실행한다.
 - 제안은 도구 실행 전에 기록한다. 실행 실패 이후에도 raw_action은 제안으로 남으며 도구 실패를 제안의 관찰 사실로 바꾸지 않는다. terminate는 기존 Finish completed로 변환하지만 독립 성공과 구분한다.
 
 ## U 원본과 남는 차이
@@ -39,7 +39,7 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 | 동시 호출 한쪽 실패/취소 | U gather 흐름에 형제 task 취소·합류 정리를 추가. 실패 뒤 늦은 기억 쓰기·미정산 요청을 남기지 않음 |
 | 토큰 한도 | U perceive는 64,000을 요청하지만 현재 설정 max_output_tokens는 유지. 실제 Qwen의 문맥/출력 한도는 검증하지 않았고 큰 페이지의 관찰 완전성도 보장하지 않음 |
 | 기억 순위 점수 | 최근 기억·종류 가중치·질의 연결만 완료. 기존 점수/선택적 embedding 계산은 #85에서 dot-product·차례 최신성·중요도로 전환해야 함. GPU embed 미지원과 활성 64개 상한 유지 |
-| 관찰 DOM와 행동 실행 | 현재 관찰 형식/접근 검사는 #86/#87까지 유지. U semantic DOM 전체 전환과 새 행동 지원은 미완료 |
+| 관찰 DOM와 행동 실행 | #86 U semantic DOM·#87 U 행동/접근 정책 적용. Qwen의 실제 전체 과업 성공은 별도 검증 대상 |
 | Slow | 기존 reflection을 처음 한 번 시작하는 연결. reflect→wonder→memory.update 반복과 1% Wonder 제거는 #84에서 구현 |
 | 종료/평가 | 기존 실행 중 평가와 성공 시 조기 종료 유지. AI terminate 후 별도 평가는 #89에서 구현 |
 

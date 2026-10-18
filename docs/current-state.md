@@ -7,6 +7,7 @@
 ## 구현됨
 
 - #86 작업 브랜치(`feat/86-u-transition-04`)에서 U DOM parser와 semantic ID, 빈 컨트롤·현재 select 값·아래쪽 스크롤 요소, 제한된 XHR/fetch·DOM quiet 대기를 연결한다. 기존 observation JSON/PNG와 브라우저 수명주기를 유지한다. password value는 redacted이며 legacy 요소/문자 한도는 입력을 자르지 않고 CaptureInfo에 초과 여부를 기록한다. [계약·차이](tasks/86-u-observation.md).
+- #87 작업 브랜치(`feat/87-u-transition-05`)에서 U action 집합 전체와 semantic ID 직접 조회를 연결한다. AI 경로는 허용 origin·최신 observation/registry·capability 제한 없이 모델 행동을 시도하고, 실행 실패는 오류로 기록한다. 외부 origin 이동은 브라우저 route가 막지 않는다. 기존 `allowed_origins` study 필드는 호환용이며 AI 실행 정책이 아니다. scripted offline scenario는 별도 origin/read-only 검사를 유지한다. 서버·API URL·파일 경로·인증정보 보호는 유지한다. [행동 계약](tasks/87-u-actions.md).
 
 - #85 추가 사용자 요청으로 gpu-password-setup을 제공한다. 두 서버 비밀번호를 한 번 OS 키체인에 저장하면 대시보드가 자동 사용한다. 사용자 최초 저장 후 추가 입력 없는 Qwen health200/persona-qwen과 소유 작업19347 반환을 실제 확인했다.
 - #85 후속 gpu-key-setup은 전용 키/agent·Keychain, 양쪽 공개 키 중복 없는 등록과 새 publickey 인증, 임시 할당 반환 후 무인 모드 저장을 제공한다. gpu-key-unlock은 키만 agent에 로드한다. 실제 사용자 키 최초 등록은 사용자 터미널에서 해야 한다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
@@ -18,14 +19,14 @@
 - #83 작업 브랜치의 실행기는 `Brain.forward`로 U Fast 응답을 소비한다. 최초 perceive, 이후 feedback/perceive 동시 실행 후 plan/act를 호출하고, rationale Thought·Plan·모든 Action 제안을 실행 전에 저장한다. 첫 제안만 실행하며 모델은 observation/tab ID를 생성하지 않는다. 기록은 `u-fast-1`로 구분한다. [계약·제한](tasks/83-u-fast.md)이 아래 과거 #41/#43 Fast 정책보다 우선한다.
 - #83에서 현재 observation·plan version 기반 Brain 채택 게이트와 강제 우선 기억 삽입, 실행 후 결과를 Action 기억으로 만드는 경로를 제거했다. 첫 인식 직후 Slow 시작은 #84의 계속되는 U 반복으로 연결했다. 도구 결과와 독립 판정은 기존 steps에 보존한다.
 - Python 3.11+ / Playwright Chromium / Pydantic.
-- 화면 내 DOM 관찰, 최신 관찰에 묶인 요소 ID, 클릭·입력·hover·select·탐색·탭 조작.
+- 화면 DOM 관찰과 U semantic ID 기준 click·mouse click·type·raw type·방향/양 스크롤·hover·select·clear·키보드·탐색·탭 행동.
 - Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
 - 로컬 SSH 터널을 통해 실행 중인 GPU 서버의 `persona-qwen` 채팅 API를 선택할 수 있다. 연결 확인은 실제 요청이며 키를 요구하지 않는다. 원격 Slurm 할당·서버 시작·SSH 터널은 현재 수동으로 유지한다. 실제 과업 실행 성공은 별도 검증 대상이다.
 - 순차 테스트에서 한 페르소나의 모델 출력·브라우저 오류는 해당 실행만 실패로 기록하고 다음 페르소나를 계속 실행한다. 완료 뒤 실패한 페르소나 수와 로그를 모달로 표시하며, 평가하지 못한 독립 판정은 `unknown`으로 유지한다.
 - #57에서 단계별 Fast의 OpenAI 응답 형식을 문자열·행동 필드·종료 객체 단위로 명시하고, 알려진 `gpt-4o-mini` 응답 모델의 호출 비용 추정치를 기록한다. 실제 API 재검증은 로컬 키가 준비된 뒤 수행한다.
 - #59에서 합성 데카트론 AI 실행 설정과 독립 평가 기대값을 연결했다. 평가 정답은 과업 프롬프트와 분리하고 상세의 상품명·색상·가격이 일치할 때만 성공으로 판정한다. 현재 브랜치의 실제 OpenAI 호출은 키 준비 후 재검증한다.
 - #61에서 공개 데카트론의 부분 평가 프로필을 AI 실행 설정에 연결하고, 여러 적합 상품을 허용하도록 상품명 키워드와 최대 가격을 검사한다. 공개 실행의 판정 범위는 상품명·가격이며 현재 브랜치의 실제 API·사이트 결합 실행은 미검증이다.
-- 요청·토큰 예산, 반복/시간/단계 제한, 허용 origin 검사.
+- 요청·토큰 예산, 반복/시간/단계 제한. AI 브라우저 행동은 configured origin 범위 제한 없이 실행한다.
 - 메모리 검색, 선택적인 embedding, 실행별 Brain의 필수 Fast/Slow Loop와 기본 활성 Wonder.
 - #45에서 실제 시작된 reflection/plan_review마다 1%를 추첨한다. 당첨 시 과업·화면·기억·`intent` 없이 persona만으로 별도 비동기 요청을 보내 가정된 생각을 생성한다. 일반 AI 조건에는 공통 제약만 보낸다. 추첨과 작업 상태를 남기고 생성 생각을 실제 사용자 기억과 구분해 표시한다.
 - #46에서 Fast/Slow/Wonder/embedding의 호출별 실제 provider·model과 실패·재시도·취소를 기록한다. 실행 요약에는 모델 경로, 공통 예산과 요청/토큰 한도 사유를 남긴다. Jev의 후보 선택은 Jev, 생성은 선택한 Gemini 모델로 나뉜다. Jev/Gemini 키나 미지원 embedding 조합은 실행 전 거부한다. 일반 조건은 모든 생성 단계에서 persona 배경·선호를 제외한다.

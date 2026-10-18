@@ -69,7 +69,6 @@ async def _observe(study_path, headless, output):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     try:
         async with BrowserSession(not headless,config.viewport.width,config.viewport.height) as browser:
-            await browser.set_allowed_origins(config.allowed_origins)
             await browser.active.goto(config.start_url,wait_until="domcontentloaded",timeout=config.action_timeout_ms)
             obs,registry=await observe(browser,out,config.max_observation_text,config.max_observation_elements)
             print(obs.model_dump_json(indent=2))
@@ -83,11 +82,10 @@ async def _act(study_path, action_path, headless):
     parsed=urlsplit(config.start_url);server=FixtureServer(parsed.port or 80) if parsed.path.endswith("shop.html") else None;started=server.start() if server else False
     try:
         async with BrowserSession(not headless,config.viewport.width,config.viewport.height) as browser:
-            await browser.set_allowed_origins(config.allowed_origins)
             await browser.active.goto(config.start_url,wait_until="domcontentloaded")
             obs,registry=await observe(browser);raw["observation_id"]=obs.observation_id;raw["tab_id"]=obs.tab_id
             action=Action.model_validate(raw)
-            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll);executor.publish(registry)
+            executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll)
             result=await executor.execute(action)
             print(result.model_dump_json(indent=2));return 0 if result.ok else 2
     finally:

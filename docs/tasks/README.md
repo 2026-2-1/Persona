@@ -2,6 +2,7 @@
 
 - [#85 U 기억 검색](85-u-memory.md)
 - [#86 U DOM parser 화면 관찰](86-u-observation.md)
+- [#87 U 행동 집합과 접근 정책](87-u-actions.md)
 - [대시보드 GPU 수명주기](gpu-dashboard-lifecycle.md)
 
 완료한 최소 구현과 남은 전체 목표는 각 문서의 현재 상태에서 구분한다. 열린 이슈는 후속 보완·검증 작업이다.

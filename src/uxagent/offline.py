@@ -144,6 +144,23 @@ async def readonly_policy(action, registry):
     return True
 
 
+async def install_scenario_origin_guard(browser, allowed_origins):
+    """Keep the scripted scenario's configured-site boundary outside U AI runs."""
+    context = getattr(browser, "context", None)
+    if context is None:  # Small fake browser adapters used by deadline-only tests.
+        return
+
+    async def guard(route):
+        request = route.request
+        main_document = request.is_navigation_request() and request.frame.parent_frame is None
+        if main_document and not origin_allowed(request.url, allowed_origins):
+            await route.abort()
+        else:
+            await route.continue_()
+
+    await context.route("**/*", guard)
+
+
 async def run_scenario(config_path, *, output_root='runs', headed=False, defect=None, study_id_override=None):
     path=Path(config_path).resolve()
     config=OfflineStudy.model_validate_json(path.read_text(encoding='utf-8'))
@@ -180,7 +197,7 @@ async def run_scenario(config_path, *, output_root='runs', headed=False, defect=
         async with asyncio.timeout(max(0, deadline-time.monotonic())):
             async with browser_session as browser:
                 browser_entered=True
-                await browser.set_allowed_origins(allowed)
+                await install_scenario_origin_guard(browser, allowed)
                 await browser.active.goto(start_url,wait_until='domcontentloaded',timeout=config.action_timeout_ms)
                 try:
                     await browser.active.wait_for_load_state('load',timeout=config.action_timeout_ms)

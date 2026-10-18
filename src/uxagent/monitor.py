@@ -25,6 +25,7 @@ from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
 from .call_evidence import public_call_record
+from .result_views import survey_view, wonder_view
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -239,8 +240,6 @@ class Dashboard:
         memories = brain['memories']
         memory_changes = brain['memory_changes']
         wonder_draws = brain['wonder_draws']
-        stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
-                            if entry.get("kind") == "wonder"}
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -255,22 +254,14 @@ class Dashboard:
             "config": _json_file(folder / "config.json", {}),
             "summary": _json_file(folder / "summary.json"),
             "final_evaluation": _json_file(folder / "final_evaluation.json"),
+            "survey": survey_view(folder),
             "steps": _jsonl_file(folder / "steps.jsonl"),
             "calls": [public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
             "brain_stages": stages,
             "brain_tasks": tasks,
             "memories": memories,
             "memory_changes": memory_changes,
-            "wonder": {
-                "draws": wonder_draws,
-                "thoughts": [{"task_id": record.get("task_id"),
-                              "record_id": record.get("record_id"),
-                              "text": record.get("text"),
-                              "stored": record.get("record_id") in stored_stage_ids,
-                              "source_type": "generated_assumption"}
-                             for record in stages if record.get("stage") == "wonder"],
-                "probability_unit": "started_slow_task",
-            },
+            "wonder": wonder_view(_json_file(folder / "run.json", {}), stages, memories, wonder_draws),
             "observations": observations,
         }
         from .metrics import run_metrics

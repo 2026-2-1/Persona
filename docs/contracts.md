@@ -1,5 +1,14 @@
 # 평가·기록·결과 계약
 
+## D의 U 결과 소비 (2026-10-18 후속)
+
+- `survey`는 `survey_result.json`의 최신 시도를 우선하는 읽기 전용 projection이다. 완료 상태에서도 질문지와 답변을 검증한 뒤 질문·답변·사유·전체 trace의 기억/행동 출처만 공개한다. `raw_response`, 요청 프롬프트는 공개하지 않는다. 이 출처는 답변별 인과 증거가 아니라 설문에 전달된 전체 trace다.
+- 새 설문은 `data_type=simulated_self_report`, 구형 `survey.json`만 있는 실행은 `legacy_or_unknown`이다. 최신 설문이 실패/손상됐으면 이전 성공 답변으로 대체하지 않는다. 읽는 과정에서 원본을 수정하지 않는다.
+- `wonder.policy=u_every_cycle`은 응답 횟수·빈 응답 횟수·실제 thoughts 수를 구분한다. 빈 목록은 생각 0개다. `kind=thought`의 생성 단계와 내용을 맞춰 저장 여부를 표시하며 제거된 원본도 저장 이력으로 인정한다. 구형 `legacy_draw`만 1% 추첨 설명을 쓴다.
+- 종료 시점 실패 후보는 `evidence_observation_ids`로 최종 독립 평가의 관찰을 연결한다. 해당 관찰 내용도 카드 근거 버전에 포함한다. 단계별 scripted 후보의 기존 근거와 검토 버전은 유지한다.
+- JSON/CSV/Markdown/HTML은 동일 projection을 내보낸다. CSV는 기존 카드 열을 유지하고 설문/최종 평가/Wonder 요약을 유형별 확장 행으로 표시한다. HTTP 내보내기는 `Content-Disposition: attachment`와 검증된 실행 ID의 파일명을 제공한다.
+- CLI `review.html`과 대시보드 호출 목록은 공통 `public_call_record`를 사용한다. 로컬 `llm_calls.jsonl` 원본의 request/response/retrieve_result는 그대로 두며 공개 화면에 복사하지 않는다.
+
 ## U 모델 호출 trace v2 (#90)
 
 새 `llm_calls.jsonl` 행은 기존 사용량 필드에 아래 로컬 전용 근거를 더한다. 기존 행은 읽을 때 변경하지 않으며 새 필드 없이도 그대로 소비한다.

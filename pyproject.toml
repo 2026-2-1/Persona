@@ -19,7 +19,7 @@ uxagent = "uxagent.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-uxagent = ["dashboard/*.html", "dashboard/*.js", "dashboard/assets/*"]
+uxagent = ["dashboard/*.html", "dashboard/*.js", "dashboard/assets/*", "prompts/u_fast/*.txt"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

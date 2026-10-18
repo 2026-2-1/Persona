@@ -434,3 +434,14 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `python3 -m uxagent run --study configs/study.json --provider mock --headless --output runs/qwen-pr-mock-2026-10-17`: `verified_success`, 독립 `success`, 6행동·기록 6/6·58 mock 요청. GPU나 실제 공개 사이트의 성공을 뜻하지 않는다.
 - `python3 scripts/check_repo.py`는 0 problems, Python compileall·Node 구문 검사·`git diff --check`도 통과했다. push 전 staged 경로·민감정보 검사와 파일 목록을 다시 확인한다.
 - 이번 검증에서는 실제 GPU/유료 API/공개 데카트론을 새로 호출하지 않았다. 2026-10-16의 짧은 실제 GPU 연결 성공 및 전체 과업의 `model_output_error`·독립 `unknown` 기록을 그대로 유지한다. GPU 임베딩과 비용은 미확인이다.
+
+## 2026-10-17 #83 U Fast 판단 전환
+
+- 브랜치 `feat/83-u-transition-01`, 선행 Qwen 커밋 `264bd985ce3bd1744d4e692af52efdc719e61b00`, U 기준 `4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd`. 구현 범위와 U 대비 차이는 [#83 작업 문서](tasks/83-u-fast.md)를 따른다. 이 기록은 prototype 병합이나 #84~#90 완료를 뜻하지 않는다.
+- 새 U 회귀 8개는 구현 전 실패, 구현 후 통과했다. 첫 전체 검사는 **426 passed / 8 failed in 198.43s**였다. 기존 응답 형식/Slow 예약 정책의 fake와 Mock 내부 재호출 집계 문제를 확인했다. 같은 잘못된 종료·반복·선택 모델·독립 평가 상황을 U 응답으로 옮기고 Mock 내부 변환을 실제 요청과 분리한 뒤 집중 **42 passed in 13.75s**였다.
+- 최종 제품 코드의 전체 `python3 -m pytest -q --tb=short`: **439 passed in 203.56s**. 이후 추가한 가짜 GPU HTTP 두 차례 통합 1개도 통과했다. 해당 추가 사례를 포함한 `tests/test_u_fast.py` 전체는 **14 passed in 2.68s**이며 13개는 앞선 전체 검사와 겹친다. 이를 전체 440개 일괄 실행 결과로 표현하지 않는다.
+- 신규 회귀는 Event 기반 후속 feedback/perceive 동시 시작·같은 HTML·첫 feedback 금지, old_plan/next_step 질의·계획 rationale/Thought 순서, 빈/복수 actions, 빈 observations, 잘못된 plan/JSON의 실제 토큰 기록·예산, 동시 호출 실패/취소의 형제 정리, 일반 조건 persona 비노출, 미지원 행동 원본 보존을 확인했다. 실제 Chromium type+Enter 제출과 도구 실패 이전의 제안 기억 파일 존재도 확인했다.
+- 가짜 GPU HTTP 통합은 실제 `LocalQwenProvider`의 HTTP 요청/응답 처리와 runner·Chromium을 사용했다. 두 차례 클릭과 한 차례 feedback, persona-qwen 모델 유지·U 제안 및 도구 결과를 확인했다. 실제 GPU 서버 응답이나 공개 사이트 성공 검증은 아니다.
+- doctor: Python **3.14.5**, Playwright **1.55.0** Chromium available, study_errors 없음. 무료 Mock 통합은 `verified_success`, 독립 success, **6행동·기록 6/6·28 mock 요청**, perception/plan/decision 각 6회와 feedback 5회 완료였다. 기존 성공 시 조기 종료 평가 정책은 #89까지 유지한다.
+- `pip wheel --no-deps --no-build-isolation --no-index --no-cache-dir`로 패키징했다. wheel 안의 U 프롬프트 4개가 고정 원문과 byte 단위로 같고, 격리 Python의 wheel import에서 리소스를 읽는 것을 확인했다. repo 검사 0 problems, Python compileall·Node 구문·diff 공백 검사 통과. push 전 staged 검사와 파일 목록을 재확인한다.
+- 실제 로컬 GPU `/health`는 URLError로 응답을 얻지 못했다. 실제 GPU 채팅·공개 데카트론 과업은 실행하지 않았다. Qwen 문맥/출력 한도, 큰 페이지 인식 완전성, 실제 과업 성능은 미검증이다. 선행 #91의 원격 Ubuntu/Python 3.11·Windows/Python 3.13 CI는 성공했지만 #83 head의 원격 결과를 대신하지 않는다.

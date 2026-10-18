@@ -1,5 +1,6 @@
 # 문서 안내
 
+- [2026-10-18 D/U 통합 검증·남은 선행 조건](handoffs/2026-10-18-d-u-integration.md)
 - [#85 U 기억 검색](tasks/85-u-memory.md)
 - [#86 U DOM parser 화면 관찰](tasks/86-u-observation.md)
 - [#87 U 행동 집합·접근 정책](tasks/87-u-actions.md)

@@ -1,5 +1,7 @@
 # Persona / UXAgent Prototype
 
+2026-10-18 D 후속 작업 브랜치는 U 종료 후 평가·설문·Wonder를 기존 검토와 네 형식 출력에 연결합니다. 최종 화면 근거, 새로고침 후 판정 유지, 구형 기록 호환과 실제 다운로드 결과는 [D/U 통합 검증](docs/handoffs/2026-10-18-d-u-integration.md)을 따릅니다. 원격 `prototype`에는 #91–#94가 병합됐고 #95–#99는 Draft 대기 중입니다. 이 문서의 작업 브랜치 구현과 원격 병합 완료를 구분합니다.
+
 개발 통합 기준은 `prototype`입니다. C/D 검토·출력과 A Brain·Slow·메모리 변경, 협업 문서와 B OpenAI 형식 호환을 원본 PR 단위로 squash 통합합니다. [병합 절차·검증·남은 제한](docs/handoffs/2026-10-16-prototype-merge-queue.md)을 따릅니다.
 
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.

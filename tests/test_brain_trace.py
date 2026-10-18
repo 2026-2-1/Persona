@@ -73,6 +73,7 @@ def test_legacy_without_brain_files_is_readable(tmp_path):
     (folder/'run.json').write_text('{"run_id":"old"}')
     detail=Dashboard(tmp_path).run_detail('old')
     assert not detail['brain']['available']
+    assert detail['final_evaluation'] is None
     assert detail['brain']['stages']==[]
     assert detail['brain']['wonder_seed_texts']==[]
     assert 'brain_record' not in export_report(detail,'csv')

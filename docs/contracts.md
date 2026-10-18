@@ -12,7 +12,7 @@
 
 새 U Fast의 `feedback` stage와 `thought` memory는 생성 기록이며 실행된 행동·관찰 사실·독립 evaluator 결과를 뜻하지 않는다. `brain_trace`는 과거 `perception`/`plan_review`/`wonder` 및 `adopted`/`discarded` 이벤트를 계속 읽고, 새 실행에 없는 draw/adoption 행을 만들어내지 않는다. 기록의 출처 ID는 추적용이고 모델 결과 채택 또는 행동 허가가 아니다.
 
-`summary.json`의 독립 `verification`은 `termination_reason`과 분리한다. `final_evaluation.json`은 해당 판정의 termination step과 최종 observation ID/URL/시각을 보존하며, 조회와 JSON 내보내기에서 읽는다. 이전 실행에 파일이 없으면 `final_evaluation: null`이고 파일을 보충/수정하지 않는다.
+`summary.json`의 독립 `verification`은 `termination_reason`과 분리한다. `final_evaluation.json`은 해당 판정의 termination step과 최종 observation ID/URL/시각을 보존하며, 조회와 네 형식 내보내기에서 읽는다. 이전 실행에 파일이 없으면 `final_evaluation: null`이고 파일을 보충/수정하지 않는다.
 
 ## #85 현재 검색·제거·GPU 연결 계약
 

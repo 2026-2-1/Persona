@@ -4,7 +4,7 @@
 
 U Fast/Slow/설문 API 호출을 현재 `llm_calls.jsonl`에 기록할 때 기존 provider/model/token/cost/error 필드를 보존하면서 schema v2 evidence를 추가했다. `call_id`, `method_name`, `recorded_at`, 요청 메시지, 원본 응답, 검색에 전달된 기억 목록을 한 행에서 복원할 수 있다. 실패 호출도 요청과 빈 응답을 기록한다. 입력·응답에서 인증정보 패턴이 탐지되면 근거 값 전체를 치환해 저장한다. 기록은 기존 `runs/<id>` 아래 로컬 append-only 파일만 사용한다.
 
-원문 요청/응답/검색 결과는 대시보드 JSON API와 JSON/CSV/Markdown/HTML 내보내기에서 제외한다. 호출 메타데이터, 토큰/비용 누락, provider, 오류 정보는 기존 화면·집계 계약을 유지한다. 실행 상세는 `final_evaluation.json`을 읽어 추가로 제공하며 JSON 내보내기에 최종 판정의 termination/observation provenance를 포함한다. 구형 실행에서 이 파일이 없으면 null로 읽고 파일을 고치지 않는다.
+원문 요청/응답/검색 결과는 대시보드 JSON API와 JSON/CSV/Markdown/HTML 내보내기에서 제외한다. 호출 메타데이터, 토큰/비용 누락, provider, 오류 정보는 기존 화면·집계 계약을 유지한다. 실행 상세는 `final_evaluation.json`을 읽어 추가로 제공하며 네 형식 내보내기에 최종 판정의 termination/observation provenance를 포함한다. 구형 실행에서 이 파일이 없으면 null로 읽고 파일을 고치지 않는다.
 
 새 `feedback`/`thought` 기록, 설문 및 final evaluation이 UI 상세 reader/기존 내보내기에 연결되어 있다. 과거 plan_review/1% Wonder/adoption 이벤트는 계속 조회하지만 새 실행 의미를 과거 이벤트로 합성하지 않는다. source ID·시간은 trace 증거이며 결과 채택·모델 입력 우선순위·행동 허가 조건으로 사용하지 않는다. UI 레이아웃은 수정하지 않았다.
 
@@ -19,6 +19,12 @@ U Fast/Slow/설문 API 호출을 현재 `llm_calls.jsonl`에 기록할 때 기�
 ## 저장 계약
 
 새 호출 예시는 [공통 계약](../contracts.md#u-모델-호출-trace-v2-90)을 따른다. 기존 call 행은 schema_version 없는 형식도 허용하는 consumer가 읽으며 조회 중 원본을 재작성하지 않는다. 호출 전문은 로컬 `llm_calls.jsonl`에서만 확인할 수 있다. API/내보내기는 privacy boundary로서 호출 전문을 소비하지 않는다.
+
+## UI 담당자 전달
+
+- API `calls[]`에는 기존 module/stage/provider/model/usage/error/time 메타데이터만 제공한다. 로컬 전용 `request`, `response`, `retrieve_result`는 노출되지 않으므로 화면에 추가하려면 별도 민감정보 검토와 명시적 요구가 필요하다.
+- run detail의 `final_evaluation`은 termination reason, final observation 식별자/URL/시각, 독립 evaluator 결과다. legacy run에서는 null이므로 “기록 없음”으로 읽어야 한다.
+- 기존 UI 레이아웃은 변경하지 않았다. `termination_reason`과 `verification`은 서로 다른 축이며 모델 종료 선언을 성공으로 합치면 안 된다.
 
 ## 검증
 

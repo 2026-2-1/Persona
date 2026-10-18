@@ -171,6 +171,9 @@ def export_report(detail, kind):
     lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], f"실행 출처: {source}", "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    if isinstance(safe.get("final_evaluation"), dict):
+        lines.extend(["", "## 최종 독립 평가 provenance", "",
+                      json.dumps(safe["final_evaluation"], ensure_ascii=False, indent=2)])
     if safe["trace"]:
         lines.extend(["", "## 행동별 관찰·제안·실행·독립 평가", ""])
         for row in safe["trace"]:

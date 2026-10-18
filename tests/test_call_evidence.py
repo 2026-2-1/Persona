@@ -60,6 +60,8 @@ def test_dashboard_does_not_expose_local_raw_call_evidence(tmp_path):
     assert "retrieve_result" not in detail["calls"][0]
     assert detail["final_evaluation"]["observation_id"] == "obs-final"
     assert json.loads(export_report(detail, "json"))["final_evaluation"]["observation_id"] == "obs-final"
+    assert "obs-final" in export_report(detail, "md")
+    assert "obs-final" in export_report(detail, "html")
     rows = list(csv.DictReader(io.StringIO(export_report(detail, "csv"))))
     assert any(row["record_type"] == "final_evaluation"
                and json.loads(row["brain_record"])["observation_id"] == "obs-final" for row in rows)

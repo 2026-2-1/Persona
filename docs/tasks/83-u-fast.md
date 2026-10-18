@@ -49,6 +49,8 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 
 실제 실행 결과는 [verification](../verification.md)에 기록한다. Mock/가짜 제공자 통과를 실제 GPU·공개 데카트론 성공으로 간주하지 않는다.
 
+2026-10-18 실제 공개 데카트론 첫 화면에서 위 토큰 한도 문제가 발생했다. Qwen 전용 큰 화면 경로는 원본 관찰 기록을 유지하면서 모델 입력만 보이는 텍스트·조작 대상 목록과 짧은 ID로 바꾸고, 행동 제안의 ID를 원래 semantic ID로 복원한다. Perception 지시도 서버의 실제 512토큰 출력 한도에 맞춰 짧게 만든다. 이 경로는 U의 전체 HTML 입력과 모든 문구 서술 계약을 충족하지 않으며 다른 제공자의 U 입력은 유지한다. [실패·검증 기록](../troubleshooting.md)을 참고한다.
+
 ## 원본 링크
 
 - [AgentPolicy.forward](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/main/model.py#L139-L196)

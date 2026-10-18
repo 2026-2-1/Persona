@@ -6,6 +6,7 @@
 
 ## 구현됨
 
+- `fix/90-gpu-prompt-length`에서 공개 데카트론 첫 화면의 GPU `Prompt too long`을 재현해 Qwen 전용 큰 화면 입력을 텍스트·조작 대상 목록으로 바꾼다. 모델용 짧은 ID는 응답 뒤 원래 semantic ID로 복원하며 원본 observation JSON/PNG는 유지한다. 큰 화면의 perception은 실제 서버 출력 512토큰 한도에 맞춘 짧은 관찰 지시를 사용한다. 이는 U의 전체 HTML·모든 문구 서술과 다른 Qwen 호환 경로이며 실제 전체 과업 성공은 별도로 검증해야 한다.
 - #86 작업 브랜치(`feat/86-u-transition-04`)에서 U DOM parser와 semantic ID, 빈 컨트롤·현재 select 값·아래쪽 스크롤 요소, 제한된 XHR/fetch·DOM quiet 대기를 연결한다. 기존 observation JSON/PNG와 브라우저 수명주기를 유지한다. password value는 redacted이며 legacy 요소/문자 한도는 입력을 자르지 않고 CaptureInfo에 초과 여부를 기록한다. [계약·차이](tasks/86-u-observation.md).
 - #87 작업 브랜치(`feat/87-u-transition-05`)에서 U action 집합 전체와 semantic ID 직접 조회를 연결한다. AI 경로는 허용 origin·최신 observation/registry·capability 제한 없이 모델 행동을 시도하고, 실행 실패는 오류로 기록한다. 외부 origin 이동은 브라우저 route가 막지 않는다. 기존 `allowed_origins` study 필드는 호환용이며 AI 실행 정책이 아니다. scripted offline scenario는 별도 origin/read-only 검사를 유지한다. 서버·API URL·파일 경로·인증정보 보호는 유지한다. [행동 계약](tasks/87-u-actions.md).
 - #88 작업 브랜치(`feat/88-u-transition-06`)에서 설문을 질문지 + 전체 누적 기억 trace를 소비하는 사후 모델 호출로 전환한다. GPU 실행은 Qwen `persona-qwen`을 유지하고 batch에서 모든 browser 세션이 끝난 뒤 설문한다. run의 공통 예산·llm_calls·usage와 provenance를 갱신하며 실패를 정상 답변으로 만들지 않는다. Owner 선택으로 제거 기억도 trace에 포함하고 활성 검색 64개 상한은 유지한다. 답변은 `simulated_self_report`이며 evaluator/사람 판정이 아니다. [설문 계약](tasks/88-u-survey.md).

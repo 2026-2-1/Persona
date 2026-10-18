@@ -55,6 +55,8 @@ GPU 서버의 `persona-qwen` 모델을 사용하려면 먼저 원격 `api_server
 
 기본 합성 사이트도 로컬 8000번 포트를 사용합니다. 합성 사이트에서 GPU 모델을 시험할 때는 터널의 로컬 포트를 8001 등 다른 번호로 열고 `PERSONA_QWEN_API_URL`을 그 포트로 맞춥니다. 공개 사이트 설정인 `configs/study-decathlon-live.json`은 이 충돌이 없습니다. GPU 모델의 실제 비용은 서버 응답만으로 알 수 없으므로 비용 미확인으로 기록합니다.
 
+Qwen 서버는 공개 데카트론의 큰 첫 화면 HTML을 그대로 받으면 `Prompt too long`으로 거절합니다. 큰 화면에서는 저장된 원본 관찰과 실행용 semantic ID를 보존한 채 모델에 보이는 문구·조작 대상만 전달하고 짧은 관찰을 요청합니다. 이 Qwen 호환 경로는 논문 UXAgent의 전체 HTML 설명과 다르며, 과업 성공은 별도 평가로 확인해야 합니다.
+
 대시보드 3단계에서 GPU 서버 / OpenAI / Claude / Gemini / Jev+Gemini를 선택하고 **연결 확인**을 누릅니다. GPU 서버는 SSH 터널을 사용하며 키 입력이 필요 없습니다. 다른 제공자는 API 키가 필요하고 Jev는 Gemini 연결도 필요합니다. 연결 확인은 작은 실제 요청을 보냅니다. 키는 서버 프로세스 메모리에만 보관하고 브라우저 저장소·원자료·저장소에 쓰지 않습니다. 서버 재시작 시 다시 연결해야 합니다. 로컬 `.env`로 설정해도 되며 프로세스의 기존 값을 덮어쓰지 않습니다. `.env.example`에는 빈 변수만 있습니다.
 
 Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 입력 문구가 필요하면 Gemini가 생성합니다. 낮은 신뢰도·잘못된 선택·Jev 오류에도 Gemini fallback을 사용합니다. OpenAI 경로는 기존 Chat Completions API, Claude는 Anthropic Messages API와 Claude Sonnet 4.6을 사용합니다. Claude 키 변수는 `ANTHROPIC_API_KEY`입니다. 연결되지 않은 유료 모델은 다음 단계로 진행할 수 없습니다.

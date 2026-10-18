@@ -143,11 +143,39 @@ async def test_gpu_large_html_uses_short_model_ids_and_restores_action_target():
                                      UPlan(plan="검색", rationale="검색", next_step="입력"))
     action, _ = brain.fast.adapt_action(proposals.actions[0], obs)
     assert len(obs.html) > 20000
-    assert len(seen["perception"]) < len(obs.html) // 3
+    assert len(seen["perception"]["content"]) <= 1400
     assert "parser-maybe-hoverable" not in seen["decision"]["environment"]
     assert target not in seen["decision"]["environment"]
     assert action.target_id == target
     assert obs.html.endswith(f'<input parser-semantic-id="{target}" placeholder="검색" /></body></html>')
+
+
+@pytest.mark.asyncio
+async def test_gpu_large_page_perception_reads_every_chunk_and_merges_until_one():
+    brain, obs, _, provider, _, _, _, calls, _ = setup()
+    markers = [f"상품{i:03d}" for i in range(300)]
+    obs.html = "<main>" + "".join(f"<p>{marker} 상세 설명과 가격 정보가 표시된다.</p>" for marker in markers) + "</main>"
+    seen = []
+
+    async def complete(messages, model, temperature, max_tokens):
+        payload = json.loads(messages[1]["content"])
+        seen.append(payload)
+        if not isinstance(payload, dict):
+            raise AssertionError("large page must be split into source chunks")
+        return json.dumps({"observations": [f"{payload['round']}단계 {payload['chunk_index']}번 조각"]}), {
+            "provider": "gpu", "model": model, "input_tokens": 7, "output_tokens": 3}
+
+    provider.complete = complete
+    result = await brain.fast.perceive_page(obs)
+    first = [payload for payload in seen if payload["round"] == 1]
+    assert len(first) > 1
+    assert all(len(payload["content"]) <= 1400 for payload in seen)
+    assert "".join(payload["content"] for payload in first) == obs.html
+    assert all(marker in "".join(payload["content"] for payload in first) for marker in markers)
+    assert len({payload["chunk_index"] for payload in first}) == len(first)
+    assert seen[-1]["round"] > 1
+    assert len(result.observations) == 1
+    assert len(calls) == len(seen)
 
 
 @pytest.mark.asyncio

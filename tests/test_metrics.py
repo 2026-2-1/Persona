@@ -54,7 +54,7 @@ def test_medians_use_only_independently_successful_sessions():
     assert groups['general']['median_actions'] == 4
     assert groups['general']['median_ms'] == 100
     assert groups['persona']['median_actions'] is None
-    assert groups['general']['median_population'] == 'verified_success'
+    assert groups['general']['median_population'] == 'verification_success'
 
 
 def test_unrecorded_attempt_is_kept_in_recording_denominator(tmp_path):

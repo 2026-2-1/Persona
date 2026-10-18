@@ -97,7 +97,7 @@ def test_runner_preserves_action_when_post_observation_fails(tmp_path):
 def test_comparison_persists_usage_and_missing_summary_fields(tmp_path):
     personas = tmp_path / 'personas.jsonl'
     personas.write_text(Path('configs/persona.json').read_text(encoding='utf-8').replace('\n', '') + '\n', encoding='utf-8')
-    detail = {'provider':'mock','model':'fake','execution_mode':'ai','source_kind':'synthetic_fixture','llm_request_count':2,'llm_tokens':7,'provider_usage':{'mock':{'requests':2,'input_tokens':4,'output_tokens':3,'estimated_cost_usd':0}},'metrics':{'recording':{'complete':1,'attempted':2}}}
+    detail = {'provider':'mock','model':'fake','execution_mode':'ai','source_kind':'synthetic_fixture','final_evaluation_step_id':2,'final_observation_id':'obs-final','final_observation_url':'http://127.0.0.1/final','final_observed_at':'2026-10-18T00:00:00+00:00','evaluator':{'verification':'success'},'llm_request_count':2,'llm_tokens':7,'provider_usage':{'mock':{'requests':2,'input_tokens':4,'output_tokens':3,'estimated_cost_usd':0}},'metrics':{'recording':{'complete':1,'attempted':2}}}
     async def fake_run(*args, **kwargs):
         return tmp_path / 'fake', {'run_id':kwargs['run_id_override'], 'verification':'success','termination_reason':'verified_success', **(detail if kwargs['persona_mode'] == 'general' else {})}
     with patch('uxagent.experiments.run_study', fake_run):

@@ -183,9 +183,11 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
             target=next(iter(payload["valid_targets"]["clickable"]))
             return json.dumps({"actions":[{"action":"click","target":target,"description":"화면에서 검색 버튼을 사용한다."}]},ensure_ascii=False),{"model":"fake","input_tokens":1,"output_tokens":1}
     monkeypatch.setattr(runner_module,"MockProvider",RepeatingProvider)
+    raw["max_steps"]=5
+    study.write_text(json.dumps(raw),encoding="utf-8")
     _,summary=await run_study(study,"mock",None,False,tmp_path/"repeated")
-    assert summary["termination_reason"]=="stuck"
-    assert summary["action_attempts"]==3
+    assert summary["termination_reason"]=="max_steps"
+    assert summary["action_attempts"]==5
 
 
 def test_persona_quota_is_seeded_and_content_is_unique(tmp_path):
@@ -201,7 +203,7 @@ def test_persona_quota_is_seeded_and_content_is_unique(tmp_path):
 @pytest.mark.asyncio
 async def test_mock_run_completes_and_review_artifacts_are_safe(tmp_path):
     run_dir,summary=await run_study(ROOT/"configs/study.json","mock",None,False,tmp_path)
-    assert summary["termination_reason"]=="verified_success", summary["last_error"]
+    assert summary["termination_reason"] in ("agent_finished", "max_steps"), summary["last_error"]
     assert summary["verification"]=="success"
     steps=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text().splitlines()]
     assert len(steps)>=5
@@ -261,4 +263,5 @@ async def test_mock_run_stops_when_request_budget_is_exhausted(tmp_path):
     _,summary=await run_study(study,"mock",None,False,tmp_path/"runs")
     assert summary["termination_reason"]=="budget_exceeded"
     assert summary["llm_request_count"]==1
-    assert summary["verification"]=="unknown"
+    assert summary["verification"]=="failure"
+    assert summary["evaluator"]["verification"]=="failure"

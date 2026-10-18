@@ -524,3 +524,12 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - `python3 -m compileall -q src`, Node `--check` 두 parser 리소스, `git diff --check` 통과. wheel 검사에서 `uxagent/parser/parser.js`, `uxagent/parser/initscript.js` 포함을 확인했다.
 - 공개 Decathlon 검색 URL은 HTTP200이었다. 관찰은 검색 입력 1, clickable 52, select 0, semantic ID 275개·정리 HTML 99,328자로 구성됐으며 검색·상품·필터 후보와 처음 5개 locator가 확인됐다. 페이지의 XHR/fetch가 3초 안에 idle하지 않아 `observation_wait_timeout`이 같이 기록됐다. 상품 과업이나 구매 행동은 하지 않았다.
 - 공개 페이지의 99,328자는 기존 권고 한도 12,000자를 넘는다. 관찰은 조용히 자르지 않고 초과 사실을 `CaptureInfo.limits_exceeded`와 측정 크기에 기록한다. Qwen 실제 생성 요청에서 이 크기가 처리되는지는 미검증이며 페이지/모델 한도 오류 가능성이 남는다. 실시간 관찰은 저장하지 않았다.
+
+## 2026-10-18 #89 탐색 종료와 사후 독립 평가
+
+- 변경 전 재현: 중간 evaluator success가 첫 행동 뒤 run을 `verified_success`로 종료했고, 종료 후 전용 final record가 없었다. 신규 mock/browser 회귀는 변경 전 2개 실패로 이를 확인했다.
+- 관련 runner·Decathlon·evaluator·memory·comparison·usage·metrics/core 집중 검사는 **73 passed in 136.28s**였다. 추가 final capture/evaluator failure 및 comparison provenance 회귀는 **17 passed in 26.57s**였다.
+- 전체 `python3 -m pytest -q`: **529 passed, 1 failed in 379.89s**. 실패는 예산 종료 시 verification도 `unknown`이어야 한다는 기존 테스트 기대였다. 별도 최종 evaluator가 해당 fixture 화면을 `failure`로 판정하므로 기대를 갱신한 뒤 문제 테스트는 **1 passed in 2.18s**였다. 기대 갱신 후 전체 suite는 다시 실행하지 않았다.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 실제 GPU Qwen 추론과 Decathlon 브라우저 과업은 실행하지 않았다. 라이브 상품 상태와 실제 모델 종료 행동/최종 성공률은 미검증이다.
+- 확인 범위: 중간 success 뒤 탐색 지속, 종료 뒤 Slow close 및 최종 capture 다음 evaluator 1회, final capture/evaluator exception의 unknown 처리, timeout/cancel/기존 browser error 사유 유지, 종료/최종 관찰/evaluator provenance를 비교 기록에 전달한다. 공개 Decathlon 평가기는 기존 상품명·80,000원 상세 프로필만 사용한다.
+- 전체 suite 뒤 shutdown 실패 회귀를 추가한 집중 runner/comparison 재검사 **10 passed in 16.06s**. 그 후 전체 suite는 재실행하지 않았다.

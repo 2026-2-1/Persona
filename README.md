@@ -8,7 +8,7 @@
 
 2026-10-17 Qwen 적용 준비본은 로컬 전체 **426개** 검사와 doctor·무료 Mock 통합을 통과했습니다. 실제 GPU/공개 데카트론은 이번에 재호출하지 않았으며, 원격 CI 및 과업 성공과 구분합니다. 상세 환경과 한계는 [검증 기록](docs/verification.md)을 따릅니다.
 
-#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색은 #84–#87에서 연결했고 종료 후 평가·최종 호환 검증은 후속입니다.
+#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·질문지 설문은 #84–#88에서 연결했고, #89에서 AI 종료와 최종 독립 평가를 분리했습니다. 최종 호환 검증은 #90 후속입니다.
 
 macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 번 `python3 -m uxagent gpu-password-setup`을 실행합니다. 로그인·계산 서버 비밀번호는 OS 키체인에 저장되며 이후 대시보드 실행마다 입력하지 않습니다. [저장 방식](docs/tasks/gpu-dashboard-lifecycle.md#macos-서버-비밀번호-저장과-자동-접속)을 참고하세요.
 
@@ -18,7 +18,7 @@ SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent g
 
 #86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다. #87은 [U 행동 계약](docs/tasks/87-u-actions.md)에 따라 전체 dispatcher와 AI 경로 접근 정책을 연결합니다.
 
-#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85 GPU embedding·U 검색, #86 DOM 관찰, #87 U 행동 집합은 연결됐고 종료 후 평가·전체 호환 검증은 후속입니다.
+#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85 GPU embedding·U 검색, #86 DOM 관찰, #87 U 행동 집합, #88 사후 설문, #89 종료 후 평가가 연결됐고 전체 호환 검증은 #90 후속입니다.
 
 ## 빠른 시작 (Windows)
 

@@ -165,7 +165,7 @@ def main():
         if args.command=="observe":asyncio.run(_observe(args.study,args.headless,args.output));return 0
         if args.command=="act":return asyncio.run(_act(args.study,args.action,args.headless))
         if args.command=="run":
-            run_dir,summary=asyncio.run(run_study(args.study,args.provider,None,not args.headless,args.output));print(json.dumps({"run_dir":str(run_dir),"summary":summary},ensure_ascii=False,indent=2));return 0 if summary["termination_reason"]=="verified_success" else 1
+            run_dir,summary=asyncio.run(run_study(args.study,args.provider,None,not args.headless,args.output));print(json.dumps({"run_dir":str(run_dir),"summary":summary},ensure_ascii=False,indent=2));return 0 if summary["verification"]=="success" else 1
         if args.command=="personas":
             file,count,total=generate_personas(args.config,args.output,args.provider);print(f"Generated {count}/{total}: {file}");return 0 if count==total else 1
         if args.command=="batch":return asyncio.run(_batch(args))

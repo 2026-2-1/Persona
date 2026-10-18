@@ -75,7 +75,7 @@ async def test_staged_ai_run_uses_independent_decathlon_expectations(monkeypatch
     monkeypatch.setattr(runner_module, "MockProvider", _provider_opening(product))
     _, summary = await run_study(_study(tmp_path), "mock", None, False, tmp_path / "runs")
     assert summary["verification"] == expected
-    assert summary["termination_reason"] == ("verified_success" if expected == "success" else "agent_finished")
+    assert summary["termination_reason"] == "agent_finished"
 
 
 def test_decathlon_study_keeps_expected_answer_out_of_task_prompt():

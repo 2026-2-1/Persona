@@ -18,7 +18,7 @@
 | 실패를 완료로 표시 | subprocess 결과와 run 종료 사유 전달 | test_batch_reports_browser_failure_instead_of_completion |
 | 실패 로그에 키 노출 | 서버 오류 메시지에서 값 제거; API 상태에 내부 필드 제외 | test_failed_job_explains_error_without_exposing_key |
 | 이전 대상 ID / 외부 이동 | AI ActionExecutor에서 registry·origin 사전 차단 제거; 실제 DOM·Playwright 실패는 유지 | test_observation_hides_hidden_text_and_old_observation_ids_do_not_authorize_targets; test_executor_supports_navigation_redirect_history_and_tabs_across_origins |
-| 잘못된 모델 완료/무한 반복 | 독립 evaluator; 같은 상태 행동 반복 종료 | test_runner_distinguishes_false_finish_and_repeated_state |
+| 모델 종료가 성공과 혼동되거나 반복 상태가 일찍 멈춤 | 탐색 중 evaluator 없음; U terminate/자원 한도 종료 후 새 최종 관찰 평가 | test_intermediate_success_does_not_end_exploration_and_final_eval_follows_terminate; test_final_capture_failure_is_unknown_and_does_not_reuse_a_stale_observation |
 | 한도 초과 추가 요청 | reserve/settle 공통 예산 | test_mock_run_stops_when_request_budget_is_exhausted |
 | 설문 답이 고정되거나 실행 판정과 같은 값으로 바뀜 | 질문지+전체 trace payload, strict response validation, verification 불변 | test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_provenance; test_semantically_invalid_json_is_not_rendered_as_a_successful_survey |
 | batch 설문 한 건이 다음 결과를 지움 | 전체 세션 종료 후 run별 사후 실행·오류 격리·usage 누산 | test_batch_runs_every_session_before_surveys_and_keeps_later_results_after_one_survey_fails |
@@ -178,6 +178,14 @@
 - 증상: codex 브랜치 push 후 D-03/#49와 D-04/#50에 검사 결과가 없었다.
 - 원인: push 분기 목록에 codex/**가 없고 두 PR의 base도 pull_request 대상인 prototype/main이 아니었다.
 - 해결: push 대상에 codex/**를 추가한다. 기존 검사·권한·승인 조건은 유지한다. D-03에 반영한 뒤 D-04로 병합해 각각 push 이벤트 검사를 확인한다.
+
+## 2026-10-18 #89 탐색 종료와 사후 평가 분리
+
+- 증상: 행동 뒤 evaluator의 `success`가 모델을 중간 종료했고, 반복 fingerprint도 U 종료 선언 전 탐색을 끝냈다. `verification`과 `termination_reason`이 함께 바뀌어 자원 한도와 성공 판정을 구분하기 어려웠다.
+- 원인: evaluator 호출과 repeated-state 정책이 탐색 loop 안에 종료 조건으로 있었다.
+- 해결: loop 중 evaluator/repeated-state 종료를 제거한다. Brain/Slow를 정리하고 browser context가 열린 동안 새 최종 observation을 저장한 뒤 독립 evaluator를 한 번 호출한다. step 기록은 unknown/deferred 상태로 보존하고 최종 provenance를 별도 JSON·summary·comparison에 둔다. 최종 캡처 실패 시 이전 화면을 재사용하지 않고 unknown을 남긴다.
+- 함께 확인할 회귀: 중간 success 이후 계속 탐색, terminate 뒤 평가 1회, timeout·cancel·model/browser error 사유 유지, stale final 캡처 거부, evaluator 예외, 최종 observation ID·PNG·URL, 비교/집계의 독립 verification.
+- 실제 검증은 [verification.md](verification.md)의 #89 기록을 따른다. fake provider는 라이브 Qwen·Decathlon 성공을 뜻하지 않는다.
 - 검증: repo/staged/diff 검사와 실제 GitHub Actions의 Ubuntu/Windows 결과를 확인한다. 실행 결과는 PR의 해당 커밋 검사에서 확인한다.
 
 ## D-05: 문서 내보내기의 현재 근거 버전 누락

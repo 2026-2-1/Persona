@@ -4,6 +4,7 @@
 - [#86 U DOM parser 화면 관찰](tasks/86-u-observation.md)
 - [#87 U 행동 집합·접근 정책](tasks/87-u-actions.md)
 - [#88 U 사후 설문](tasks/88-u-survey.md)
+- [#89 U 종료 후 독립 평가](tasks/89-u-termination-evaluation.md)
 - [대시보드 GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)
 
 AI와 개발자는 아래 순서로 읽는다. 완료 상태의 기준은 현재 코드와 실제 검증 결과이며, 기획 문서의 제안은 구현 완료를 뜻하지 않는다.

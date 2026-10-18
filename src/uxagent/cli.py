@@ -23,7 +23,7 @@ def _parser():
     p=sub.add_parser("serve");p.add_argument("--host",default="127.0.0.1");p.add_argument("--port",type=int,default=8000)
     p=sub.add_parser("observe");p.add_argument("--study",default="configs/study.json");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs/observe")
     p=sub.add_parser("act");p.add_argument("--study",default="configs/study.json");p.add_argument("--action",required=True,help="Action JSON file");p.add_argument("--headless",action="store_true")
-    providers=["mock","jev","gemini","live","claude"]
+    providers=["mock","jev","gemini","live","claude","gpu"]
     p=sub.add_parser("run");p.add_argument("--study",default="configs/study.json");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs")
     p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=["mock","live"],default="mock")
     p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs");p.add_argument("--stop-file")
@@ -109,9 +109,10 @@ async def _batch(args):
                 result["error"]=(summary.get("last_error") or {}).get("message",summary["termination_reason"])
             results.append(result)
         except Exception as exc:results.append({"persona_id":persona.persona_id,"error":str(exc)})
-    total={"study_id":study_config.study_id,"requested":len(personas),"started":sum("run_id" in r for r in results),"verified_success":sum(r.get("verification")=="success" for r in results),"failed":sum("error" in r for r in results),"llm_request_count":request_total,"llm_tokens":token_total,"budget":{"max_requests":request_cap,"max_tokens":token_cap},"runs":results}
+    failed=sum("error" in r for r in results)
+    total={"study_id":study_config.study_id,"requested":len(personas),"started":sum("run_id" in r for r in results),"verified_success":sum(r.get("verification")=="success" for r in results),"failed":failed,"completed_with_failures":failed>0,"llm_request_count":request_total,"llm_tokens":token_total,"budget":{"max_requests":request_cap,"max_tokens":token_cap},"runs":results}
     Path(args.output).mkdir(parents=True,exist_ok=True);(Path(args.output)/"batch_summary.json").write_text(json.dumps(total,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(json.dumps(total,ensure_ascii=False,indent=2));return 1 if total["failed"] else 0
+    print(json.dumps(total,ensure_ascii=False,indent=2));return 0
 
 
 def main():

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio, hashlib, json, os, threading, time, urllib.request, urllib.error
 import ssl
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
@@ -28,6 +29,8 @@ def provider_for_model(model: str | None, fallback: str = "unknown") -> str:
         return "openai"
     if model == "mock-v1":
         return "mock"
+    if model == "persona-qwen":
+        return "gpu"
     return fallback
 
 
@@ -359,3 +362,41 @@ class OpenAIProvider:
         ordered=sorted(data["data"],key=lambda item:item["index"])
         usage=data.get("usage",{})
         return [item["embedding"] for item in ordered],{"model":data.get("model",model),"input_tokens":usage.get("prompt_tokens"),"output_tokens":0}
+
+
+class LocalQwenProvider:
+    """OpenAI-compatible Qwen API reached through a local SSH tunnel."""
+
+    model = "persona-qwen"
+
+    async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
+        return await asyncio.to_thread(self._complete, messages, model or self.model, temperature, max_tokens)
+
+    def _complete(self, messages, model, temperature, max_tokens):
+        if model != self.model:
+            raise ValueError("GPU 서버 모델은 persona-qwen이어야 합니다")
+        url = os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
+        parsed = urlsplit(url)
+        if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
+                or parsed.username or parsed.password or parsed.path != "/v1/chat/completions"
+                or parsed.query or parsed.fragment or not parsed.port):
+            raise ValueError("PERSONA_QWEN_API_URL은 로컬 SSH 터널의 /v1/chat/completions 주소여야 합니다")
+        body = json.dumps({"model": model, "messages": messages, "temperature": temperature,
+                           "max_tokens": max_tokens, "response_format": {"type": "json_object"}},
+                          ensure_ascii=False).encode()
+        request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                data = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:400]
+            raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise RuntimeError(_transport_error(exc)) from None
+        usage = data.get("usage", {})
+        return data["choices"][0]["message"]["content"], {
+            "provider": "gpu", "model": data.get("model", model),
+            "input_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
+
+    async def embed(self, texts, model):
+        raise ValueError("GPU 서버의 임베딩 API는 확인되지 않았습니다")

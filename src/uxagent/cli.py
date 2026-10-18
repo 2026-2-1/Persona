@@ -9,7 +9,8 @@ from .runner import load_study, run_study, FixtureServer
 from .browser import BrowserSession
 from .observation import observe
 from .personas import generate_personas
-from .review import create_review, create_survey, interview
+from .review import create_review, interview
+from .survey import create_survey, DEFAULT_QUESTIONNAIRE, Questionnaire
 from .schemas import Action
 from .actions import ActionExecutor
 from .evaluator import evaluate
@@ -26,7 +27,7 @@ def _parser():
     providers=["mock","jev","gemini","live","claude","gpu"]
     p=sub.add_parser("run");p.add_argument("--study",default="configs/study.json");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--headless",action="store_true");p.add_argument("--output",default="runs")
     p=sub.add_parser("personas");p.add_argument("--config",default="configs/personas.json");p.add_argument("--output",default=".");p.add_argument("--provider",choices=["mock","live"],default="mock")
-    p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--output",default="runs");p.add_argument("--stop-file")
+    p=sub.add_parser("batch");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",default="personas.jsonl");p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--survey-provider",choices=providers);p.add_argument("--questionnaire",default=str(DEFAULT_QUESTIONNAIRE));p.add_argument("--output",default="runs");p.add_argument("--stop-file")
     p=sub.add_parser("compare");p.add_argument("--study",default="configs/study.json");p.add_argument("--personas",required=True);p.add_argument("--provider",choices=providers,default="mock");p.add_argument("--repetitions",type=int,choices=[1,2,3],default=1);p.add_argument("--output",default="runs");p.add_argument("--stop-file")
     p=sub.add_parser("scenario",help="Run a preregistered browser scenario without any LLM API");p.add_argument("--config",default="configs/scenarios/decathlon-flow.json");p.add_argument("--output",default="runs");p.add_argument("--headed",action="store_true");p.add_argument("--defect",choices=["search","filter","reset","detail"]);p.add_argument("--study-id")
     p=sub.add_parser("dashboard",help="Open the local UXAgent run dashboard");p.add_argument("--port",type=int,default=8765);p.add_argument("--runs",default="runs");p.add_argument("--personas-dir",default="runs/personas");p.add_argument("--study",default="configs/study.json")
@@ -41,7 +42,7 @@ def _parser():
     p=sub.add_parser('gpu-key-unlock',help='Load the existing GPU SSH key into ssh-agent')
     p.add_argument('--gpu-config',default='runs/private/gpu-session.json')
     p=sub.add_parser("review");p.add_argument("--run",required=True)
-    p=sub.add_parser("survey");p.add_argument("--run",required=True)
+    p=sub.add_parser("survey");p.add_argument("--run",required=True);p.add_argument("--questionnaire",default=str(DEFAULT_QUESTIONNAIRE));p.add_argument("--provider",choices=providers,default="gpu")
     p=sub.add_parser("interview");p.add_argument("--run",required=True);p.add_argument("--at-step",type=int,required=True);p.add_argument("--question",required=True)
     return parser
 
@@ -95,6 +96,8 @@ async def _act(study_path, action_path, headless):
 async def _batch(args):
     path=Path(args.personas)
     stop_file=getattr(args,"stop_file",None)
+    questionnaire_path=Path(getattr(args,"questionnaire",None) or DEFAULT_QUESTIONNAIRE)
+    questionnaire=Questionnaire.model_validate_json(questionnaire_path.read_text(encoding="utf-8")).model_dump(mode="json")
     personas=[]
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip(): personas.append(__import__("uxagent.schemas",fromlist=["Persona"]).Persona.model_validate_json(line))
@@ -112,13 +115,37 @@ async def _batch(args):
             stop_kwargs={"stop_file":stop_file} if stop_file is not None else {}
             run_dir,summary=await run_study(args.study,args.provider,persona,False,args.output,**stop_kwargs)
             request_total+=summary["llm_request_count"];token_total+=summary["llm_tokens"]
-            result={"persona_id":persona.persona_id,"run_id":summary["run_id"],"termination_reason":summary["termination_reason"],"verification":summary["verification"],"run_dir":str(run_dir)}
+            result={"persona_id":persona.persona_id,"run_id":summary["run_id"],"termination_reason":summary["termination_reason"],"verification":summary["verification"],"run_dir":str(run_dir),"llm_request_count":summary.get("llm_request_count",0),"llm_tokens":summary.get("llm_tokens",0)}
             if summary["termination_reason"] in ("browser_error","model_error"):
                 result["error"]=(summary.get("last_error") or {}).get("message",summary["termination_reason"])
             results.append(result)
         except Exception as exc:results.append({"persona_id":persona.persona_id,"error":str(exc)})
+    survey_provider=getattr(args,"survey_provider",None) or args.provider
+    for result in results:
+        if "run_id" not in result:
+            continue
+        if stop_file is not None and Path(stop_file).is_file():
+            result["survey_status"]="skipped_stopped"
+            continue
+        try:
+            survey=await create_survey(result["run_dir"],questionnaire,provider_name=survey_provider)
+            result["survey_status"]=survey["status"]
+            if survey.get("error"):
+                result["survey_error"]=survey["error"]
+        except Exception as exc:
+            result["survey_status"]="survey_error"
+            result["survey_error"]={"code":type(exc).__name__}
+        summary_path=Path(result["run_dir"])/"summary.json"
+        if summary_path.is_file():
+            updated=json.loads(summary_path.read_text(encoding="utf-8"))
+            for key in ("llm_request_count","llm_tokens","provider_usage","survey"):
+                if key in updated:
+                    result[key]=updated[key]
+    request_total=sum(int(result.get("llm_request_count",0) or 0) for result in results if "run_id" in result)
+    token_total=sum(int(result.get("llm_tokens",0) or 0) for result in results if "run_id" in result)
     failed=sum("error" in r for r in results)
-    total={"study_id":study_config.study_id,"requested":len(personas),"started":sum("run_id" in r for r in results),"verified_success":sum(r.get("verification")=="success" for r in results),"failed":failed,"completed_with_failures":failed>0,"llm_request_count":request_total,"llm_tokens":token_total,"budget":{"max_requests":request_cap,"max_tokens":token_cap},"runs":results}
+    survey_failed=sum(r.get("survey_status") not in (None,"completed","skipped_stopped") for r in results)
+    total={"study_id":study_config.study_id,"requested":len(personas),"started":sum("run_id" in r for r in results),"verified_success":sum(r.get("verification")=="success" for r in results),"failed":failed,"survey_failed":survey_failed,"completed_with_failures":failed>0 or survey_failed>0,"llm_request_count":request_total,"llm_tokens":token_total,"budget":{"max_requests":request_cap,"max_tokens":token_cap},"runs":results}
     Path(args.output).mkdir(parents=True,exist_ok=True);(Path(args.output)/"batch_summary.json").write_text(json.dumps(total,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps(total,ensure_ascii=False,indent=2));return 0
 
@@ -173,7 +200,10 @@ def main():
             return 0
         if args.command=="review":
             file,issues=create_review(args.run);print(json.dumps({"review":str(file),"issue_candidates":len(issues)},ensure_ascii=False));return 0
-        if args.command=="survey":print(json.dumps(create_survey(args.run),ensure_ascii=False,indent=2));return 0
+        if args.command=="survey":
+            questionnaire=Questionnaire.model_validate_json(Path(args.questionnaire).read_text(encoding="utf-8")).model_dump(mode="json")
+            result=asyncio.run(create_survey(args.run,questionnaire,provider_name=args.provider))
+            print(json.dumps(result,ensure_ascii=False,indent=2));return 0 if result["status"]=="completed" else 2
         if args.command=="interview":print(json.dumps(interview(args.run,args.at_step,args.question),ensure_ascii=False,indent=2));return 0
     except (ValidationError,ValueError,FileNotFoundError) as exc:
         print(f"error: {exc}",file=sys.stderr);return 2

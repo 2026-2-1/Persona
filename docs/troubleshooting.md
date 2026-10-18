@@ -20,6 +20,8 @@
 | 이전 대상 ID / 외부 이동 | AI ActionExecutor에서 registry·origin 사전 차단 제거; 실제 DOM·Playwright 실패는 유지 | test_observation_hides_hidden_text_and_old_observation_ids_do_not_authorize_targets; test_executor_supports_navigation_redirect_history_and_tabs_across_origins |
 | 잘못된 모델 완료/무한 반복 | 독립 evaluator; 같은 상태 행동 반복 종료 | test_runner_distinguishes_false_finish_and_repeated_state |
 | 한도 초과 추가 요청 | reserve/settle 공통 예산 | test_mock_run_stops_when_request_budget_is_exhausted |
+| 설문 답이 고정되거나 실행 판정과 같은 값으로 바뀜 | 질문지+전체 trace payload, strict response validation, verification 불변 | test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_provenance; test_semantically_invalid_json_is_not_rendered_as_a_successful_survey |
+| batch 설문 한 건이 다음 결과를 지움 | 전체 세션 종료 후 run별 사후 실행·오류 격리·usage 누산 | test_batch_runs_every_session_before_surveys_and_keeps_later_results_after_one_survey_fails |
 
 ## 아직 검증/수정할 후보
 

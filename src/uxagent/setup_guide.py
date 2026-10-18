@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 
 from .llm import BudgetManager, ClaudeProvider, GeminiProvider, OpenAIProvider, LocalQwenProvider, estimate_cost_usd
 from .model_catalog import catalog_payload, resolve_model
+from .security import AUTH_PARAMETER, check_sensitive_input
 
 
 DISCLAIMER = "가정한 페르소나 예시이며 실제 사용자 조사 결과나 성공 판정이 아닙니다. 검토 후 적용하세요."
@@ -49,43 +50,17 @@ class Advice(BaseModel):
     task_suggestion: str | None = Field(max_length=1200)
 
 
-SECRET_PATTERN = re.compile(r"(?:sk-[A-Za-z0-9_-]{16,}|AIza[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._-]{16,}|(?:api[_ -]?key|access[_ -]?token|password|비밀번호)\s*[:=]\s*\S+)", re.I)
-AUTH_PARAMETER = re.compile(r"(?:token|api[_-]?key|session|signature|credential|password|secret|authorization|auth)", re.I)
-
-
 def _check_url_credentials(text):
-    for candidate in re.findall(r"https?://[^\s<>\"']+", text, flags=re.I):
-        try:
-            url = urlsplit(candidate)
-            parameters = parse_qsl(url.query, keep_blank_values=True) + parse_qsl(url.fragment, keep_blank_values=True)
-            # SPA fragments may carry a route followed by their own query.
-            if "?" in url.fragment:
-                parameters += parse_qsl(url.fragment.split("?", 1)[1], keep_blank_values=True)
-            if url.username is not None or url.password is not None or any(AUTH_PARAMETER.search(name) for name, _ in parameters):
-                raise ValueError("setup_guide_url_credentials")
-        except ValueError:
-            raise ValueError("setup_guide_url_credentials") from None
-
-
-def _check_urls(value):
-    if isinstance(value, str):
-        _check_url_credentials(value)
-    elif isinstance(value, dict):
-        for key, child in value.items():
-            _check_urls(key)
-            _check_urls(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            _check_urls(child)
+    try:
+        check_sensitive_input(text)
+    except ValueError:
+        raise ValueError("setup_guide_url_credentials") from None
 
 
 def _check_sensitive(value):
-    _check_urls(value)
-    encoded = json.dumps(value, ensure_ascii=False)
-    keys = [v for k, v in os.environ.items() if v and len(v) >= 8 and any(tag in k.upper() for tag in ("API_KEY", "TOKEN", "SECRET", "PASSWORD"))]
-    # Compare in the same representation: quotes, backslashes, and newlines in
-    # environment credentials are escaped in the serialized input as well.
-    if SECRET_PATTERN.search(encoded) or any(json.dumps(key, ensure_ascii=False)[1:-1] in encoded for key in keys):
+    try:
+        check_sensitive_input(value)
+    except ValueError:
         raise ValueError("setup_guide_sensitive_input")
 
 

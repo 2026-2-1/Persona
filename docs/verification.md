@@ -510,6 +510,13 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 
 - 최종 관련 **38 passed in0.46s**. 자동 승인 검토 시간 초과로 한 차례 실행이 취소되어 재시도했고, 실제 코드 수정과 임시 agent 허용 환경 검사 이후 통과를 확인했다.
 
+## 2026-10-18 #88 질문지·전체 trace 사후 설문
+
+- `python3 -m pytest -q` **528 passed in 265.57s**. 설문·보안·setup-guide·공통 budget·review 회귀 집중 검사는 **100 passed in 15.72s**였다. 첫 sandbox 기본 실행은 local HTTP bind/Chromium 권한 제한으로 실패했고, 승인된 로컬 테스트 실행에서 통과했다.
+- 회귀는 질문지+newline+전체 기억 trace payload, eviction 후 기억과 최신 importance 복원, 질문/답 순서와 객관식 검증, raw invalid JSON 보존, 민감정보 차단, 예산 초과 시 무호출, batch가 모든 브라우저 세션을 끝낸 뒤 설문하며 한 건 실패 후 계속함을 확인했다. 기존 독립 verification 결과는 유지한다.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 실제 GPU Qwen 설문 요청·Decathlon 사용자 과업·모델 응답 품질은 실행하지 않았다. Qwen의 실제 context 한도와 긴 trace 처리 결과는 미검증이다.
+- 사용자 결정으로 설문에 전체 append-only trace를 사용한다. 검색 활성 메모리 64개 상한은 유지한다. 결과는 `simulated_self_report`다. 작업 계약과 실행 경로는 [#88 작업 문서](tasks/88-u-survey.md)에 있다.
+
 ## 2026-10-18 #86 U DOM parser 관찰
 
 - `python3 -m pytest -q` 최종 전체 검사 **510 passed in 254.96s**. Chromium 실행에는 macOS sandbox에서 Mach rendezvous가 막혀 승인된 로컬 실행이 필요했다. 관련 관찰·action·runner·fake Qwen 회귀는 수정 후 **55 passed in 39.84s**였다.

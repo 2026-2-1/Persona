@@ -215,8 +215,10 @@ async def test_mock_run_completes_and_review_artifacts_are_safe(tmp_path):
     assert summary["llm_tokens_measured_total"] == 0
     assert summary["llm_tokens_complete"] is (summary["llm_tokens_unknown_calls"] == 0)
     assert summary["evaluator"]["verification"]=="success"
-    survey=create_survey(run_dir)
-    assert all(x["response"]["data_type"]=="simulated_self_report" for x in survey)
+    survey=await create_survey(run_dir,provider_name="mock")
+    assert survey["status"]=="completed"
+    survey_rows=json.loads((run_dir/"survey.json").read_text(encoding="utf-8"))
+    assert all(x["response"]["data_type"]=="simulated_self_report" for x in survey_rows)
     result=interview(run_dir,2,"이때 무엇을 찾았나요?")
     assert set(result["source_step_ids"]).issubset({1,2})
     assert "실제로 무엇을 생각하거나 느꼈는지는 확인할 수 없습니다" in result["answer"]

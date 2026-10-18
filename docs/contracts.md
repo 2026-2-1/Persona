@@ -85,6 +85,12 @@ API 없는 시나리오는 `provider=scenario`, `execution_mode=scripted`, `cond
 
 AI 실행은 U의 click, mouse_click, type, raw_type, scroll(direction/amount), hover, select, clear, key_press(전역 또는 대상), goto_url, back, forward, refresh, new_tab, switch_tab, close_tab을 소비한다. 실행 전 허용 origin·최신 observation/tab·target capability·option membership gate는 없다. semantic ID나 탭이 실제 DOM/session에 없거나 Playwright가 작업을 실행할 수 없으면 실패를 기록한다. 이전 scripted ScenarioStep의 bounded `scroll_y` 계약은 호환을 위해 별도로 남긴다. scripted scenario는 자체 origin/read-only 보호를 사용한다.
 
+## 사후 설문
+
+설문은 질문지 schema(`questionnaire_id`, `title`, ordered questions)와 전체 append-only `memory.jsonl`을 모델 user 입력으로 전달한다. 입력 순서는 memory seq이며 최근 `memory_changes.jsonl`의 중요도 점수를 덮어쓴다. eviction 여부와 상관없이 모든 run 기억을 포함한다. 입력 trace 필드는 U와 같은 timestamp/kind/importance/content이며 raw action·evaluator 정답·verification은 넣지 않는다. Qwen 실행은 `persona-qwen`을 사용하며 provider/model/token/error는 공통 `llm_calls.jsonl`과 run summary에 기록한다. 비용 미확인은 null이며 0으로 추정하지 않는다. 예산에 맞지 않는 큰 입력은 요약·절단 없이 `budget_exceeded`로 끝낸다.
+
+모델 출력은 질문 순서·ID·객관식 보기·confidence를 검증한다. JSON/raw·파싱 결과·trace IDs/seq 범위·provider/model·실패는 `survey_result.json`, 소비 호환 질문/response 행은 성공 시 `survey.json`에 저장한다. 각 답은 `simulated_self_report`다. 설문·이유·자신감은 evaluator 결과, 사람 검토, 실제 사용자 발화 또는 과업 verification을 덮어쓰지 않는다. Batch survey는 모든 browser 세션 종료 이후 실행하며 run별 실패를 분리한다.
+
 feature_id, scenario_id, 시작 상태, 입력, expected_result, 판정 방법(code/AI-assisted/human), 결과(pass/fail/unknown/unsupported), evidence를 가진다. 검색·필터·정렬은 실행 전 정의한 조건으로 확인한다. AI 해석만 있는 판정은 확정 결과로 둔갑시키지 않는다.
 
 ## 오류 복구

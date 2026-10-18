@@ -92,7 +92,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 .venv/Scripts/python.exe -m uxagent compare --study configs/study.json --personas runs/personas/personas.jsonl --provider mock --repetitions 1
 ```
 
-관찰·실행 원자료는 Git에서 제외된 `runs/` 아래에 저장합니다. 비교 실험은 `runs/experiments/<id>/experiment.json`과 대응 실행 기록을 생성합니다. `review`, `survey`, `interview` CLI도 유지하며 기존 설문·인터뷰는 기록 기반 템플릿입니다.
+관찰·실행 원자료는 Git에서 제외된 `runs/` 아래에 저장합니다. 비교 실험은 `runs/experiments/<id>/experiment.json`과 대응 실행 기록을 생성합니다. 설문은 질문지(`configs/survey.json`)와 전체 누적 기억 trace로 실행 후 GPU Qwen 응답을 만들며 batch에서는 모든 브라우저 세션 뒤에 수행합니다. `python3 -m uxagent survey --run runs/<run-id> --provider gpu`로 단독 실행할 수 있습니다. 결과는 `simulated_self_report`이고 실제 사람 증언이나 독립 성공 판정이 아닙니다. `review`와 `interview` 경로는 별개로 유지합니다.
 
 [검증 기록](docs/verification.md)에서 실제 확인 범위를 확인하세요. CI는 Windows/Python 3.13과 Ubuntu/Python 3.11의 mock·테스트만 실행하며 라이브 API 키를 사용하지 않습니다.
 

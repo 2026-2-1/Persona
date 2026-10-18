@@ -1,6 +1,6 @@
 # 개발 순서
 
-2026-10-18 #86 작업 브랜치: U DOM parser·semantic ID·network activity observation을 연결한다. #87 작업 브랜치는 U action 집합과 AI 경로 origin/observation gate 제거를 연결한다. #88 설문, #89 종료 후 평가, #90 최종 호환 검증은 후속이다. [#86](tasks/86-u-observation.md), [#87](tasks/87-u-actions.md).
+2026-10-18 #86 작업 브랜치에서 DOM parser·semantic ID·network activity observation, #87에서 U action과 AI 접근 정책을 연결했다. #88 브랜치에서 질문지·전체 기억 trace 사후 설문과 Qwen 호출을 연결한다. #89 종료 후 평가·#90 최종 호환 검증은 후속이다. [#86](tasks/86-u-observation.md), [#87](tasks/87-u-actions.md), [#88](tasks/88-u-survey.md).
 
 2026-10-17 #85 작업 브랜치: U 기억 검색·사용자 확정 제거 순서·분리 GPU embedding·대시보드 SSH/Slurm 수명주기를 구현했다. 실제 GPU 임베딩 모델·CUDA 벡터 요청과 dashboard 자동 시작·종료를 2026-10-18 확인했다. #86~#90은 별도 후속이다. [검색 계약](tasks/85-u-memory.md), [자동 시작·반환](tasks/gpu-dashboard-lifecycle.md).
 

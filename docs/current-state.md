@@ -8,6 +8,7 @@
 
 - #86 작업 브랜치(`feat/86-u-transition-04`)에서 U DOM parser와 semantic ID, 빈 컨트롤·현재 select 값·아래쪽 스크롤 요소, 제한된 XHR/fetch·DOM quiet 대기를 연결한다. 기존 observation JSON/PNG와 브라우저 수명주기를 유지한다. password value는 redacted이며 legacy 요소/문자 한도는 입력을 자르지 않고 CaptureInfo에 초과 여부를 기록한다. [계약·차이](tasks/86-u-observation.md).
 - #87 작업 브랜치(`feat/87-u-transition-05`)에서 U action 집합 전체와 semantic ID 직접 조회를 연결한다. AI 경로는 허용 origin·최신 observation/registry·capability 제한 없이 모델 행동을 시도하고, 실행 실패는 오류로 기록한다. 외부 origin 이동은 브라우저 route가 막지 않는다. 기존 `allowed_origins` study 필드는 호환용이며 AI 실행 정책이 아니다. scripted offline scenario는 별도 origin/read-only 검사를 유지한다. 서버·API URL·파일 경로·인증정보 보호는 유지한다. [행동 계약](tasks/87-u-actions.md).
+- #88 작업 브랜치(`feat/88-u-transition-06`)에서 설문을 질문지 + 전체 누적 기억 trace를 소비하는 사후 모델 호출로 전환한다. GPU 실행은 Qwen `persona-qwen`을 유지하고 batch에서 모든 browser 세션이 끝난 뒤 설문한다. run의 공통 예산·llm_calls·usage와 provenance를 갱신하며 실패를 정상 답변으로 만들지 않는다. Owner 선택으로 제거 기억도 trace에 포함하고 활성 검색 64개 상한은 유지한다. 답변은 `simulated_self_report`이며 evaluator/사람 판정이 아니다. [설문 계약](tasks/88-u-survey.md).
 
 - #85 추가 사용자 요청으로 gpu-password-setup을 제공한다. 두 서버 비밀번호를 한 번 OS 키체인에 저장하면 대시보드가 자동 사용한다. 사용자 최초 저장 후 추가 입력 없는 Qwen health200/persona-qwen과 소유 작업19347 반환을 실제 확인했다.
 - #85 후속 gpu-key-setup은 전용 키/agent·Keychain, 양쪽 공개 키 중복 없는 등록과 새 publickey 인증, 임시 할당 반환 후 무인 모드 저장을 제공한다. gpu-key-unlock은 키만 agent에 로드한다. 실제 사용자 키 최초 등록은 사용자 터미널에서 해야 한다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
@@ -35,7 +36,7 @@
 - #39에서 생성 결과·비동기 작업·메모리 점수/제거 사건의 스키마를 정의했다. `MemoryEntry`의 새 기록은 버전 2.0이며 중요도는 산정 전 `null`, 산정 후 1~10점이다. 구버전 1.0의 0~5점 로그는 구분해 읽는다. #41에서 perception·plan·decision, #42에서 reflection·plan_review 결과, #43에서 Brain 단계 경계 채택·stale 폐기·실행 취소 상태를 기록한다.
 - #40에서 Fast 모델 입력의 검색 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 분리했다. 활성 기억은 기본 64개(설정 10~64개)로 제한한다. Slow가 persona·intent·현재 계획·기억을 사용해 미산정 기억을 1~10점으로 비동기 산정하고, 원본 ID를 유지한 채 변경 사건을 남긴다. 실패·예산 소진·종료 취소는 작업 사건으로 기록한다. #54에서 Fast 계획·행동 결정의 종류 가중치와 Slow의 최신성 우선 검색을 연결했다. #55에서 현재 단계 기억, 최근 10개 과업 기억, 미산정 대기, Slow snapshot 순으로 상한 안에서 보호하고 제거 이유·원본 출처·embedding 캐시를 관리한다. #56에서 상한 10·64의 runner mock 기록으로 점수·제거·출처·예산을 함께 검증했다. #43의 Slow 대기열은 상한을 두지 않는다.
 - 로컬 템플릿 persona 생성, 순차 격리 batch, 로그/PNG, 로컬 대시보드.
-- 로컬 가방 fixture의 독립 성공 판정, 규칙 기반 문제 후보·HTML review·기록 조합 설문/인터뷰.
+- 로컬 가방 fixture의 독립 성공 판정, 규칙 기반 문제 후보·HTML review·모델 설문/기록 인터뷰.
 
 ## 1차 MVP 추가 구현
 
@@ -67,7 +68,7 @@
 - 관찰은 viewport DOM이다. keypress는 안전 키 여섯 개, scroll은 명시적으로 활성화한 ±900px 범위를 지원한다. iframe/canvas/복잡한 shadow DOM/password는 미지원. custom combobox는 관찰된 클릭·키·option만 가능하며 native select로 처리하지 않는다.
 - Jev는 실제 입력값을 Gemini로 생성한다. 옵션 ID 충돌은 회귀 수정됐고 완료/진행 불가 종료 후보를 지원한다. 모델 완료 선언은 독립 성공 판정과 구분한다.
 - 외부 사이트는 명시적 확인 조건이 없으면 unknown이다. 모델 완료 선언을 성공으로 볼 수 없다.
-- 설문·인터뷰는 현재 자유로운 대화 모델이 아닌 기록 기반 템플릿이다.
+- 설문은 질문지·전체 기억 trace 기반 사후 LLM 응답이며 실제 사람 증언이 아니다. 인터뷰는 별도 기록 기반 응답이다. 실제 GPU Qwen 설문 품질은 별도 확인 대상이다.
 - 평가 오류는 failure/unknown/종료 사유를 함께 읽어야 한다. 과업 실패와 시스템 기능 실패를 분리한다.
 
 2026-10-11 화면 정리: 메뉴와 중복되는 제목/설명을 숨기고 desktop 설정/최근 기록·실행 근거/판정을 좌우로 배치했다. 추가 자료·기록 검색은 펼쳐 확인하고 모바일은 한 열이다. 실제 재검증 결과는 verification.md 참조.

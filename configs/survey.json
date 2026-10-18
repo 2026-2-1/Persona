@@ -1,0 +1,22 @@
+{
+  "questionnaire_id": "decathlon-search-experience-v1",
+  "title": "상품 탐색 경험",
+  "questions": [
+    {
+      "id": "q1",
+      "type": "multiple_choice",
+      "prompt": "원하는 상품 조건을 찾기 쉬웠나요?",
+      "options": ["쉬웠다", "보통이었다", "어려웠다", "기억나지 않는다"]
+    },
+    {
+      "id": "q2",
+      "type": "short_text",
+      "prompt": "상품을 찾는 과정에서 어려웠던 점은 무엇인가요?"
+    },
+    {
+      "id": "q3",
+      "type": "short_text",
+      "prompt": "다음에 이용할 때 개선되면 좋겠다고 기억하는 점은 무엇인가요?"
+    }
+  ]
+}

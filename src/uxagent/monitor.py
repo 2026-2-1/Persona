@@ -24,6 +24,7 @@ from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
 from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
+from .call_evidence import public_call_record
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,12 +69,6 @@ def _jsonl_file(path: Path):
     except OSError:
         pass
     return rows
-
-
-def _public_call_record(record):
-    """Keep raw prompts/results confined to the local run directory."""
-    return {key: value for key, value in record.items()
-            if key not in {"request", "response", "retrieve_result", "evidence_redacted"}}
 
 
 class Dashboard:
@@ -261,7 +256,7 @@ class Dashboard:
             "summary": _json_file(folder / "summary.json"),
             "final_evaluation": _json_file(folder / "final_evaluation.json"),
             "steps": _jsonl_file(folder / "steps.jsonl"),
-            "calls": [_public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
+            "calls": [public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
             "brain_stages": stages,
             "brain_tasks": tasks,
             "memories": memories,

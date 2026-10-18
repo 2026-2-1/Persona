@@ -20,6 +20,12 @@ _METHODS = {
 }
 
 
+def public_call_record(record: dict) -> dict:
+    """Project usage metadata without local-only request and response originals."""
+    return {key: value for key, value in record.items()
+            if key not in {"request", "response", "retrieve_result", "evidence_redacted"}}
+
+
 def call_evidence(stage: str, messages, payload=None, response=None) -> dict:
     """Return reconstructible request evidence, suppressing credential-like content."""
     evidence = {

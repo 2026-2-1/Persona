@@ -22,6 +22,8 @@ U Fast/Slow/설문 API 호출을 현재 `llm_calls.jsonl`에 기록할 때 기�
 
 ## UI 담당자 전달
 
+D 통합 보완에서는 CLI `review.html`도 공통 호출 메타데이터 투영을 사용한다. 원본 request/response/retrieve_result는 로컬 JSONL에 유지하고 API와 HTML 검토 파일에는 포함하지 않는다.
+
 - API `calls[]`에는 기존 module/stage/provider/model/usage/error/time 메타데이터만 제공한다. 로컬 전용 `request`, `response`, `retrieve_result`는 노출되지 않으므로 화면에 추가하려면 별도 민감정보 검토와 명시적 요구가 필요하다.
 - run detail의 `final_evaluation`은 termination reason, final observation 식별자/URL/시각, 독립 evaluator 결과다. legacy run에서는 null이므로 “기록 없음”으로 읽어야 한다.
 - 기존 UI 레이아웃은 변경하지 않았다. `termination_reason`과 `verification`은 서로 다른 축이며 모델 종료 선언을 성공으로 합치면 안 된다.

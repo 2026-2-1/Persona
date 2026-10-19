@@ -1,140 +1,67 @@
 # 현재 구현 상태
 
-## 2026-10-19 코드 검토 후속 작업 브랜치
+## 2026-10-19 prototype 통합 기준
 
-`fix/90-reviewed-regressions`는 prototype `0fad8e5`, 최신 #99 `f121aaf`와 #100 `ae18a8f`를 포함한다. 선행 코드 동기화 커밋은 `dc2a473`이다. 그 뒤 문제별 수정 커밋 5개에서 password 타입 정규화, Slow 응답 전체 민감정보 검사, GPU hover/select 정보 보존, 실제 취소 후 최종 기록/취소 재전파, 설문 실패 후 이전 성공 파일 제거를 구현했다. 기존 D 검토·출력 코드를 다시 작성하지 않았다.
+기준 커밋은 `9095b3c7896d7080a39d59fb6492251491139fb6`이다. 팀원이 [#101](https://github.com/2026-2-1/Persona/pull/101)을 일반 merge로 병합하면서 #95~#99도 함께 병합 처리됐다. #100의 D 보완은 #101에 보존돼 #100은 대체 종료했고, 병합된 6개 원격 브랜치는 삭제했다. 이번 병합을 순차 squash로 기록하지 않는다. `main`은 이번 작업 대상이 아니다.
 
-로컬에서 브라우저가 필요 없는 회귀 **243 passed / 14 deselected**를 확인했다. 로컬 Chromium은 권한 제한이며 추가 실행 승인 검토도 모델 용량 부족으로 실행되지 않았다. 전체 브라우저 검사·doctor·Mock 통합은 새 PR의 Ubuntu/Windows CI 결과를 확인한다. 실제 GPU/공개 사이트·인간 데이터 검증은 별개다. 새 PR은 #100을 대체하며 #95–#99 원본 head를 변경하지 않는다. [범위와 병합 조건](handoffs/2026-10-19-review-fixes.md)을 따른다.
+password 타입 정규화, Slow 민감 출력 저장 차단, GPU hover/select 정보 보존, 실제 취소의 최종 기록과 취소 재전파, 실패 재설문의 과거 성공 파일 제거 5건이 모두 들어 있다. 병합 후 전체 파일 tree는 준비한 #101 `fe94fe3`과 동일하다. [수정 이력](handoffs/2026-10-19-review-fixes.md), [최종 검증과 재현 절차](handoffs/2026-10-19-prototype-verification.md)를 따른다.
 
-## 2026-10-18 D/U 후속 검증 기준
+| 확인 범위 | 결과 |
+| --- | --- |
+| 병합 후 Ubuntu/Python 3.11 CI | 574 passed, doctor·Mock 통과 |
+| 병합 후 Windows/Python 3.13 CI | 569 passed, POSIX SSH/agent 5 skipped, doctor·Mock 통과 |
+| 이번 macOS 화면·검토·출력 집중 회귀 | 54 passed, 실제 Chromium/HTTP 사용 |
+| 이번 macOS doctor | Python 3.13.13 / Playwright 1.55.0, 설정 오류 없음 |
+| 실제 GPU 과업·공개 사이트·인간 판단 비교 | 이번 통합 검증 범위 밖, 후속 검증 |
 
-원격 prototype은 `0fad8e5`(#91–#94 squash)다. #95–#99는 원본 head가 그대로인 Draft이며 #95/#97/#99 수정 요청이 남았다. 아래 과거 구현 설명은 각 작업 브랜치 범위일 수 있으므로 병합 완료와 구분한다.
+원격 결과는 [prototype CI](https://github.com/2026-2-1/Persona/actions/runs/39208715049)에 있다. 필수 승인 1명, Ubuntu/Windows CI와 최신 대상 브랜치, 대화 해결, 관리자 적용 조건을 유지한다. 병합 여부·자동 검사·팀원 독립 재현은 각각 확인하며, #36은 독립 재현 전 자동 종료하지 않는다.
 
-D 후속 브랜치 `codex/d-u-integration-verification-20261018`은 #99 `aafea5a`와 prototype을 통합해 최종 평가 근거·설문·U Wonder를 소비한다. 기존 검토 저장/이력/새로고침/네 형식 출력과 구형 기록의 동일 검토 버전을 확인했다. 최신 실패 설문은 과거 성공 답변을 숨긴다. CLI 보고서의 원본 모델 호출 복사와 HTML 다운로드 응답을 수정했다. [검증·재현·남은 조건](handoffs/2026-10-18-d-u-integration.md)을 따른다. 최종 로컬 전체 547개 검사를 통과했으며 원격 CI와 구분한다.
+## 현재 실행 흐름
 
-D 코드의 로컬 통합 검증과 팀원의 독립 재현·선행 U 병합은 별개다. #36은 팀원 재현 및 최종 prototype 검증 전에는 닫지 않는다. #95 password type 대소문자 처리와 #97 실패 재시도 시 오래된 survey.json 잔존은 생산 모듈의 후속 수정 대상이다.
+- Python 3.11+ / Playwright Chromium / Pydantic 기반 로컬 실행기다. Mock, OpenAI, Claude, Gemini, Jev+Gemini와 로컬 SSH 터널의 GPU Qwen 경로를 제공한다. 모든 제공자의 실제 모델 품질을 이번 CI로 검증한 것은 아니다.
+- Fast Loop: 첫 perceive → plan → act, 이후 feedback/perceive 동시 실행 → plan → act. 이유 Thought·Plan·모든 행동 제안을 실행 전에 저장하고 첫 제안만 실행한다. [#83 계약](tasks/83-u-fast.md).
+- Slow Loop: 첫 인식 뒤 실행별 단일 worker가 reflect → wonder → memory.update를 반복한다. 성찰과 생각은 공유 기억에 직접 저장한다. 새 실행에는 plan_review·stage 채택 게이트·1% draw가 없다. [#84 계약](tasks/84-u-slow.md).
+- 기억: 기본 활성 64개, 설정 범위 10~64개. 미산정 기억을 우선 보존하고 낮은 중요도·동점 오래된 순으로 제거한다. 제거 뒤에도 seq는 단조 증가하며 전체 trace를 보존한다. U 검색·분리 GPU embedding·늦은 점수/벡터의 활성 ID 정합성은 [#85 계약](tasks/85-u-memory.md)을 따른다.
+- 관찰: U DOM parser가 HTML과 semantic ID를 구성하고 제한 시간 내 DOM/network quiet를 기다린다. legacy 크기 상한 초과는 기록하며 원본 관찰을 조용히 자르지 않는다. password 값은 type 표기 대소문자와 무관하게 가린다. [#86 계약](tasks/86-u-observation.md).
+- 행동: semantic ID 기반 click/type/raw type/hover/select/clear, 좌표 click, scroll, key, URL/history/reload, 탭 전환·열기·닫기를 실행한다. AI 경로에 allowed-origin·최신 observation/registry·capability gate를 붙이지 않으며 없는 대상·탭과 Playwright 실패는 도구 오류로 기록한다. scripted scenario의 별도 origin/read-only 경계는 유지한다. [#87 계약](tasks/87-u-actions.md).
+- 종료·평가: AI terminate, 단계/시간/예산 제한, 중지, 모델/브라우저 오류는 종료 사유다. Brain/Slow 정리 뒤 브라우저가 열린 상태에서 새 최종 관찰을 저장하고 독립 평가를 한 번 한다. step 판정을 사후 성공으로 덮어쓰지 않으며 캡처/평가 실패는 unknown이다. [#89 계약](tasks/89-u-termination-evaluation.md).
+- 설문: 질문지와 제거 기억을 포함한 전체 누적 trace를 모델에 전달한다. batch는 모든 browser 세션이 끝난 뒤 설문한다. 공통 예산·호출 usage와 출처를 기록하고 실패 시 과거 성공 답변을 최신 결과로 남기지 않는다. 답변은 `simulated_self_report`다. [#88 계약](tasks/88-u-survey.md).
+- 호출 기록: `llm_calls.jsonl` v2는 로컬 요청·응답·검색 기억·시각과 method를 보존한다. 민감정보 의심 값은 치환하고 Slow 민감 출력은 단계/기억 저장 전에 차단한다. 대시보드 API·CLI 검토 HTML·네 형식 내보내기는 호출 전문을 제외한다. [#90 계약](tasks/90-u-transition-08.md).
+- 요청/토큰 기본 상한은 무제한이다. 실행별 단계·시간·예산 제한과 사용자 stop을 지원한다. 실제 GPU 파일럿은 유한 요청/토큰/시간 예산을 먼저 정해야 한다.
 
-개발 통합 기준은 `prototype`이다. C 검토 데이터, D-01~D-05 및 조회·Brain 기록 화면, A 두 루프·검색·메모리 상한, 협업·연구 문서와 B OpenAI 형식·데카트론 독립 평가 연결을 원본 PR 순서로 통합한다. B #62 병합 결과까지의 재현·보호 조건·남은 제한은 [병합 기록](handoffs/2026-10-16-prototype-merge-queue.md)을 따른다. 아래 날짜별 항목은 당시 브랜치의 작업 이력이며 최신 완료 범위와 구분한다. 실제 유료 모델 재검증, 실제 사이트 전체 과업, 팀원 독립 재현과 인간 판단 비교는 남아 있다.
+## 검토와 대시보드
 
-기준: prototype 원본 e4dfa98 이후 작업, 2026-10-11 API 없는 과업 점검 추가. 실제 검사 결과는 verification.md를 따른다.
+- D-01: 카드 ID·근거 버전·검토자 별칭·5종 판정·메모를 서버 JSONL에 저장한다. 서버 성공 확인 뒤 최신 판정을 표시하며 저장 실패·버전 충돌·중복 제출을 구분한다.
+- D-02: 자동 갱신과 다른 실행 왕복에서 미저장 초안·포커스·선택을 유지한다. 지연 조회/저장 응답이 다른 실행이나 최신 판정을 덮어쓰지 않는다. 새로고침 후 미저장 초안 복원은 범위 밖이며 저장 판정은 유지된다.
+- D-03: 현재/이전 근거 버전의 검토 이력, 실행 방식, Mock/합성/실사이트 출처를 표시한다. 출처가 없는 구형 기록은 unknown이며 사람 판정은 독립 verification을 바꾸지 않는다.
+- D-04: 예정 분모·실행/취소/미실행 상태·중앙값 계산 대상·전체/부분 측정·누락 세션 수를 표시한다. 실제 0과 미확인, 대상 행동 없음을 구분하고 scripted 점검을 AI 비교에서 제외한다.
+- D-05와 U 소비: 최종 평가의 observation 출처, 설문 답변, 매 반복 Wonder의 빈 응답·생각·저장 여부, 구형 Brain 8상태/채택·폐기·추첨을 구분한다. 카드와 Brain 기록을 JSON/CSV/Markdown/HTML로 내보낸다. [재현과 남은 팀 검증](tasks/d-review-export-verification.md).
+- 설정은 목표 → 사용자 → 모델 → 실행의 4단계다. 키는 서버 프로세스 메모리에서 관리하고 브라우저 저장소·보고서에 넣지 않는다. 설정 도우미의 AI 추천은 사용자 적용을 거친다. 로컬 단색 UI와 모바일 한 열을 유지한다.
 
-## 구현됨
+## GPU 연결과 실제 확인 범위
 
-- `fix/90-gpu-prompt-length`에서 공개 데카트론 첫 화면의 GPU `Prompt too long`을 재현했다. Qwen의 큰 화면 perception은 원본 HTML에서 내부 parser 속성만 제외한 뒤 1,400자 이하 조각으로 모두 읽고 요약을 반복해 한 결과로 합친다. feedback/행동 입력은 기존 텍스트·조작 대상 목록과 짧은 ID를 사용하고 응답 뒤 원래 semantic ID로 복원한다. 원본 observation JSON/PNG는 유지한다. 실제 서버 출력 512토큰 한도에 맞춰 각 관찰 응답은 240자 이하로 지시한다. 이는 U의 전체 HTML·모든 문구 서술과 다른 Qwen 호환 경로이며 반복 요약의 정보 손실과 실제 전체 과업 성공은 별도로 검증해야 한다.
-- #86 작업 브랜치(`feat/86-u-transition-04`)에서 U DOM parser와 semantic ID, 빈 컨트롤·현재 select 값·아래쪽 스크롤 요소, 제한된 XHR/fetch·DOM quiet 대기를 연결한다. 기존 observation JSON/PNG와 브라우저 수명주기를 유지한다. password value는 redacted이며 legacy 요소/문자 한도는 입력을 자르지 않고 CaptureInfo에 초과 여부를 기록한다. [계약·차이](tasks/86-u-observation.md).
-- #87 작업 브랜치(`feat/87-u-transition-05`)에서 U action 집합 전체와 semantic ID 직접 조회를 연결한다. AI 경로는 허용 origin·최신 observation/registry·capability 제한 없이 모델 행동을 시도하고, 실행 실패는 오류로 기록한다. 외부 origin 이동은 브라우저 route가 막지 않는다. 기존 `allowed_origins` study 필드는 호환용이며 AI 실행 정책이 아니다. scripted offline scenario는 별도 origin/read-only 검사를 유지한다. 서버·API URL·파일 경로·인증정보 보호는 유지한다. [행동 계약](tasks/87-u-actions.md).
-- #88 작업 브랜치(`feat/88-u-transition-06`)에서 설문을 질문지 + 전체 누적 기억 trace를 소비하는 사후 모델 호출로 전환한다. GPU 실행은 Qwen `persona-qwen`을 유지하고 batch에서 모든 browser 세션이 끝난 뒤 설문한다. run의 공통 예산·llm_calls·usage와 provenance를 갱신하며 실패를 정상 답변으로 만들지 않는다. Owner 선택으로 제거 기억도 trace에 포함하고 활성 검색 64개 상한은 유지한다. 답변은 `simulated_self_report`이며 evaluator/사람 판정이 아니다. [설문 계약](tasks/88-u-survey.md).
-- #89 작업 브랜치(`feat/89-u-transition-07`)에서 실행 중 독립 평가·success 조기 종료·repeated-state 조기 종료를 제거한다. U terminate, 자원 제한, 중지와 시스템 오류는 `termination_reason`으로 유지한다. Brain/Slow 정리 후 browser 종료 전에 새 최종 observation을 저장하고 한 번 독립 평가한다. step 기록은 사후 판정으로 덮어쓰지 않으며 최종 provenance는 `final_evaluation.json`/summary/experiment에 연결한다. 최종 캡처 실패는 unknown이다. 공개 Decathlon의 기존 러닝화·80,000원 상세 평가 범위만 재사용한다. [종료·평가 계약](tasks/89-u-termination-evaluation.md).
-- #90 작업 브랜치(`feat/90-u-transition-08`)에서 Fast/Slow/설문 호출의 로컬 request·response·검색 결과·method·시각을 `llm_calls.jsonl` v2로 보존하고 secret 의심 데이터는 치환한다. 상세 API와 네 형식 내보내기에는 모델 원문을 노출하지 않는다. 최종 평가 JSON은 구형 파일 부재를 허용해 run detail/JSON 출력에 연결한다. feedback stage와 과거 trace/리포트 호환은 회귀 검사 중이다. [계약·범위](tasks/90-u-transition-08.md). PR/원격 CI와 실제 라이브 과업 성공은 별도다.
+비공개 GPU 설정이 있는 dashboard는 SSH·Slurm 단일 할당·Qwen/분리 embedding·터널·health/probe를 준비하고 종료 시 자신이 소유한 작업만 반환한다. 수동 터널도 지원한다. macOS 키체인 비밀번호 또는 최초 등록한 SSH 키/agent 경로를 사용한다. [수명주기와 복구 안내](tasks/gpu-dashboard-lifecycle.md).
 
-- #85 추가 사용자 요청으로 gpu-password-setup을 제공한다. 두 서버 비밀번호를 한 번 OS 키체인에 저장하면 대시보드가 자동 사용한다. 사용자 최초 저장 후 추가 입력 없는 Qwen health200/persona-qwen과 소유 작업19347 반환을 실제 확인했다.
-- #85 후속 gpu-key-setup은 전용 키/agent·Keychain, 양쪽 공개 키 중복 없는 등록과 새 publickey 인증, 임시 할당 반환 후 무인 모드 저장을 제공한다. gpu-key-unlock은 키만 agent에 로드한다. 실제 사용자 키 최초 등록은 사용자 터미널에서 해야 한다. [상세](tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증).
+2026-10-18의 실제 확인 범위는 Qwen health, CUDA embedding 벡터, 소유 작업 반환이다. 현재 통합 코드의 실제 Qwen 생성→브라우저 과업→종료 설문 완주는 후속이다. Windows의 실제 SSH/Slurm과 비정상 종료·네트워크 단절 복구도 별도 확인한다. 이미 시작한 원격 HTTP의 취소가 원격 추론·과금 중단을 보장하지 않는다.
 
-- #85 작업 브랜치는 U dot-product·단계 exp 최신성·중요도/10·종류 가중치, ranked20·plan 최근 목록 중복을 적용한다. 활성64개는 미산정 우선 보존 후 채점 중요도 낮은 순·동점 오래된 순으로 제거한다. [상세](tasks/85-u-memory.md).
-- 사용자 후속 요청으로 [대시보드 GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)를 추가했다. 비공개 설정이 있으면 SSH/sbatch·채팅/분리 임베딩·터널·준비 확인 후 대시보드를 제공하고 Ctrl+C/SIGTERM에 소유 작업만 반환한다. 기본 인증은 OpenSSH 터미널이며, macOS gpu-password-setup으로 명시 저장한 경우 OS 키체인에서 askpass로 자동 전달한다. 비밀번호 파일/JSON/env/로그는 만들지 않는다. 2026-10-18 대시보드 자동 시작에서 Qwen HTTP200과 임베딩 CUDA·벡터 검증, 작업 반환을 확인했다. 실제 Qwen 생성 추론과 데카트론 과업 성공과는 구분한다.
+## 남은 검증과 연구
 
-- #84 작업 브랜치의 실행기는 첫 인식 뒤 실행별 단일 Slow task가 reflect→wonder→memory.update를 반복한다. 성찰/Thought는 즉시 공유 기억에 저장하며 stage 채택·plan_review·1% draw가 없다. 단조 seq cursor·64개 상한·활성 ID 기반 점수/벡터 갱신과 취소 합류를 포함한다. [현재 계약과 남은 범위](tasks/84-u-slow.md)가 아래 과거 정책보다 우선한다. #85에서 GPU embedding·U 검색 공식이 연결됐다.
-- #83 작업 브랜치의 실행기는 `Brain.forward`로 U Fast 응답을 소비한다. 최초 perceive, 이후 feedback/perceive 동시 실행 후 plan/act를 호출하고, rationale Thought·Plan·모든 Action 제안을 실행 전에 저장한다. 첫 제안만 실행하며 모델은 observation/tab ID를 생성하지 않는다. 기록은 `u-fast-1`로 구분한다. [계약·제한](tasks/83-u-fast.md)이 아래 과거 #41/#43 Fast 정책보다 우선한다.
-- #83에서 현재 observation·plan version 기반 Brain 채택 게이트와 강제 우선 기억 삽입, 실행 후 결과를 Action 기억으로 만드는 경로를 제거했다. 첫 인식 직후 Slow 시작은 #84의 계속되는 U 반복으로 연결했다. 도구 결과와 독립 판정은 기존 steps에 보존한다.
-- Python 3.11+ / Playwright Chromium / Pydantic.
-- 화면 DOM 관찰과 U semantic ID 기준 click·mouse click·type·raw type·방향/양 스크롤·hover·select·clear·키보드·탐색·탭 행동.
-- Mock, OpenAI Chat Completions, Claude Messages (Sonnet 4.6), Gemini, Jev 후보 선택과 Gemini fallback.
-- 로컬 SSH 터널을 통해 실행 중인 GPU 서버의 `persona-qwen` 채팅 API를 선택할 수 있다. 연결 확인은 실제 요청이며 키를 요구하지 않는다. 원격 Slurm 할당·서버 시작·SSH 터널은 현재 수동으로 유지한다. 실제 과업 실행 성공은 별도 검증 대상이다.
-- 순차 테스트에서 한 페르소나의 모델 출력·브라우저 오류는 해당 실행만 실패로 기록하고 다음 페르소나를 계속 실행한다. 완료 뒤 실패한 페르소나 수와 로그를 모달로 표시하며, 평가하지 못한 독립 판정은 `unknown`으로 유지한다.
-- #57에서 단계별 Fast의 OpenAI 응답 형식을 문자열·행동 필드·종료 객체 단위로 명시하고, 알려진 `gpt-4o-mini` 응답 모델의 호출 비용 추정치를 기록한다. 실제 API 재검증은 로컬 키가 준비된 뒤 수행한다.
-- #59에서 합성 데카트론 AI 실행 설정과 독립 평가 기대값을 연결했다. 평가 정답은 과업 프롬프트와 분리하고 상세의 상품명·색상·가격이 일치할 때만 성공으로 판정한다. 현재 브랜치의 실제 OpenAI 호출은 키 준비 후 재검증한다.
-- #61에서 공개 데카트론의 부분 평가 프로필을 AI 실행 설정에 연결하고, 여러 적합 상품을 허용하도록 상품명 키워드와 최대 가격을 검사한다. 공개 실행의 판정 범위는 상품명·가격이며 현재 브랜치의 실제 API·사이트 결합 실행은 미검증이다.
-- 요청·토큰 예산, 반복/시간/단계 제한. AI 브라우저 행동은 configured origin 범위 제한 없이 실행한다.
-- 메모리 검색, 선택적인 embedding, 실행별 Brain의 필수 Fast/Slow Loop와 기본 활성 Wonder.
-- #45에서 실제 시작된 reflection/plan_review마다 1%를 추첨한다. 당첨 시 과업·화면·기억·`intent` 없이 persona만으로 별도 비동기 요청을 보내 가정된 생각을 생성한다. 일반 AI 조건에는 공통 제약만 보낸다. 추첨과 작업 상태를 남기고 생성 생각을 실제 사용자 기억과 구분해 표시한다.
-- #46에서 Fast/Slow/Wonder/embedding의 호출별 실제 provider·model과 실패·재시도·취소를 기록한다. 실행 요약에는 모델 경로, 공통 예산과 요청/토큰 한도 사유를 남긴다. Jev의 후보 선택은 Jev, 생성은 선택한 Gemini 모델로 나뉜다. Jev/Gemini 키나 미지원 embedding 조합은 실행 전 거부한다. 일반 조건은 모든 생성 단계에서 persona 배경·선호를 제외한다.
-- #47에서 실행 상세는 단계·작업 사건·원본 기억과 활성 제거 기록을 행동 관찰 ID로 연결한다. 대시보드와 JSON/CSV/Markdown/HTML 출력에서 AI 생성물, 실행된 행동, 독립 평가를 구분한다. 새 로그가 없는 이전 실행과 null 행동 기록은 빈 근거로 읽는다.
-- #44에서 구성한 관찰 → Brain → ActionExecutor → 재관찰 흐름은 #89에서 종료·평가 계약을 갱신했다. AI 실행 중 evaluator를 호출하지 않고, 종료 뒤 최종 화면을 별도로 평가한다. scripted offline scenario의 checkpoint 평가는 기존대로 유지한다. 대시보드의 일괄·비교 중지는 현재 행동 결과와 재관찰 기록을 완료한 뒤 종료한다.
-- #39에서 생성 결과·비동기 작업·메모리 점수/제거 사건의 스키마를 정의했다. `MemoryEntry`의 새 기록은 버전 2.0이며 중요도는 산정 전 `null`, 산정 후 1~10점이다. 구버전 1.0의 0~5점 로그는 구분해 읽는다. #41에서 perception·plan·decision, #42에서 reflection·plan_review 결과, #43에서 Brain 단계 경계 채택·stale 폐기·실행 취소 상태를 기록한다.
-- #40에서 Fast 모델 입력의 검색 점수 상위 기억(후보 선택 모델 4개, 생성 모델 6개)과 최근 행동 이력을 분리했다. 활성 기억은 기본 64개(설정 10~64개)로 제한한다. Slow가 persona·intent·현재 계획·기억을 사용해 미산정 기억을 1~10점으로 비동기 산정하고, 원본 ID를 유지한 채 변경 사건을 남긴다. 실패·예산 소진·종료 취소는 작업 사건으로 기록한다. #54에서 Fast 계획·행동 결정의 종류 가중치와 Slow의 최신성 우선 검색을 연결했다. #55에서 현재 단계 기억, 최근 10개 과업 기억, 미산정 대기, Slow snapshot 순으로 상한 안에서 보호하고 제거 이유·원본 출처·embedding 캐시를 관리한다. #56에서 상한 10·64의 runner mock 기록으로 점수·제거·출처·예산을 함께 검증했다. #43의 Slow 대기열은 상한을 두지 않는다.
-- 로컬 템플릿 persona 생성, 순차 격리 batch, 로그/PNG, 로컬 대시보드.
-- 로컬 가방 fixture의 독립 성공 판정, 규칙 기반 문제 후보·HTML review·모델 설문/기록 인터뷰.
+1. 다른 팀원의 새 환경 재현: 후보 → 근거 → 저장 → 새로고침 → 네 형식 결과 일치. #36에 OS·커밋·결과를 남긴다.
+2. 실제 Qwen 파일럿: 유한 예산에서 Fast/Slow·embedding·독립 평가·질문지 설문 전체 경로를 확인한다.
+3. 큰 페이지·긴 실행: 조각 요약 정보 손실, hover/select, 활성 기억 64개 초과, 긴 trace의 실제 context 한도를 확인한다.
+4. 실제 중지·SSH 단절: 기록 보존, worker 합류, 소유 Slurm 작업 반환/복구를 확인한다.
+5. 인간 평가와 비교: 2인 판정·합의, 개선 전후 재현, 모델/프롬프트/검색/Slow 조건의 통제 실험을 설계한다. 기업 데이터는 사용자 확인 기준 미수령 0건이다.
 
-## 1차 MVP 추가 구현
+공개 데카트론의 과거 부분 점검은 지정 검색 결과와 러닝화 상세 이름·80,000원 상한에 한정한다. 홈페이지 검색 제출·색상·사이즈·재고·픽업·전체 네 과업의 성공은 검증하지 않았다. iframe/canvas/복잡한 shadow DOM/custom combobox의 범용 처리는 보장하지 않는다. Qwen 큰 화면 조각 요약은 U 원본 전체 HTML 입력과 다르므로 동등 성능을 주장하지 않는다.
 
-- strict 외부 DOM/URL 확인 조건, fixture 검색·필터·상세의 최종 상태 근거.
-- 일반/페르소나 프롬프트 분리, 대응 비교 세션 사전 등록·고정 분모·중지·순서 seed.
-- 전후 화면/URL/시각/결과 기록 확보율, 도구 실행 수준의 오류 복구 보조 지표.
-- 디자인 기준의 테스트·비교·개선·기록 화면, API 키 연결 확인, 실행 중지.
-- 미검토 문제 카드와 JSON/CSV/Markdown/HTML 내보내기.
-- 옵션 후보 ID 충돌, null 결과 보고서 처리, 실제 검색어 생성/교체 경로 수정.
+ChatGPT 구독 OAuth, 근거 Q&A, 전체 서비스 큐/DB, 환경별 비교와 연구용 Slow off/빈도 제어는 후속이다. 과거 plan_review·1% 정책 실험안은 현재 U 기준에 맞춰 다시 합의한다. [개발 순서](roadmap.md), [연구 계획](research/2026-10-15-slow-loop-experiment-plan.md).
 
-## 미구현 또는 미검증
+## 과거 구현과 검증 기록
 
-- Brain 조율·성찰/계획 검토 예약·유효성 검사·persona-only 1% Wonder는 이 통합 브랜치에 구현됐다. 실제 입력의 소비율/유효 창/효과 집계와 연구용 성찰·검토 off/빈도 제어는 후속이다. 현재 실제 AI 실행은 Fast/Slow 필수이며 요청·토큰 한도 기본값은 무제한이다. 실제 유료 모델에서의 유효성은 미검증이다.
-- 실제 대상 전체 4개 과업·환경의 독립 평가와 색상/사이즈/재고/픽업. 합성 네 시나리오와 공개 데카트론의 제한된 결과·가격·상세 점검은 아래 범위로 구분한다.
-- 근거 Q&A, ChatGPT 구독 OAuth/Responses 연동. 현재 설정은 목표 → 사용자 → 모델 → 실행의 안내형 4단계이며 생성과 실행은 자동으로 이어진다.
-- 2인 사람 판정·합의와 개선 전후 자동 재검증. 현재 카드는 미검토 후보다.
-- 환경별 비교, 복구 사건 분석, 전체 서비스 큐/DB/스토리지.
-- 실제 LLM API·사람 행동 재현은 이번 API 없는 작업의 검증 범위가 아님. 공개 데카트론은 부분 범위만 실제 실행했다.
+날짜별 기록은 당시 커밋과 정책을 설명한다. 현재 완료 상태는 위 통합 기준을 따른다.
 
-## API 없는 과업 점검
-
-- 사전 정의 scripted 실행기·대시보드·CLI, 합성 검색/필터/상세·빈 결과·초기화·스크롤 네 preset와 결함 주입.
-- 단계별 독립 DOM 판정·근거 연결·실패 카드·오류 후보. API 연결과 페르소나 생성 없이 실행한다.
-- 실제 공개 데카트론 지정 검색 URL의 결과 이름, 가격 상한과 표시 카드 가격, 상세 상품명·가격을 Python 실행기로 확인했다. 검색 폼 제출은 별도 실행에서 unknown, 색상/재고/픽업 등은 미검증이다.
-- 자세한 사용법과 범위는 [API 없는 과업 점검](offline-scenarios.md), 실제 결과는 [검증 기록](verification.md)을 따른다.
-
-## 수정 전 확인할 제한
-
-- 관찰은 viewport DOM이다. keypress는 안전 키 여섯 개, scroll은 명시적으로 활성화한 ±900px 범위를 지원한다. iframe/canvas/복잡한 shadow DOM/password는 미지원. custom combobox는 관찰된 클릭·키·option만 가능하며 native select로 처리하지 않는다.
-- Jev는 실제 입력값을 Gemini로 생성한다. 옵션 ID 충돌은 회귀 수정됐고 완료/진행 불가 종료 후보를 지원한다. 모델 완료 선언은 독립 성공 판정과 구분한다.
-- 외부 사이트는 명시적 확인 조건이 없으면 unknown이다. 모델 완료 선언을 성공으로 볼 수 없다.
-- 설문은 질문지·전체 기억 trace 기반 사후 LLM 응답이며 실제 사람 증언이 아니다. 인터뷰는 별도 기록 기반 응답이다. 실제 GPU Qwen 설문 품질은 별도 확인 대상이다.
-- 평가 오류는 failure/unknown/종료 사유를 함께 읽어야 한다. 과업 실패와 시스템 기능 실패를 분리한다.
-
-2026-10-11 화면 정리: 메뉴와 중복되는 제목/설명을 숨기고 desktop 설정/최근 기록·실행 근거/판정을 좌우로 배치했다. 추가 자료·기록 검색은 펼쳐 확인하고 모바일은 한 열이다. 실제 재검증 결과는 verification.md 참조.
-
-점검 판정은 아이콘/항목/상태를 한 행으로 정리하고 근거 펼침을 자동 갱신에서도 유지한다. 판정 데이터는 변경하지 않는다.
-
-
-## 모델 선택과 설정 도우미
-
-3단계에서 제공자와 모델을 선택하고 **키 발급 페이지 → 키 입력 → 연결 확인**으로 진행합니다. 모델을 바꾸면 다시 연결을 확인합니다. 오른쪽 도우미의 쇼핑 검색·정보 찾기·예약 안내·입력 오류는 시작용 예시이며 사용 빈도 순위가 아닙니다.
-
-연결 전에는 무료 예시와 공식 발급 안내를 제공합니다. 연결 확인 후 **추천받기** 또는 질문 전송을 누르면 선택한 모델을 호출합니다. 추천 사용자·목표는 적용 버튼을 눌러야 설정에 반영됩니다. 추천은 가정이며 실제 사용자 조사 결과가 아닙니다. 최종 사용자 프로필 생성은 기존 로컬 템플릿을 유지합니다.
-
-도우미는 서버 실행당 최대 5회, 보수적 토큰 예산 12,000, 출력 최대 1,000/회입니다. 실패 요청도 한도를 소비합니다. 사용량과 비용은 응답에 나온 값이며 계정 잔액과 다릅니다. 가격을 확인할 수 없는 모델은 비용 미확인으로 표시합니다. 대화는 메모리에만 유지하며 키·인증 URL은 질문에 입력하지 않습니다.
-
-지원 모델 목록은 현재 구현과 호환되는 선택지이며 최신·전체 모델 목록을 보장하지 않습니다. Gemini 2.5 접근이 제한된 계정은 3.5 Flash Lite를 확인하세요. Jev 키 메뉴의 상세 경로는 확인되지 않아 콘솔 안내를 따릅니다. 실제 유료 API 연결은 개발 검증에 포함하지 않았습니다.
-
-## C 담당 검토 데이터
-
-카드 ID/내용 버전과 검토 입력·서버 레코드 계약을 추가했다. 로컬 append-only 사람 검토 저장/조회 API와 현재 버전 최신 판정 overlay를 연결한다. 상태·메모는 기존 개선 보드와 JSON/CSV/Markdown/HTML 출력에서 소비한다. 로그인 인증·2인 합의는 후속이며 독립 verification을 사람 판정으로 바꾸지 않는다. 과거 출처 필드 누락은 unknown이다. 실제 검사 결과는 verification.md를 따른다.
-
-집계 보완: 비용·입출력 토큰·기록의 전체값/측정 부분값/누락 수를 구분한다. 새 실행은 실제 호출 측정 completeness를 저장하고 예산 예약 계수와 구분한다. legacy 값은 제공된 값으로 조회하며 새 메타데이터 없는 과거 usage의 정확성을 재구성할 수 없다.
-
-## D-01 검토 입력 (C PR #30 기반 작업 브랜치)
-
-개선 카드에서 검토자 별칭·5종 판정·메모를 저장하고 서버 확인 후 최신 판정을 표시한다. 저장 중 중복 제출 방지, 실패 입력 유지, 404/409 근거 재확인을 제공한다. 미저장 초안은 페이지 메모리, 저장 판정은 서버 JSONL에 남는다. 아래 D-02/03에서 전환 유지와 이력·출처를 연결했다. prototype 통합 완료와 실제 사람 검토 결과를 뜻하지 않는다. [사용·브랜치 안내](tasks/d-review-form.md).
-
-## D-02 초안·지연 응답 (D-01 기반 작업 브랜치)
-
-실행/카드/버전별 초안을 자동 갱신·왕복 전환에서 유지하고, 입력 포커스·선택 구간을 보존한다. 오래된 조회가 최신 저장 판정이나 재선택 화면을 덮어쓰는 경합을 차단했다. #33 작업이며 prototype 통합 전이다. 새로고침 후 미저장 초안 복원은 범위 밖이다.
-
-## D-03 이력·출처 (D-02 기반 작업 브랜치)
-
-#34: 현재/이전 근거 버전의 사람 검토 이력과 실행 방식·대상 출처를 표시한다. Mock 데모와 누락 출처를 구분하며 독립 과업 판정은 변경하지 않는다. #47의 Brain 기록 시각화는 후속이다. prototype 통합 전이며 검증 결과는 verification.md를 따른다.
-
-## D-04 비교 측정 범위 (D-03 기반 작업 브랜치)
-
-#35: C 집계를 재사용해 예정 분모·실행 상태·중앙값 계산 대상·전체/부분 측정값·누락 세션 수와 실험 조건을 표시한다. 실제 0과 미확인, 대상 행동 없음도 구분한다. prototype 통합 전이며 [표시 계약](tasks/d-comparison-coverage.md)과 verification.md를 따른다.
-
-2026-10-14 팀 공유 상태: D-01~D-04는 작업 브랜치에서 검증됐으며 PR #37/#38/#49/#50은 미병합이다. D-05(#36)와 prototype 통합 검증은 남아 있다. [회의 안건과 결정표](meetings/2026-10-14-d-progress-and-decisions.md)에 PR 의존 관계 및 codex 브랜치 CI 실행 조건을 정리했다.
-
-D-05(#36) 작업 브랜치에서 합성 후보의 근거 확인·판정 저장·새로고침·JSON/CSV/Markdown/HTML 대조를 통과했다. 현재 카드 ID·버전의 문서 내보내기 누락을 수정했다. 팀원 독립 재현과 prototype 통합 재검증은 남아 있다. [상세](tasks/d-review-export-verification.md).
-
-2026-10-15 D 후속 작업 브랜치: 상세/비교 조회 실패·마지막 정상 자료와 재시도, 실패 중 저장/내보내기 차단, 새 AI 실행 출처와 복구 측정 미확인 표시를 보완했다. 과거 출처는 unknown을 유지한다. [상세](tasks/d-dashboard-hardening.md).
-
-2026-10-15 #47 소비 작업 브랜치: Brain 단계·비동기 6상태·기억 점수 갱신/제거 원본의 읽기와 화면/네 형식 출력 지원. 구버전과 손상·교차 실행을 구분하며 생성 실행기의 전체 두 루프 완료와 별개다. [계약과 한계](tasks/d-brain-trace-viewer.md).
-
-2026-10-15 격리 통합 preview: D 소비와 A Fast 단계/메모리 생성 고정 스냅샷을 통합해 전체 324개 검사와 실제 무료 Mock 생성→화면→네 형식 출력 일치를 확인했다. prototype/main 병합 및 B live PR/Slow 전체 조율과 구분한다. [인수인계](handoffs/2026-10-15-morning.md).
-
-2026-10-15 팀 대화 반영 문서: [상위 실험 계획](research/2026-10-15-slow-loop-experiment-plan.md)에서 고수준 검토 off/빈도와 검색 정책 비교를 분리했다. [기업 데이터·시스템·Novelty 제출 초안](research/2026-10-15-project-submission-draft.md)의 기업체 데이터는 사용자 확인 기준 미수령 0건이다. 새 실험 실행기·소비/유효성 집계·실제 모델 성능 평가는 이번 문서 작업으로 구현/수행되지 않았다.
-
-2026-10-16 최신 통합: #75/D의 중복 소비 경로를 `brain_trace.py` 한 번 읽기로 통일하고 패널을 하나로 유지했다. Fast 작업 kind·채택/폐기를 포함한 8상태, 전체 작업 이력, Wonder 추첨과 부모 연결, 선택 행동 trace를 같은 자료에서 표시/출력한다. #78 초기 응답 전 사용자 편집 보존과 모델 기본값 대기 테스트도 포함했다. 실제 Mock은 6행동·60요청·60생성·193사건·12추첨/1당첨, 최신 상태 채택 6·폐기 7이었다. 별도 scripted 결함 후보의 판정 저장/새로고침/네 형식 출력도 일치했다. 이 수치는 합성 검증이며 실제 사용자/기업 자료가 아니다.
+- [검증 누적 기록](verification.md)
+- [10/19 검토 5건 수정과 준비 이력](handoffs/2026-10-19-review-fixes.md)
+- [10/18 D/U 통합 검증](handoffs/2026-10-18-d-u-integration.md)
+- [10/16 prototype 병합 기록](handoffs/2026-10-16-prototype-merge-queue.md)
+- [10/14 D 진행과 회의 안건](meetings/2026-10-14-d-progress-and-decisions.md)

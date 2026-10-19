@@ -2,9 +2,15 @@
 
 관련: [#36](https://github.com/2026-2-1/Persona/issues/36), D-01 #32 / D-02 #33 / D-03 #34 / D-04 #35. 기능 선행 PR은 #37 → #38 → #49 → #50이며, 이번 작업은 공유 문서 PR #51 위에 쌓았다.
 
+## 2026-10-19 병합된 prototype
+
+#101 일반 merge와 함께 선행 #95~#99 및 D 보완이 `prototype` `9095b3c`에 포함됐다. 병합 후 Ubuntu/Windows CI가 통과했고, 이번 macOS Chromium/HTTP의 검토·내보내기·비교·Brain/U 결과 집중 회귀는 **54 passed**다. [최종 검증과 새 환경 재현](../handoffs/2026-10-19-prototype-verification.md)을 현재 기준으로 사용한다.
+
+팀원의 독립 재현은 계속 남아 있다. 아래 10/14~18 기록과 브랜치 명령은 당시 이력이며 새 재현은 `origin/prototype`의 커밋을 먼저 기록한다. #36은 이번 자동 검사만으로 닫지 않는다.
+
 ## 2026-10-18 U 전환 후속
 
-[최신 D/U 통합 검증](../handoffs/2026-10-18-d-u-integration.md)에서 현재 prototype 기준과 U 미리보기를 분리해 재검증했다. 최종 평가 화면·설문·Wonder 소비와 구형 판정 버전 보존을 보완했고, 합성 기록 두 종류의 실제 네 형식 다운로드를 확인했다. 아래 10/14 기록과 체크리스트는 당시 범위다. 팀원의 독립 재현과 최종 prototype 통합은 계속 미완료로 둔다.
+[최신 D/U 통합 검증](../handoffs/2026-10-18-d-u-integration.md)에서 현재 prototype 기준과 U 미리보기를 분리해 재검증했다. 최종 평가 화면·설문·Wonder 소비와 구형 판정 버전 보존을 보완했고, 합성 기록 두 종류의 실제 네 형식 다운로드를 확인했다. 아래 10/14 기록과 체크리스트는 당시 범위다. 이 기록 당시에는 팀원 독립 재현과 최종 prototype 통합이 미완료였다. 현재 통합 상태는 위 10/19 항목을 따른다.
 
 ## 2026-10-14 로컬 확인
 
@@ -33,7 +39,7 @@ JSON/CSV/Markdown은 앱 내 브라우저에서 다운로드했다. HTML은 앱 
 
 ## 팀원 재현 절차
 
-현재 브랜치: `codex/36-review-export-verification`. PR head 커밋을 기록하고 실행한다. Windows에서는 Python 경로를 `.venv/Scripts/python.exe`로 바꾼다.
+새 재현은 최신 `prototype`에서 시작하고 `git rev-parse HEAD`를 기록한다. 아래 10/14 최초 검증 브랜치는 `codex/36-review-export-verification`이었다. Windows에서는 Python 경로를 `.venv/Scripts/python.exe`로 바꾼다.
 
 ```sh
 .venv/bin/python -m uxagent doctor --study configs/study.json
@@ -60,7 +66,7 @@ macOS 임시 폴더를 쓸 경우 `--runs /private/tmp/...`처럼 심볼릭 링�
 - [x] 근거 변경 후 이전 판정을 현재 판정으로 내보내지 않는 회귀 검사
 - [x] 390px에서 판정 저장·내보내기 회귀 검사
 - [ ] 팀원의 독립 재현 및 리뷰
-- [ ] 정상·실패·중지·빈 결과·근거 누락 시연을 확정 통합 커밋에서 다시 확인
-- [ ] prototype 병합 후 CI와 같은 흐름 재검증
+- [x] 정상·실패·중지·빈 결과·근거 누락·작은 화면을 최종 통합 코드의 Chromium 회귀로 확인
+- [x] prototype 병합 후 CI 및 같은 검토·출력 흐름의 로컬 재검증
 
 기존 자동 검사는 정상/실패/미확인 표시, 빈 비교, 누락 측정, 초안 유지 등을 다루지만, 그것만으로 통합 브랜치의 모든 시연을 완료 처리하지 않는다. #36은 후속 팀 검증이 남아 있다.

@@ -1,5 +1,7 @@
 # 문서 안내
 
+- [2026-10-19 병합된 prototype 검증과 팀원 재현](handoffs/2026-10-19-prototype-verification.md) — 현재 통합 기준·실제 merge·CI·화면 검증·남은 확인.
+
 - [2026-10-19 검토 5건 수정·기존 PR 관계](handoffs/2026-10-19-review-fixes.md)
 
 - [2026-10-18 D/U 통합 검증·남은 선행 조건](handoffs/2026-10-18-d-u-integration.md)

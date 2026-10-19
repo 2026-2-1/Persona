@@ -1,5 +1,17 @@
 # 검증 기록
 
+## 2026-10-19 코드 검토 5건 후속 수정
+
+- 기준: 최신 #99 `f121aaf` + #100 `ae18a8f`, 동기화 `dc2a473`. 실제 GPU·유료 API·공개 사이트를 호출하지 않았다.
+- password: 기존 Chromium 합성 재현과 같은 소스를 확인하고 대소문자 3종 × 초기/런타임 값 2종으로 회귀를 확장했다. 이번 로컬 브라우저 실행 승인 요청은 자동 검토 모델 용량 부족으로 실행되지 않았다. 로컬 doctor도 Chromium 권한 제한으로 실패했다. 브라우저 성공으로 기록하지 않는다.
+- Slow: 신규 민감 출력 6개 수정 전 실패 → 수정 후 관련 Slow/호출/기록/출력 **28 passed**.
+- GPU: hover/select 조작 정보 2개 수정 전 실패 → 수정 후 Fast/기억/호출 **34 passed, 2 deselected**(실제 브라우저 2개 제외).
+- 취소: 실제 runner의 I/O를 대체한 6개 취소 시점 수정 전 실패 → 수정 후 취소/비교/지표 **30 passed, 5 deselected**(브라우저 실행 제외).
+- 설문: 성공→6종 실패→새 답변 성공 복구 6개 수정 전 실패 → 수정 후 설문/D 결과/호출/출력 **32 passed**.
+- 합산 재실행: GPU 수명주기·Fast/Slow·기억·취소·설문·D 검토/결과/출력·비교/usage·모델 설정의 브라우저 없는 회귀 **243 passed, 14 deselected in 2.85s**. 각 집중 검사와 중복되므로 검사 수를 서로 더하지 않는다.
+- `compileall`, Node의 dashboard/parser 문법, `git diff --check` 통과. repo/staged 검사는 각 커밋에서 수행한다. 전체 pytest·doctor·Mock 통합의 원격 CI 결과는 PR에서 실제 실행 완료 후 확인한다.
+- 명령과 PR별 중복/남은 조건: [인수인계](handoffs/2026-10-19-review-fixes.md).
+
 ## 2026-10-18 D/U 종료 후 결과·검토·출력 후속
 
 - 대상: `codex/d-u-integration-verification-20261018`, 선행 #99 `aafea5a` + prototype `0fad8e5` 동기화. 코드 커밋 `d90ee6d` / `14ea5c8` / `ac04b04`. 원격 #95–#99 head는 변경하지 않았다. [PR 상태·재현·남은 조건](handoffs/2026-10-18-d-u-integration.md)을 따른다.

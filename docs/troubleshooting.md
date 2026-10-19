@@ -464,3 +464,19 @@
 - 해결: Fast/Slow/설문 호출에 schema v2 call id·method·시각·request/response/retrieve_result를 로컬에 남긴다. 인증정보로 판단되는 값은 원문 전체를 치환한다. Dashboard API는 call raw evidence를 빼고, 내보내기는 final evaluation provenance만 추가한다. 구형 run에 final JSON이 없으면 null로 읽는다.
 - 함께 확인할 회귀: feedback stage와 thought 출처, legacy Brain/Memory 기록·symlink/오염 행, raw evidence local-only, secret 치환, final evaluation detail·네 형식 출력, 부분/누락 usage와 Qwen model/provider 필드.
 - 실제 검증 결과는 [#90 통합 검증](verification.md#2026-10-18-90-u-계약-로그-출력-통합)에 기록한다. 라이브 Qwen·Decathlon 호출은 포함하지 않았다.
+
+## 2026-10-18 공개 데카트론 Qwen 첫 요청 `Prompt too long`
+
+- 증상: p001~p005의 실행 `20261018T144435-e83805e8` 등 다섯 건이 모두 첫 `perception` 호출에서 `provider_http_400: {"error": "Prompt too long"}`으로 종료됐다. 실행 이유는 `model_error`, 독립 판정은 `unknown`이었다.
+- 원인: 첫 화면 관찰 HTML은 111,443~125,629자였다. 측정한 125,629자 화면에서 `parser-semantic-id` 속성만 약 96,000자이고 실제 텍스트는 약 1,000자였다. U 전체 HTML 입력과 3,542자 perception 지시가 Qwen 서버 입력 한도를 넘었다. ID만 줄인 19,082자 입력은 HTTP 200을 받았으나 서버가 요청한 1,200 출력토큰 대신 512토큰에서 끊어 JSON이 불완전했다.
+- 해결: GPU의 8,000자 초과 화면에 한해 보이는 텍스트와 클릭·입력·선택 대상 목록을 모델에 전달한다. 모델용 짧은 ID는 제안 뒤 실제 semantic ID로 되돌린다. 큰 화면 perception은 서버가 완료할 수 있는 짧은 JSON 관찰을 요청한다. 원본 observation·registry·스크린샷은 보존한다. 이는 U의 전체 문구 서술과 다르다.
+- 함께 확인할 회귀: 작은 화면과 다른 제공자의 U 원본 입력, Qwen 행동 대상 ID 복원, feedback의 화면 입력, 독립 평가의 `unknown` 보존, 저장된 관찰 원본과 모델 요청의 구분.
+- 실제 검증: 실패한 화면의 모델 입력이 125,629자에서 5,493자로 줄었다. 실제 GPU Qwen에서 첫 perception, 이어지는 plan과 action 제안이 모두 유효한 응답으로 완료됐다. 같은 화면의 실제 브라우저 실행은 한 단계와 두 단계 모두 행동 시도 수만큼 성공했다. 제한 없는 두 단계에서는 후속 feedback·perception·plan·decision과 Slow 포함 요청 41회를 기록했고 `Prompt too long`은 없었다. 두 검사의 독립 판정은 `unknown`이며 전체 상품 과업 성공을 뜻하지 않는다. 상세 테스트 결과는 [검증 기록](verification.md)을 따른다.
+
+## 2026-10-19 큰 화면의 단일 짧은 관찰이 세부 정보를 놓치는 문제
+
+- 증상: 위 Qwen 호환 경로는 5,493자 모델 입력 전체를 한 번에 최대 180자 관찰로 줄였다. 화면의 다른 상품·가격·옵션이 관찰에서 빠질 수 있다.
+- 원인: 실제 서버가 긴 출력을 512토큰에서 중단하므로 출력만 늘려서는 유효한 JSON과 모든 문구를 동시에 얻을 수 없다.
+- 해결: perception에는 원본 HTML에서 모델이 읽을 필요 없는 내부 parser 속성만 제거한 자료를 사용한다. 이를 1,400자 이하 조각으로 모두 나눠 관찰하고, 단계별 결과를 다시 나눠 한 결과가 될 때까지 합친다. 단계와 조각 번호, 입력 조각과 응답은 기존 비공개 모델 호출 로그에 남긴다. 빈 결과·과도하게 긴 결과는 조용히 버리지 않는다.
+- 함께 확인할 회귀: 첫 단계의 모든 조각 포함, 합치기 단계의 수렴, 작은 화면과 다른 제공자의 U 입력, 행동 대상 원래 ID 복원, 모델 비용·호출 한도, 요약 중 문구 누락. 반복 요약 자체의 정보 손실은 여전히 가능하며 feedback/행동의 큰 화면 입력은 기존 텍스트·대상 목록을 사용한다.
+- 실제 검증: [검증 기록](verification.md)의 2026-10-19 항목을 따른다. 현재 로컬 GPU 서버는 연결되지 않아 실제 Qwen의 다단계 응답 품질은 미확인이다.

@@ -553,3 +553,20 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 전체 실행: 승인된 로컬 브라우저/fixture-server 환경의 `python3 -m pytest -q` → **534 passed in 381.75s**. 전체 실행 중 final-evaluation 근거가 Brain 파일 없는 단순 run에서도 출력되도록 보완했다. Markdown/HTML에도 최종 provenance section을 추가하고 legacy null 회귀를 포함한 최종 수정 뒤 `tests/test_call_evidence.py`, `test_brain_trace.py`, `test_reports.py`, `test_loop_record_consumers.py` 재검사 → **12 passed in 0.20s**.
 - `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 이 환경에는 별도 lint/typecheck 설정이 없다. 최초 sandbox 실행은 로컬 포트/Chromium 권한 때문에 실행 환경 오류가 났으며 허용 환경에서 통과했다.
 - 검증한 흐름은 fake provider/Qwen fake HTTP + 기존 local fixture다. 실제 GPU Qwen 생성·공개 Decathlon 브라우저 과업 및 원격 Ubuntu/Windows CI는 이 변경에서 실행하지 않았다. 사용자에게 성공으로 표시하지 않는다. 개인 `runs/` 자료와 `.env`는 stage하지 않는다.
+
+## 2026-10-18 실제 Qwen 큰 화면 입력 회귀
+
+- 공개 데카트론 p001~p005의 기록은 모두 첫 Fast perception에서 `provider_http_400: Prompt too long`이었다. 첫 실행의 HTML 125,629자, 원본 첫 요청 131,683자, semantic ID 속성 약 96,000자를 측정했다. 모델용 텍스트·대상 표현은 5,493자이며 원본 observation 파일은 수정하지 않았다.
+- 실제 로컬 SSH 터널의 `persona-qwen`에 같은 첫 화면을 재요청해 perception 응답 1개, 후속 plan, action 제안 1개를 확인했다. 사용한 모델은 바꾸지 않았다. 서버가 긴 U perception 응답을 512 출력토큰에서 끊는 것도 실제 응답 `finish_reason=length`와 usage로 확인했다.
+- 합성 회귀는 큰 화면에서 짧은 ID를 실제 action ID로 복원하고 원본 HTML을 유지하는지 확인한다. 실제 사이트에서 클릭·검색·최종 과업 성공까지는 이 재요청에서 확인하지 않았다.
+- 이후 같은 첫 화면과 p001 설정으로 `max_steps=1` 실제 브라우저 실행을 추가했다. `runs/private/gpu-prompt-fix-smoke/20261018T150241-12167c41`에서 Fast perception·plan·decision 오류 0건, 행동 시도 1건/성공 1건을 확인했다. `termination_reason=max_steps`, 독립 판정 `unknown`이며 전체 상품 과업의 성공은 확인하지 않았다. 비공개 재현 설정·원본 run은 `runs/private/`와 `runs/`에만 두었다.
+- 같은 화면을 2단계로 실행한 결과, 인위적인 모델 호출 제한 20회는 Slow 중요도 채점 11회에 소진돼 두 번째 계획 전에 `budget_exceeded`로 끝났다. 운영 설정처럼 이 제한을 제거한 재실행 `20261018T150806-3b20fac4`에서는 Fast의 후속 feedback·perception·plan·decision까지 완료되고 행동 시도·성공이 각각 2건이었다. 첫 perception의 JSON 형식 오류는 1회 복구됐고 `Prompt too long`은 없었다. Slow 30회를 포함한 모델 요청은 41회였으며 종료 사유는 `max_steps`, 독립 판정은 `unknown`이다. 전체 과업 완료·상품 조건 충족 여부는 검증하지 않았다.
+- 승인된 로컬 브라우저/소켓 환경의 전체 `python3 -m pytest -q`: **535 passed in 381.73s**. 마지막 Qwen 큰 화면 분기 기준을 8,000자로 조정한 뒤 비브라우저 Fast 집중 검사 **13 passed, 2 deselected**. `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 2개 제외 테스트는 기준 변경 뒤 재실행하지 않았지만 전체 검사에서 통과했다.
+
+## 2026-10-19 Qwen 큰 화면 단계별 관찰
+
+- 단일 180자 큰 화면 관찰 대신 원본 HTML에서 내부 parser 속성만 뺀 입력을 1,400자 이하로 나눠 순차 관찰하고, 결과를 다시 합쳐 한 결과가 될 때까지 반복한다. 첫 단계의 모든 조각과 합치기 단계가 호출 로그로 재구성 가능하다. 원본 observation과 행동의 semantic ID 복원은 유지한다.
+- 저장된 실제 데카트론 첫 관찰 `obs-9b39bbe88e`의 HTML 120,094자는 내부 parser 속성을 빼면 8,549자이며 1차에서 7개 조각으로 나뉜다. 이는 로컬 입력 계산이며 실제 Qwen 호출 결과는 아니다.
+- 회귀 테스트는 수정 전 실패를 확인한 뒤, 다중 조각·모든 원본 표식 포함·2차 합치기·원래 행동 ID 복원을 확인했다. 처음 sandbox 내 비브라우저 Fast 검사는 **14 passed, 2 deselected**였고 macOS 브라우저/소켓 접근을 허용한 Fast 전체 검사는 최종 코드에서 **16 passed**였다.
+- 현재 로컬 8001 GPU 포트는 연결되지 않아 실제 Qwen 다단계 응답, 누락 정도, 공개 데카트론 전체 과업 성공은 확인하지 않았다. 반복 요약은 정보의 완전 보존을 보장하지 않는다.
+- 최종 코드의 전체 `python3 -m pytest -q`: **536 passed in 390.11s** (승인된 로컬 브라우저/소켓 환경). `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check`도 통과했다. 실행 중인 GPU 서버에 대한 라이브 생성 호출은 포함하지 않았다.

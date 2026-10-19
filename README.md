@@ -1,5 +1,7 @@
 # Persona / UXAgent Prototype
 
+2026-10-19 검토 후속은 비밀번호 관찰값 보호부터 문제별 커밋으로 수정합니다. [회귀와 검증 기록](docs/troubleshooting.md#2026-10-19-비밀번호-type-대소문자)을 참고하세요. 작업 브랜치의 수정과 prototype 병합 상태는 구분합니다.
+
 개발 통합 기준은 `prototype`입니다. C/D 검토·출력과 A Brain·Slow·메모리 변경, 협업 문서와 B OpenAI 형식 호환을 원본 PR 단위로 squash 통합합니다. [병합 절차·검증·남은 제한](docs/handoffs/2026-10-16-prototype-merge-queue.md)을 따릅니다.
 
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.

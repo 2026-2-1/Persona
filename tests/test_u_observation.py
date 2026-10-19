@@ -70,13 +70,27 @@ async def test_parser_rerun_clears_old_semantic_ids_and_uses_current_dom():
 
 
 @pytest.mark.asyncio
-async def test_parser_redacts_password_values_from_html_and_element_lists():
+@pytest.mark.parametrize("input_type", ["password", "PASSWORD", "PassWord"])
+@pytest.mark.parametrize("runtime_value", [False, True])
+async def test_parser_redacts_password_values_from_html_and_element_lists(tmp_path, input_type, runtime_value):
+    import json
+    from importlib.resources import files
+
+    marker = "synthetic-password-marker"
     async with BrowserSession(False) as browser:
-        await open_markup(browser, '<label for=pw>Password</label><input id=pw type=password value="private-value">')
-        obs, _ = await observe(browser)
-        assert "private-value" not in obs.html
+        value = "" if runtime_value else marker
+        await open_markup(browser, f'<label for=pw>Password</label><input id=pw type="{input_type}" value="{value}">')
+        if runtime_value:
+            await browser.active.locator("#pw").fill(marker)
+        obs, _ = await observe(browser, tmp_path)
+        assert marker not in obs.model_dump_json()
+        assert marker not in (tmp_path / "observations" / f"{obs.observation_id}.json").read_text()
         password = next(x for x in obs.clickable_elements if x.name == "Password")
         assert password.value == "[redacted]"
+        raw = await browser.active.evaluate(files("uxagent").joinpath("parser/parser.js").read_text())
+        assert marker not in json.dumps(raw)
+        assert raw["input_elements"][0]["value"] == "[redacted]"
+        assert await browser.active.locator("#pw").input_value() == marker
 
 
 @pytest.mark.asyncio

@@ -61,12 +61,20 @@ class FastLoop:
         controls = []
         for kind, entries in (("clickable", observation.clickable_elements),
                               ("input", observation.input_elements),
+                              ("hover", observation.hoverable_elements),
                               ("select", observation.select_elements)):
             for entry in entries:
                 attrs = f'id="{alias(entry.id)}" kind="{kind}" role="{escape(entry.role, quote=True)}"'
+                attrs += f' enabled="{str(entry.enabled).lower()}" focused="{str(entry.focused).lower()}"'
+                if entry.checked is not None:
+                    attrs += f' checked="{str(entry.checked).lower()}"'
+                if entry.href is not None:
+                    attrs += f' href="{escape(entry.href, quote=True)}"'
                 label = escape(entry.name)
                 value = f' value="{escape(entry.value, quote=True)}"' if entry.value is not None else ''
-                controls.append(f'<control {attrs}{value}>{label}</control>')
+                options = "".join(f'<option value="{escape(option["value"], quote=True)}">'
+                                  f'{escape(option["label"])}</option>' for option in entry.options)
+                controls.append(f'<control {attrs}{value}>{label}{options}</control>')
         compact = ("<page><visible_text>" + escape(" ".join(parsed.parts)) +
                    "</visible_text><controls>" + "".join(controls) + "</controls></page>")
         return compact, ids, originals

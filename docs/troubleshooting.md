@@ -1,5 +1,13 @@
 # 트러블슈팅과 회귀 확인
 
+## 2026-10-19 Qwen 큰 화면의 hover와 select
+
+- 증상: 8,000자 초과 화면에서 hover 전용 semantic ID와 select의 실제 option 값이 모델 입력에서 사라졌다.
+- 원인: GPU projection의 요소 종류가 clickable/input/select에 한정됐고 옵션과 요소 상태를 직렬화하지 않았다.
+- 해결: hover 목록과 선택 옵션/상태를 포함하고 같은 짧은 ID 복원표를 사용한다. 원본 관찰과 실행 ID는 유지한다.
+- 함께 확인할 회귀: hover/select 제안부터 호스트 Action 변환, opaque 옵션 값, HTML 특수문자, disabled/checked/focused·href, 원본 관찰 불변, 기존 GPU 조각 인식과 다른 제공자 입력.
+- 실제 검증: 신규 2개가 수정 전 실패했다. 수정 후 집중 검사 결과는 verification에 기록한다. GPU 원격 호출이나 실제 사이트 과업 품질 검증은 포함하지 않는다.
+
 ## 2026-10-19 실제 task 취소 후 결과 누락
 
 - 증상: `task.cancel()` 또는 asyncio CLI의 첫 Ctrl+C가 `summary.json`·`final_evaluation.json` 기록을 건너뛰었다.

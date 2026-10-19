@@ -1,5 +1,20 @@
 # 검증 기록
 
+## 2026-10-19 순차 병합 준비
+
+#95의 password/DOM 관찰 11개를 실제 Chromium으로 통과했다. #97 생산자 성공→실패→복구 17개와 #98 취소/설문 23개가 통과했다. 각 브랜치는 순서대로 prototype을 동기화하고 전체 CI를 확인한 뒤 병합한다. 최종 #101 검증 결과는 해당 PR과 후속 병합 기록을 따른다.
+
+## 2026-10-18 D/U 종료 후 결과·검토·출력 후속
+
+- 대상: `codex/d-u-integration-verification-20261018`, 선행 #99 `aafea5a` + prototype `0fad8e5` 동기화. 코드 커밋 `d90ee6d` / `14ea5c8` / `ac04b04`. 원격 #95–#99 head는 변경하지 않았다. [PR 상태·재현·남은 조건](handoffs/2026-10-18-d-u-integration.md)을 따른다.
+- 실패 재현 후 설문/Wonder projection, 최종 관찰/카드 버전, CLI 공개 호출, attachment 다운로드와 구형 기록 배치를 보완했다. 첫 전체 검사는 543 passed/3 failed(구형 Wonder 저장 1건, desktop 배치 2건)였고 수정 후 최종 **547 passed in 344.24s**였다. 새 검사는 `tests/test_u_result_views.py`, `tests/test_u_result_views_browser.py`, CLI 회귀는 `tests/test_call_evidence.py`에 있다.
+- doctor: Python 3.13.13, Playwright 1.55.0, Chromium available, study_errors 없음. 브라우저 실행과 로컬 서버를 허용한 환경에서 검사했다. compileall, Node 문법, repo/staged 검사, diff 공백 검사 통과.
+- 실제 현재 prototype 합성 필터 결함 `20261018T105758-e225f9f1`: 행동 6 PNG → valid 저장 → 새로고침 → 이력/메모/버전 유지. 독립 failure는 유지됐다. U 서버에서도 같은 구형 카드 버전을 유지하고 네 형식 다운로드와 대조했다.
+- 실제 U runner+결정적 Fake 제공자 `u-d-integration-demo`: 독립 failure/agent_finished, 최종 관찰 `obs-d94b925fcb`, Slow 1worker/16cycles, Wonder 16응답/15빈응답/2생각/저장 2개, 종료 active 0. 설문을 실제 생성 경로로 작성해 AI 자기보고/질문/답변/전체 trace 출처를 확인했다.
+- 최종 기본 무료 Mock `20261018T111848-04cbdb13`: 독립 success, 종료 max_steps, 행동 30회, 기록 확보율 100%, Mock 요청 로그 8,016회. 이 수는 무제한 U Slow 반복을 포함한 합성 호출 수이며 유료 API 호출 수가 아니다. 실제 GPU 호출 없이 기본 실행 경로를 확인했다.
+- 같은 U 후보에서 최종 평가 화면 → deferred 저장 → 새로고침 → 이력 1건 → JSON/CSV/Markdown/HTML 실제 앱 내 브라우저 다운로드를 확인했다. JSON 카드 전체 및 네 형식의 카드 ID/근거 버전/판정/메모/별칭을 대조했다. HTML은 수정 전 download timeout 재현 후 attachment 보완으로 실제 다운로드에 성공했다. 다른 실행 왕복·자동 갱신 중 미저장 초안도 유지됐다.
+- 합성 fixture/Mock 검증이다. 기업/실제 사람 데이터, GPU Qwen 생성 품질, 공개 사이트 과업 성공은 검증하지 않았다. #95/#97 생산 모듈 문제, 팀원 독립 재현, 최종 prototype 병합/CI 재확인은 남아 있다. 로컬 검사와 원격 CI는 구분한다.
+
 ## 2026-10-18 #87 U 행동 집합·AI 실행 정책
 
 - `feat/87-u-transition-05`에서 U dispatcher의 행동(semantic click/type/raw type, 좌표 click, 방향 scroll, hover/select/clear, 전역·대상 key press, URL/history/reload, 탭 열기·전환·닫기)을 `ActionExecutor`에 연결했다. AI 행동 경로의 allowed-origin, 최신 observation/registry, capability 및 option 사전 제한을 제거하고, DOM/session 부재와 Playwright 실행 오류는 도구 결과로 남긴다. `allowed_origins` 호환 입력과 scripted offline scenario의 별도 origin guard는 보존했다.

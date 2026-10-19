@@ -25,6 +25,8 @@ AI의 `terminate`는 브라우저 탐색 종료 신호다. 성공·실패는 종
 
 ## 원본과 로컬 차이
 
+2026-10-19 취소 후속: `asyncio.CancelledError`도 종료 원인 `cancelled`로 남긴다. 탐색 중 취소는 브라우저를 열어 둔 상태에서 Brain/Slow를 정리하고 새 최종 화면을 평가한다. 브라우저 진입·최종 캡처·정리 도중 취소로 화면을 얻지 못하면 `unknown/cancelled_before_final_observation`을 기록한다. 브라우저 종료 도중 취소되어도 최종 JSON과 summary의 종료 사유를 일치시킨다. 모든 writer를 닫은 뒤 원래 취소를 다시 전파하므로 CLI/상위 비교 실행의 취소 의미는 유지한다.
+
 - [U terminate action 처리](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/executor/env.py#L1005-L1021)
 - [U 종료 관찰에서 terminated/score 처리](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/executor/env.py#L1199-L1213)
 - [U batch에서 eval 생략](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/main/experiment.py#L39-L45)

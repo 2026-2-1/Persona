@@ -79,6 +79,8 @@ Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현�
 
 ## AI 종료와 최종 독립 평가
 
+실제 task 취소도 `termination_reason=cancelled`로 최종 JSON·summary를 저장하고 writer를 닫은 뒤 호출자에게 다시 전파한다. 탐색 중 취소는 살아 있는 브라우저로 최종 관찰을 시도한다. 시작/마무리 중 취소로 새 관찰이 없으면 `unknown/cancelled_before_final_observation`이며 이전 화면으로 최종 성공을 대체하지 않는다.
+
 AI 탐색 중 evaluator는 행동 제어에 관여하지 않는다. U `terminate`와 예산·시간·단계 한도·취소·모델/브라우저 오류는 `termination_reason`으로 보존한다. `verification`은 loop 종료 후 Brain/Slow를 정리하고 활성 브라우저의 새 최종 observation을 저장한 뒤 별도로 결정한다. 한 실행은 `agent_finished + success`, `max_steps + success`, `model_error + unknown`처럼 종료 원인과 평가를 독립적으로 가질 수 있다.
 
 각 `steps.jsonl` 행은 실행 중 판정하지 않아 `unknown/deferred_until_run_end`를 보유하고, 사후 결과로 과거 행을 덮어쓰지 않는다. `final_evaluation.json`은 termination step, final observation ID/URL/시각과 evaluator 결과를 연결한다. 최종 캡처/evaluator 실패는 unknown reason으로 남고 이전 관찰을 최종이라고 가장하지 않는다. 종료 뒤 evaluator 결과는 모델 입력이나 추가 행동으로 돌아가지 않는다. summary와 comparison session은 최종 verification·evaluator·final observation provenance를 소비한다. 공개 Decathlon은 현재 `detail_basic` 상품명·가격 범위만 판정한다. [#89 계약](tasks/89-u-termination-evaluation.md).

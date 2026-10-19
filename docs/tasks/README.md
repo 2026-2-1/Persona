@@ -1,13 +1,18 @@
 # 작업과 GitHub 이슈
 
 - [#85 U 기억 검색](85-u-memory.md)
+- [#86 U DOM parser 화면 관찰](86-u-observation.md)
+- [#87 U 행동 집합과 접근 정책](87-u-actions.md)
+- [#88 질문지·전체 기억 trace 기반 사후 설문](88-u-survey.md)
+- [#89 탐색 종료와 사후 독립 평가](89-u-termination-evaluation.md)
+- [#90 U 계약·로그·출력 최종 호환](90-u-transition-08.md)
 - [대시보드 GPU 수명주기](gpu-dashboard-lifecycle.md)
 
 완료한 최소 구현과 남은 전체 목표는 각 문서의 현재 상태에서 구분한다. 열린 이슈는 후속 보완·검증 작업이다.
 
-2026-10-17 U 전환: [#83 Fast 구현 범위](83-u-fast.md). #84~#90의 나머지 전환은 해당 GitHub 이슈를 따른다. #83의 작업 브랜치 검증을 전체 U 전환 완료로 간주하지 않는다.
+2026-10-18 U 전환: [#83 Fast](83-u-fast.md), [#84 Slow/Wonder](84-u-slow.md), [#85 기억](85-u-memory.md), [#86 관찰](86-u-observation.md), [#87 행동](87-u-actions.md), [#88 설문](88-u-survey.md), [#89 종료 후 평가](89-u-termination-evaluation.md), [#90 계약·로그·최종 호환](90-u-transition-08.md). #90 PR과 원격 CI가 확인되기 전까지 전체 U 전환은 통합 완료로 표시하지 않는다.
 
-#84 작업 브랜치는 [U Slow·Wonder 반복](84-u-slow.md)을 연결한다. #85의 실제 embedding/검색, #86~#90의 나머지 통합은 후속이다.
+#84 작업 브랜치는 [U Slow·Wonder 반복](84-u-slow.md)을 연결한다. #85 기억 검색·#86 DOM 관찰·#87 행동·#88 사후 설문·#89 종료 후 평가를 순차 연결했다. #90은 계약·기록 reader와 legacy 출력 호환 범위를 최종 통합한다.
 
 | 순서 | 작업 문서 | GitHub | 단계 |
 |---|---|---|---|

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-import html, json, re, uuid
+import asyncio
+import uuid
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
-from playwright.async_api import Page, Locator
-from .schemas import Observation, ElementInfo, TabInfo, CaptureInfo
+
+from playwright.async_api import Locator, Page
+
+from .browser import wait_for_settle
+from .schemas import CaptureInfo, ElementInfo, Observation, TabInfo
 
 
 @dataclass
@@ -24,70 +29,98 @@ class TargetRegistry:
     urls: set[str]
 
 
-def _slug(value: str) -> str:
-    value = re.sub(r"[^\w가-힣]+", ".", value.strip().lower()).strip(".")
-    return value[:60] or "element"
+def _element_info(item: dict) -> ElementInfo:
+    return ElementInfo(
+        id=item["id"], role=item.get("role") or "element", name=item.get("name") or item.get("id") or "element",
+        enabled=bool(item.get("enabled", True)), value=item.get("value"),
+        checked=item.get("checked"), focused=bool(item.get("focused", item.get("isFocused", False))),
+        href=item.get("href"), options=item.get("options") or [],
+    )
 
 
 async def observe(session, run_dir: Path | None = None, max_text: int = 12000, max_elements: int = 100,
                   previous_error: dict | None = None, _retried: bool = False) -> tuple[Observation, TargetRegistry]:
+    """Capture U-style cleaned DOM and semantic targets from the current page.
+
+    The U parser's observation is passed intact; legacy limits are recorded as
+    advisory thresholds and never silently truncate model input.
+    """
     page: Page = session.active
     obs_id = "obs-" + uuid.uuid4().hex[:10]
     tab_id = session.tab_id(page)
-    data = await page.evaluate("""(capture) => {
-      const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity)!==0&&r.width>0&&r.height>0&&r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth};
-      const name=e=>{const l=e.labels?.length?[...e.labels].map(x=>x.innerText).join(' '):'';return (e.getAttribute('aria-label')||l||e.innerText||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('name')||e.tagName.toLowerCase()).trim().replace(/\\s+/g,' ').slice(0,200)};
-      const clickRoles=['button','link','checkbox','radio','combobox','option','menuitem'];
-      const nodes=[...document.querySelectorAll('button,a,input,textarea,select,[role=button],[role=link],[role=checkbox],[role=radio],[role=combobox],[role=option],[role=menuitem],[onclick],label,h1,h2,h3,p,li')].filter(visible);
-      const items=nodes.map((e,i)=>{const internal='ux-'+capture+'-'+i;e.setAttribute('data-uxagent-id',internal);const role=e.getAttribute('role')||({BUTTON:'button',A:'link',INPUT:e.type==='checkbox'?'checkbox':e.type==='radio'?'radio':'textbox',TEXTAREA:'textbox',SELECT:'combobox'}[e.tagName]||e.tagName.toLowerCase());return {i,internal,tag:e.tagName.toLowerCase(),role,name:name(e),text:(e.innerText||'').trim().replace(/\\s+/g,' ').slice(0,500),value:e.type==='password'?'[redacted]':('value'in e?String(e.value):null),enabled:!e.matches(':disabled')&&!e.closest('[aria-disabled="true"]'),checked:e.hasAttribute('aria-checked')?e.getAttribute('aria-checked')==='true':!!e.checked,focus:document.activeElement===e,clickable:e.tagName!=='SELECT'&&(/^(BUTTON|A)$/.test(e.tagName)||/^(INPUT)$/.test(e.tagName)&&['button','submit','checkbox','radio'].includes(e.type)||clickRoles.includes(e.getAttribute('role'))||e.hasAttribute('onclick')||getComputedStyle(e).cursor==='pointer'),input:/^(INPUT|TEXTAREA)$/.test(e.tagName)&&!e.readOnly&&!['button','submit','checkbox','radio','password'].includes(e.type),select:e.tagName==='SELECT',hover:/menu|dropdown|tooltip/i.test((e.className||'')+' '+e.getAttribute('aria-haspopup')),href:e.tagName==='A'?e.href:null,options:e.tagName==='SELECT'?[...e.options].map(o=>({value:o.value,label:o.textContent.trim()})):[]}});
-      return {title:document.title,url:location.href,html:document.body?.innerHTML||'',items,unsupported:[...document.querySelectorAll('iframe,canvas')].map(e=>e.tagName.toLowerCase()).filter((x,i,a)=>a.indexOf(x)===i)};
-    }""", obs_id)
-    if page.url != data["url"]:
+    settle_timeout_ms = 3000
+    if not await wait_for_settle(page, settle_timeout_ms):
+        previous_error = previous_error or {
+            "code": "observation_wait_timeout",
+            "message": "Page network or DOM did not settle before observation.",
+        }
+
+    parser = files("uxagent").joinpath("parser/parser.js").read_text(encoding="utf-8")
+    try:
+        data = await asyncio.wait_for(page.evaluate(parser), timeout=10)
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError("U DOM parser exceeded its 10 second observation bound") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("html"), str):
+        raise RuntimeError("U DOM parser returned an invalid observation")
+
+    if page.url != data.get("url"):
         if not _retried:
-            return await observe(session,run_dir,max_text,max_elements,previous_error,True)
-        previous_error={"code":"capture_error","message":"URL changed during observation capture"}
-        data.update({"url":page.url,"title":await page.title(),"items":[],"html":""})
-    # stable semantic IDs are generated in reading order and attached only to this current registry.
-    unique: dict[str, int] = {}
-    registry: dict[str, tuple[Locator, str]] = {}
+            return await observe(session, run_dir, previous_error=previous_error, _retried=True)
+        previous_error = {"code": "capture_error", "message": "URL changed during observation capture"}
+        data.update({"url": page.url, "title": await page.title(), "html": "", "clickable_elements": [],
+                     "input_elements": [], "hoverable_elements": [], "select_elements": [], "observed_urls": []})
+
     groups = {"clickable_elements": [], "input_elements": [], "hoverable_elements": [], "select_elements": []}
-    for item in data["items"][:max_elements]:
-        name = item["name"]
-        base = _slug(name)
-        unique[base] = unique.get(base, 0) + 1
-        eid = base if unique[base] == 1 else f"{base}.{unique[base]}"
-        # The marker was attached to this exact visible DOM node during capture.
-        locator=page.locator(f'[data-uxagent-id="{item["internal"]}"]')
-        capabilities=set()
-        if item["clickable"]:capabilities.add("click")
-        if item["input"]:capabilities.add("type")
-        if item["select"]:capabilities.add("select")
-        if item["hover"]:capabilities.add("hover")
-        registry[eid] = TargetBinding(locator,item["tag"],capabilities,{o["value"] for o in item["options"]},item["href"])
-        info = ElementInfo(id=eid, role=item["role"], name=name, enabled=item["enabled"],
-                           value=item["value"], checked=item["checked"], focused=item["focus"], href=item["href"], options=item["options"])
-        if item["clickable"]: groups["clickable_elements"].append(info)
-        if item["input"]: groups["input_elements"].append(info)
-        if item["hover"]: groups["hoverable_elements"].append(info)
-        if item["select"]: groups["select_elements"].append(info)
-    # Sanitize public HTML using current visible rendered nodes and their text. Keep concise semantic markup.
-    lines = [f"<{i['tag']} role=\"{i['role']}\">{html.escape(i['name'])}</{i['tag']}>" for i in data["items"][:max_elements] if i["tag"]!="label"]
-    public_html = "\n".join(lines)
-    truncated = len(public_html) > max_text or len(data["items"]) > max_elements
-    public_html = public_html[:max_text]
-    omitted = max(0, len(data["items"]) - max_elements)
+    targets: dict[str, TargetBinding] = {}
+
+    def add_target(item: dict, capability: str, *, option_values=None):
+        target_id = item["id"]
+        target = targets.get(target_id)
+        if target is None:
+            locator = page.locator(f'[parser-semantic-id="{target_id}"]')
+            target = TargetBinding(locator, item.get("tag", ""), set(), set(), item.get("href"))
+            targets[target_id] = target
+        target.capabilities.add(capability)
+        if option_values:
+            target.option_values.update(option_values)
+
+    for group, capability in (("clickable_elements", "click"), ("input_elements", "type"),
+                              ("hoverable_elements", "hover"), ("select_elements", "select")):
+        for item in data.get(group, []):
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if group == "input_elements" and not item.get("canEdit", True):
+                continue
+            if group == "select_elements":
+                item = {**item, "options": item.get("options", [])}
+                add_target(item, capability, option_values={option["value"] for option in item["options"]})
+            else:
+                add_target(item, capability)
+            groups[group].append(_element_info(item))
+
     screenshot = None
     if run_dir is not None:
         obs_dir = run_dir / "observations"
         obs_dir.mkdir(parents=True, exist_ok=True)
         screenshot = f"observations/{obs_id}.png"
         await page.screenshot(path=str(run_dir / screenshot), full_page=False)
-    tabs = [TabInfo(id=session.tab_id(p), title=await p.title(), url=p.url, active=p == page) for p in session.pages if not p.is_closed()]
-    observation = Observation(observation_id=obs_id, tab_id=tab_id, url=data["url"], title=data["title"], html=public_html,
-                              **groups, tabs=tabs, error=previous_error,
-                              capture=CaptureInfo(truncated=truncated, omitted_element_count=omitted,
-                                                  screenshot_path=screenshot, unsupported=data["unsupported"]))
+
+    tabs = [TabInfo(id=session.tab_id(p), title=await p.title(), url=p.url, active=p == page)
+            for p in session.pages if not p.is_closed()]
+    observation = Observation(
+        observation_id=obs_id, tab_id=tab_id, url=data["url"], title=data.get("title", ""), html=data["html"],
+        **groups, tabs=tabs, error=previous_error,
+        capture=CaptureInfo(policy="u-dom-parser", screenshot_path=screenshot,
+                            observed_text_chars=len(data["html"]),
+                            observed_element_count=int(data.get("semantic_element_count", 0)),
+                            configured_text_limit=max_text, configured_element_limit=max_elements,
+                            limits_exceeded=len(data["html"]) > max_text or
+                                            int(data.get("semantic_element_count", 0)) > max_elements,
+                            unsupported=data.get("unsupported", [])),
+    )
     if run_dir:
         (run_dir / f"observations/{obs_id}.json").write_text(observation.model_dump_json(indent=2), encoding="utf-8")
-    observed_urls={data["url"]}|{item["href"] for item in data["items"] if item["href"]}
-    return observation, TargetRegistry(obs_id, tab_id, registry, observed_urls)
+
+    observed_urls = {data["url"], *data.get("observed_urls", [])}
+    registry = TargetRegistry(obs_id, tab_id, targets, observed_urls)
+    return observation, registry

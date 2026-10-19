@@ -15,19 +15,25 @@ def action_for(obs, kind, **fields):
     return Action(type=kind, observation_id=obs.observation_id, tab_id=obs.tab_id, **fields)
 
 
-def test_explicit_scroll_and_bounded_actions_schema():
+def target_id(obs, group, name):
+    return next(element.id for element in getattr(obs, group) if element.name == name)
+
+
+def test_legacy_scroll_and_u_key_action_schema():
     assert StudyConfig(study_id='s', start_url='https://shop.test', task='search',
                        allowed_origins=['https://shop.test'], explicit_scroll=True).explicit_scroll
     for key in ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'Space']:
-        assert Action(type='keypress', observation_id='o', tab_id='t', target_id='search', key=key).key == key
+        assert Action(type='key_press', observation_id='o', tab_id='t', target_id='search', key=key).key == key
+    assert Action(type='key_press', observation_id='o', tab_id='t', key='Control+Shift+P').key == 'Control+Shift+P'
+    assert Action(type='scroll', observation_id='o', tab_id='t', scroll_direction='left', scroll_amount=1200).scroll_amount == 1200
     for distance in [-900, -1, 1, 900]:
         assert Action(type='scroll', observation_id='o', tab_id='t', scroll_y=distance).scroll_y == distance
 
 
 @pytest.mark.parametrize('fields', [
-    {'type':'keypress', 'key':'Enter'},
-    {'type':'keypress', 'target_id':'search', 'key':'Control+A'},
-    {'type':'keypress', 'target_id':'search', 'key':'Enter', 'text':'script'},
+    {'type':'key_press'},
+    {'type':'key_press', 'target_id':'search', 'key':'Control+A', 'text':'script'},
+    {'type':'key_press', 'target_id':'search', 'key':'Enter', 'text':'script'},
     {'type':'scroll', 'scroll_y':0}, {'type':'scroll', 'scroll_y':901},
     {'type':'scroll', 'scroll_y':-901}, {'type':'scroll', 'scroll_y':True},
     {'type':'scroll', 'scroll_y':2.5}, {'type':'scroll', 'scroll_y':100, 'target_id':'x'},
@@ -40,7 +46,7 @@ def test_action_rejects_unsafe_or_unrelated_fields(fields):
 
 @pytest.mark.parametrize('fields', [
     {'type':'click', 'target_id':'search', 'input_mode':'sequential'},
-    {'type':'keypress', 'target_id':'search', 'key':'Enter', 'input_mode':'fill'},
+    {'type':'key_press', 'target_id':'search', 'key':'Enter', 'input_mode':'fill'},
     {'type':'scroll', 'scroll_y':100, 'input_mode':'sequential'},
     {'type':'type', 'target_id':'search', 'text':'shoes', 'input_mode':'script'},
 ])
@@ -50,7 +56,6 @@ def test_input_mode_is_an_explicit_type_only_option(fields):
 
 
 async def setup_page(browser, markup):
-    await browser.set_allowed_origins(['https://shop.test'])
     await browser.context.route('https://shop.test/**', lambda route: route.fulfill(body=markup, content_type='text/html'))
     await browser.active.goto('https://shop.test/')
     return ActionExecutor(browser, ['https://shop.test'], timeout_ms=700, settle_ms=300, allow_scroll=True)
@@ -70,50 +75,53 @@ async def test_sequential_input_updates_keyboard_driven_search_without_changing_
             </script>''')
         obs, registry = await observe(browser)
         executor.publish(registry)
-        default_input = action_for(obs, 'type', target_id='search', text='running shoes')
+        search = target_id(obs, 'input_elements', 'Search')
+        default_input = action_for(obs, 'type', target_id=search, text='running shoes')
         assert (await executor.execute(default_input)).ok
-        assert (await executor.execute(action_for(obs, 'keypress', target_id='search', key='Enter'))).ok
+        assert (await executor.execute(action_for(obs, 'key_press', target_id=search, key='Enter'))).ok
         assert await browser.active.locator('#result').inner_text() == 'No results'
-        sequential = action_for(obs, 'type', target_id='search', text='running shoes', input_mode='sequential')
+        sequential = action_for(obs, 'type', target_id=search, text='running shoes', input_mode='sequential')
         assert (await executor.execute(sequential)).ok
         assert await browser.active.locator('input').input_value() == 'running shoes'
-        assert (await executor.execute(action_for(obs, 'keypress', target_id='search', key='Enter'))).ok
+        assert (await executor.execute(action_for(obs, 'key_press', target_id=search, key='Enter'))).ok
         assert await browser.active.locator('#result').inner_text() == 'Results for running shoes'
 
 
 @pytest.mark.asyncio
-async def test_sequential_input_still_rejects_password_readonly_and_disabled_targets():
+async def test_sequential_input_uses_u_forced_fill_without_extra_control_policy():
     async with BrowserSession(False) as browser:
         executor = await setup_page(browser, '<input aria-label="Search">')
         obs, registry = await observe(browser)
         executor.publish(registry)
-        sequential = action_for(obs, 'type', target_id='search', text='shoes', input_mode='sequential')
+        sequential = action_for(obs, 'type', target_id=target_id(obs, 'input_elements', 'Search'), text='shoes', input_mode='sequential')
         await browser.active.locator('input').evaluate("e => e.type = 'password'")
-        assert (await executor.execute(sequential)).error['code'] == 'unsupported_control'
+        assert (await executor.execute(sequential)).ok
+        assert await browser.active.locator('input').input_value() == 'shoes'
         await browser.active.locator('input').evaluate("e => {e.type = 'text'; e.readOnly = true}")
-        assert (await executor.execute(sequential)).error['code'] == 'unsupported_control'
+        assert (await executor.execute(sequential)).ok
         await browser.active.locator('input').evaluate("e => {e.readOnly = false; e.disabled = true}")
-        assert (await executor.execute(sequential)).error['code'] == 'not_interactable'
-        assert await browser.active.locator('input').input_value() == ''
+        assert (await executor.execute(sequential)).ok
+        assert await browser.active.locator('input').input_value() == 'shoes'
 
 
 @pytest.mark.asyncio
-async def test_search_enter_scroll_and_stale_observation():
+async def test_search_enter_scroll_and_observation_id_is_not_an_execution_gate():
     async with BrowserSession(False, 800, 400) as browser:
         executor = await setup_page(browser, '''<input aria-label="Search" onkeydown="if(event.key==='Enter') document.querySelector('h1').textContent=this.value">
             <h1>Waiting</h1><div style="height:650px"></div><button>Offscreen filter</button>''')
         obs, registry = await observe(browser)
         executor.publish(registry)
-        assert (await executor.execute(action_for(obs, 'type', target_id='search', text='running shoes'))).ok
-        assert (await executor.execute(action_for(obs, 'keypress', target_id='search', key='Enter'))).ok
+        search = target_id(obs, 'input_elements', 'Search')
+        assert (await executor.execute(action_for(obs, 'type', target_id=search, text='running shoes'))).ok
+        assert (await executor.execute(action_for(obs, 'key_press', target_id=search, key='Enter'))).ok
         assert await browser.active.locator('h1').inner_text() == 'running shoes'
-        assert not any(e.name == 'Offscreen filter' for e in obs.clickable_elements)
+        assert any(e.name == 'Offscreen filter' for e in obs.clickable_elements)
         assert (await executor.execute(action_for(obs, 'scroll', scroll_y=600))).ok
         fresh, registry = await observe(browser)
         executor.publish(registry)
         assert any(e.name == 'Offscreen filter' for e in fresh.clickable_elements)
         stale = await executor.execute(action_for(obs, 'scroll', scroll_y=-600))
-        assert stale.error['code'] == 'stale_observation'
+        assert stale.ok
         assert (await executor.execute(action_for(fresh, 'scroll', scroll_y=-600))).ok
         assert await browser.active.evaluate('scrollY') == 0
 
@@ -134,89 +142,89 @@ async def test_custom_roles_click_disabled_readonly_and_native_select():
         obs, registry = await observe(browser)
         executor.publish(registry)
         by_name = {e.name:e for e in obs.clickable_elements}
-        assert {'In stock', 'Small', 'Category', 'Shoes', 'Sort price', 'Disabled stock'} <= by_name.keys()
+        assert {'In stock', 'Small', 'Shoes', 'Disabled stock'} <= by_name.keys()
+        assert 'Sort price' not in by_name
+        assert 'Category' not in by_name
         assert not by_name['Disabled stock'].enabled
         assert not any(e.name in {'Readonly', 'Password'} for e in obs.input_elements)
-        assert not any(e.name == 'Color' for e in obs.clickable_elements)
+        assert any(e.name == 'Color' for e in obs.clickable_elements)
         assert [e.name for e in obs.select_elements] == ['Color']
-        assert (await executor.execute(action_for(obs, 'click', target_id='in.stock'))).ok
+        assert (await executor.execute(action_for(obs, 'click', target_id=by_name['In stock'].id))).ok
         fresh, registry = await observe(browser)
         executor.publish(registry)
         assert next(e for e in fresh.clickable_elements if e.name == 'In stock').checked is True
-        disabled = await executor.execute(action_for(fresh, 'click', target_id='disabled.stock'))
-        assert disabled.error['code'] == 'not_interactable'
-        # Password remains forbidden even when an unexpected registry exposes click capability.
-        registry.targets['password'].capabilities.add('click')
-        password = await executor.execute(action_for(fresh, 'keypress', target_id='password', key='Enter'))
-        assert password.error['code'] == 'unsupported_control'
+        disabled = await executor.execute(action_for(fresh, 'click', target_id=next(e.id for e in fresh.clickable_elements if e.name == 'Disabled stock')))
+        assert not disabled.ok  # Playwright may fail an obscured or non-interactable element.
+        password_id = next(e.id for e in fresh.clickable_elements if e.name == 'Password')
+        password = await executor.execute(action_for(fresh, 'key_press', target_id=password_id, key='Enter'))
+        assert password.ok
         unsupported = await executor.execute(action_for(fresh, 'select', target_id='category', option_value='a'))
-        assert unsupported.error['code'] == 'unsupported_control'
-        assert (await executor.execute(action_for(fresh, 'select', target_id='color', option_value='b'))).ok
+        assert unsupported.error['code'] == 'target_not_found'
+        color = target_id(fresh, 'select_elements', 'Color')
+        assert (await executor.execute(action_for(fresh, 'select', target_id=color, option_value='b'))).ok
 
 
 @pytest.mark.asyncio
-async def test_keypress_requires_capability_and_current_tab_and_origin():
+async def test_key_press_resolves_dom_target_without_tab_or_origin_gates():
     async with BrowserSession(False) as browser:
         executor = await setup_page(browser, '<h1>Heading</h1><button>Submit</button><input aria-label="Search">')
         obs, registry = await observe(browser)
         executor.publish(registry)
-        result = await executor.execute(action_for(obs, 'keypress', target_id='heading', key='Enter'))
-        assert result.error['code'] == 'unsupported_control'
-        await browser.active.locator('button').evaluate("e => e.setAttribute('aria-disabled', 'true')")
-        result = await executor.execute(action_for(obs, 'keypress', target_id='submit', key='Space'))
-        assert result.error['code'] == 'not_interactable'
+        result = await executor.execute(action_for(obs, 'key_press', target_id='heading', key='Enter'))
+        assert result.error['code'] == 'target_not_found'
         wrong_tab = action_for(obs, 'scroll', scroll_y=100).model_copy(update={'tab_id':'tab-2'})
-        assert (await executor.execute(wrong_tab)).error['code'] == 'stale_observation'
+        assert (await executor.execute(wrong_tab)).ok
         executor.allowed_origins = ['https://elsewhere.test']
-        assert (await executor.execute(action_for(obs, 'scroll', scroll_y=100))).error['code'] == 'navigation_blocked'
-        assert (await executor.execute(action_for(obs, 'keypress', target_id='search', key='Enter'))).error['code'] == 'navigation_blocked'
+        assert (await executor.execute(action_for(obs, 'scroll', scroll_y=100))).ok
+        assert (await executor.execute(action_for(obs, 'key_press', target_id=target_id(obs, 'input_elements', 'Search'), key='Control+A'))).ok
 
 
 @pytest.mark.asyncio
-async def test_scroll_requires_explicit_opt_in():
+async def test_scroll_does_not_require_study_opt_in():
     async with BrowserSession(False, 800, 400) as browser:
         await setup_page(browser, '<h1>Page</h1><div style="height:2000px"></div>')
         executor = ActionExecutor(browser, ['https://shop.test'])
         obs, registry = await observe(browser)
         executor.publish(registry)
         result = await executor.execute(action_for(obs, 'scroll', scroll_y=600))
-        assert result.error['code'] == 'unsupported_control'
-        assert await browser.active.evaluate('scrollY') == 0
+        assert result.ok
+        assert await browser.active.evaluate('scrollY') > 0
 
 
 @pytest.mark.asyncio
-async def test_space_toggles_checkbox_and_keyboard_navigation_is_blocked():
+async def test_space_toggles_checkbox_and_keyboard_navigation_can_cross_origin():
     async with BrowserSession(False) as browser:
         executor = await setup_page(browser, '<input type="checkbox" aria-label="Stock"><a href="https://outside.invalid/">Outside</a>')
+        await browser.context.route('https://outside.invalid/**', lambda route: route.fulfill(body='<title>outside</title><p>external</p>', content_type='text/html'))
         obs, registry = await observe(browser)
         executor.publish(registry)
-        assert (await executor.execute(action_for(obs, 'keypress', target_id='stock', key='Space'))).ok
+        assert (await executor.execute(action_for(obs, 'key_press', target_id=target_id(obs, 'input_elements', 'Stock'), key='Space'))).ok
         assert await browser.active.locator('input').is_checked()
         obs, registry = await observe(browser)
         executor.publish(registry)
-        result = await executor.execute(action_for(obs, 'keypress', target_id='outside', key='Enter'))
-        assert not result.ok
-        assert result.error['code'] == 'navigation_blocked'
-        # Chromium can replace a blocked navigation with its internal error page.
-        assert not browser.active.url.startswith('https://outside.invalid')
-        assert browser.blocked_navigations == ['https://outside.invalid/']
+        result = await executor.execute(action_for(obs, 'key_press', target_id='outside', key='Enter'))
+        assert result.ok
+        assert browser.active.url.startswith('https://outside.invalid/')
 
 
 @pytest.mark.asyncio
-async def test_live_target_changes_cannot_enable_password_or_readonly_input():
+async def test_type_can_target_password_and_playwright_reports_readonly_errors():
     async with BrowserSession(False) as browser:
         executor = await setup_page(browser, '<input aria-label="Search"><button>Submit</button>')
         obs, registry = await observe(browser)
         executor.publish(registry)
         await browser.active.locator('input').evaluate("e => e.type = 'password'")
-        result = await executor.execute(action_for(obs, 'keypress', target_id='search', key='Enter'))
-        assert result.error['code'] == 'unsupported_control'
+        search = target_id(obs, 'input_elements', 'Search')
+        result = await executor.execute(action_for(obs, 'type', target_id=search, text='secret'))
+        assert result.ok
+        assert await browser.active.locator('input').input_value() == 'secret'
         await browser.active.locator('input').evaluate("e => {e.type = 'text'; e.readOnly = true}")
-        result = await executor.execute(action_for(obs, 'type', target_id='search', text='change'))
-        assert result.error['code'] == 'unsupported_control'
+        result = await executor.execute(action_for(obs, 'type', target_id=search, text='change'))
+        assert result.ok  # U uses forced fill; Playwright accepts this readonly fixture.
+        assert await browser.active.locator('input').input_value() == 'secret'
         await browser.active.locator('button').evaluate('e => e.remove()')
-        result = await executor.execute(action_for(obs, 'keypress', target_id='submit', key='Enter'))
-        assert result.error['code'] == 'target_detached'
+        result = await executor.execute(action_for(obs, 'key_press', target_id=target_id(obs, 'clickable_elements', 'Submit'), key='Enter'))
+        assert result.error['code'] == 'target_not_found'
 
 
 @pytest.mark.asyncio

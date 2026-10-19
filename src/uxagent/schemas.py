@@ -91,7 +91,9 @@ class StudyConfig(StrictModel):
     study_id: str
     start_url: str
     task: str
-    allowed_origins: list[str]
+    # Kept for old study files and the separate scripted scenario runner.
+    # The U AI action executor does not use this list as an access policy.
+    allowed_origins: list[str] = Field(default_factory=list)
     persona_file: str = "configs/persona.json"
     evaluator_id: str = "local-bag-detail-v1"
     evaluation_checks: list[EvaluationCheck] = Field(default_factory=list, max_length=50)
@@ -153,8 +155,6 @@ class StudyConfig(StrictModel):
     def valid_origins(cls, values: list[str]) -> list[str]:
         from .security import normalize_origin
         normalized = [normalize_origin(value) for value in values]
-        if not normalized:
-            raise ValueError("allowed_origins must contain at least one origin")
         return list(dict.fromkeys(normalized))
 
 
@@ -197,6 +197,11 @@ class CaptureInfo(StrictModel):
     policy: str = "viewport"
     truncated: bool = False
     omitted_element_count: int = 0
+    observed_text_chars: int = 0
+    observed_element_count: int = 0
+    configured_text_limit: int | None = None
+    configured_element_limit: int | None = None
+    limits_exceeded: bool = False
     screenshot_path: str | None = None
     unsupported: list[str] = Field(default_factory=list)
 
@@ -218,7 +223,9 @@ class Observation(StrictModel):
 
 
 class Action(StrictModel):
-    type: Literal["click", "type", "hover", "select", "keypress", "scroll", "navigate", "back", "switch_tab", "close_tab"]
+    type: Literal["click", "mouse_click", "type", "raw_type", "scroll", "hover", "select", "clear",
+                  "key_press", "keypress", "navigate", "goto_url", "back", "forward", "refresh", "new_tab",
+                  "switch_tab", "close_tab"]
     observation_id: str
     tab_id: str
     target_id: str | None = None
@@ -226,30 +233,46 @@ class Action(StrictModel):
     option_value: str | None = None
     url: str | None = None
     target_tab_id: str | None = None
-    key: Literal["Enter", "Escape", "Tab", "ArrowUp", "ArrowDown", "Space"] | None = None
+    key: str | None = None
+    # scroll_y is retained for the separate deterministic scenario API.
     scroll_y: int | None = Field(default=None, strict=True, ge=-900, le=900)
+    scroll_direction: Literal["up", "down", "left", "right"] | None = None
+    scroll_amount: int | None = Field(default=None, strict=True)
+    at_x: int | None = Field(default=None, strict=True)
+    at_y: int | None = Field(default=None, strict=True)
     input_mode: Literal["fill", "sequential"] | None = None
     enter: bool | None = Field(default=None, strict=True)
 
     @model_validator(mode="after")
     def validate_fields(self):
         required = {"click": ["target_id"], "type": ["target_id", "text"], "hover": ["target_id"],
-                    "select": ["target_id", "option_value"], "keypress": ["target_id", "key"],
-                    "scroll": ["scroll_y"], "navigate": ["url"],
+                    "select": ["target_id", "option_value"], "clear": ["target_id"],
+                    "key_press": ["key"], "keypress": ["target_id", "key"],
+                    "mouse_click": ["at_x", "at_y"], "raw_type": ["text"],
+                    "navigate": ["url"], "goto_url": ["url"], "new_tab": [],
                     "switch_tab": ["target_tab_id"], "close_tab": ["target_tab_id"]}
         for key in required.get(self.type, []):
             if getattr(self, key) is None:
                 raise ValueError(f"{key} is required for {self.type}")
-        allowed={"click":{"target_id"},"type":{"target_id","text","input_mode","enter"},"hover":{"target_id"},
-                 "select":{"target_id","option_value"},"keypress":{"target_id","key"},
-                 "scroll":{"scroll_y"},"navigate":{"url"},"back":set(),
-                 "switch_tab":{"target_tab_id"},"close_tab":{"target_tab_id"}}
-        fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","input_mode","enter"}
+        allowed={"click":{"target_id"},"mouse_click":{"at_x","at_y"},
+                 "type":{"target_id","text","input_mode","enter"},"raw_type":{"text"},
+                 "hover":{"target_id"},"select":{"target_id","option_value"},"clear":{"target_id"},
+                 "key_press":{"target_id","key"},"keypress":{"target_id","key"},
+                 "scroll":{"scroll_y","scroll_direction","scroll_amount"},
+                 "navigate":{"url"},"goto_url":{"url"},"new_tab":{"url"},"back":set(),
+                 "forward":set(),"refresh":set(),"switch_tab":{"target_tab_id"},"close_tab":{"target_tab_id"}}
+        fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","scroll_direction",
+                "scroll_amount","at_x","at_y","input_mode","enter"}
         supplied={key for key in fields if getattr(self,key) is not None}
         if supplied-allowed[self.type]:
             raise ValueError(f"fields {sorted(supplied-allowed[self.type])} are not allowed for {self.type}")
-        if self.type == "scroll" and self.scroll_y == 0:
-            raise ValueError("scroll_y must be nonzero")
+        if self.type == "scroll":
+            legacy = self.scroll_y is not None
+            directional = self.scroll_direction is not None or self.scroll_amount is not None
+            if legacy == directional or (directional and (self.scroll_direction is None or self.scroll_amount is None)):
+                raise ValueError("scroll requires either legacy scroll_y or U direction and amount")
+            if legacy and self.scroll_y == 0:
+                raise ValueError("legacy scroll_y must be nonzero")
         return self
 
 
@@ -300,7 +323,7 @@ class UPlan(StrictModel):
 class UAction(StrictModel):
     """Model proposal, deliberately independent of execution observation/tab IDs."""
 
-    action: Literal["click", "type", "hover", "select", "clear", "key_press", "goto_url",
+    action: Literal["click", "mouse_click", "type", "raw_type", "scroll", "hover", "select", "clear", "key_press", "goto_url",
                     "back", "forward", "refresh", "new_tab", "switch_tab", "close_tab", "terminate"]
     description: str = Field(min_length=1)
     target: str | None = None
@@ -311,16 +334,23 @@ class UAction(StrictModel):
     url: str | None = None
     tab_id: int | str | None = None
     answer: str | None = None
+    at_x: int | None = Field(default=None, strict=True)
+    at_y: int | None = Field(default=None, strict=True)
+    direction: Literal["up", "down", "left", "right"] | None = None
+    amount: int | None = Field(default=None, strict=True)
 
     @model_validator(mode="after")
     def validate_arguments(self):
         required = {"click": {"target"}, "type": {"target", "text"}, "hover": {"target"},
                     "select": {"target", "value"}, "clear": {"target"}, "key_press": {"key"},
-                    "goto_url": {"url"}, "new_tab": {"url"}, "switch_tab": {"tab_id"},
-                    "close_tab": {"tab_id"}}
+                    "goto_url": {"url"}, "switch_tab": {"tab_id"},
+                    "close_tab": {"tab_id"}, "mouse_click": {"at_x", "at_y"},
+                    "raw_type": {"text"}, "scroll": {"direction", "amount"}}
         allowed = {**required, "type": {"target", "text", "enter"},
-                   "key_press": {"key", "target"}, "terminate": {"answer"}}
-        fields = {"target", "text", "enter", "value", "key", "url", "tab_id", "answer"}
+                   "key_press": {"key", "target"}, "terminate": {"answer"}, "back": set(),
+                   "forward": set(), "refresh": set(), "new_tab": {"url"}}
+        fields = {"target", "text", "enter", "value", "key", "url", "tab_id", "answer",
+                  "at_x", "at_y", "direction", "amount"}
         supplied = {name for name in fields if getattr(self, name) is not None}
         if required.get(self.action, set()) - supplied:
             raise ValueError(f"missing arguments for {self.action}")

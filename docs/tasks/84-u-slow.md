@@ -22,6 +22,7 @@
 - `MemoryStore.last_seq`는 배열 길이와 독립인 단조 순번이다. `since(cursor)`는 cursor보다 새로 생성됐고 아직 활성인 기억을 깊은 복사로 반환한다. 성찰 시작 시 cursor를 당시 last_seq로 이동한다. 응답 대기 중 추가된 기억은 다음 성찰에 들어간다. 이미 64개 상한으로 제거된 기억을 몰래 복원하지 않는다.
 - `MemoryStore.update(score_new, embed_new)`는 갱신 작업끼리만 잠그며 Fast를 잠그지 않는다. 같은 snapshot의 embedding/importance를 함께 시작하고 한쪽 오류·취소 시 형제 작업을 취소·합류한다. 응답을 배열 위치로 적용하지 않는다. 제거된 ID의 늦은 결과는 새 기억에 붙이지 않고 데이터 갱신 폐기 사건을 남긴다. 이는 생성된 성찰의 사용 허가 gate와 다르다.
 - 새 stage 기록은 원본 model_response와 generated 상태를 보존한다. memory_update·embedding 작업 사건을 기존 reader가 읽도록 kind를 추가했다. 과거 plan_review·1% WonderDrawRecord·Wonder 기억과 출력은 계속 읽는다.
+- 2026-10-19 후속: reflection·wonder·importance는 전체 파싱 응답의 민감정보 검사를 통과한 뒤에만 단계/기억을 저장한다. 거부 시 작업은 failed이며 부분 Thought/Reflection이나 중요도 변경을 발행하지 않는다. 이미 완료한 호출의 usage와 치환된 호출 근거는 보존한다.
 
 ## 제거한 새 실행 정책
 

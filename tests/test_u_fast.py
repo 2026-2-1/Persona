@@ -104,7 +104,127 @@ async def test_first_turn_uses_u_payloads_and_saves_proposals_before_execution()
     assert decision.proposed_actions[0].description == "러닝화 검색"
     assert stages.rows[-1]["model_response"]["actions"][0]["target"] == "search"
     assert len(calls) == 3 and all(c["provider"] == "gpu" for c in calls)
+    assert [call["method_name"] for call in calls] == ["perceive", "planning", "action"]
+    assert all(call["schema_version"] == "2.0" and call["call_id"].startswith("call-") for call in calls)
+    assert all(call["recorded_at"].endswith("+00:00") for call in calls)
+    assert calls[1]["request"][1]["content"]
+    assert json.loads(calls[1]["request"][1]["content"])["memories"]
+    assert calls[1]["retrieve_result"]
+    assert json.loads(calls[1]["response"])["plan"] == "검색 후 결과 확인"
     assert sources
+
+
+@pytest.mark.asyncio
+async def test_gpu_large_html_uses_short_model_ids_and_restores_action_target():
+    brain, obs, _, provider, _, _, _, _, _ = setup()
+    target = "search." + "long_path_" * 30
+    noisy = "".join(f'<span parser-semantic-id="hover_{i}_' + "path_" * 40 + '" parser-maybe-hoverable="true" parser-hoverable="true">상품</span>' for i in range(120))
+    obs.html = f'<html><body>{noisy}<input parser-semantic-id="{target}" placeholder="검색" /></body></html>'
+    obs.input_elements = [ElementInfo(id=target, role="textbox", name="검색")]
+    obs.clickable_elements = [ElementInfo(id=target, role="textbox", name="검색")]
+    seen = {}
+
+    async def complete(messages, model, temperature, max_tokens):
+        stage = messages[0]["content"].split("FAST_STAGE:", 1)[1].splitlines()[0]
+        payload = json.loads(messages[1]["content"])
+        seen[stage] = payload
+        if stage == "decision":
+            content = {"actions": [{"action": "type", "target": payload["valid_targets"]["clickable"][0],
+                                    "text": "러닝화", "description": "검색"}]}
+        else:
+            content = {"observations": ["상품과 검색창"]}
+        return json.dumps(content, ensure_ascii=False), {"provider": "gpu", "model": model,
+                                                       "input_tokens": 7, "output_tokens": 3}
+
+    provider.complete = complete
+    await brain.fast.perceive_page(obs)
+    from uxagent.schemas import UPlan
+    proposals = await brain.fast.act(brain.persona, "러닝화", obs, [],
+                                     UPlan(plan="검색", rationale="검색", next_step="입력"))
+    action, _ = brain.fast.adapt_action(proposals.actions[0], obs)
+    assert len(obs.html) > 20000
+    assert len(seen["perception"]["content"]) <= 1400
+    assert "parser-maybe-hoverable" not in seen["decision"]["environment"]
+    assert target not in seen["decision"]["environment"]
+    assert action.target_id == target
+    assert obs.html.endswith(f'<input parser-semantic-id="{target}" placeholder="검색" /></body></html>')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["hover", "select"])
+async def test_gpu_large_page_preserves_action_targets_options_and_state(kind):
+    from xml.etree import ElementTree
+    from uxagent.schemas import UPlan
+
+    brain, obs, _, provider, _, _, _, _, _ = setup()
+    target = kind + "." + "opaque_path_" * 30
+    option_value = 'SKU_size_0007&"regular'
+    entry = ElementInfo(id=target, role="menu" if kind == "hover" else "combobox",
+                        name='카테고리 & 사이즈', enabled=False, focused=True, checked=True,
+                        value="old-size", href="https://shop.test/?a=1&b=2",
+                        options=[{"value": option_value, "label": "230 <일반>"}] if kind == "select" else [])
+    obs.html = "<main>" + "<p>상품 설명</p>" * 900 + f'<div parser-semantic-id="{target}">카테고리</div></main>'
+    original_html = obs.html
+    original_entry = entry.model_dump()
+    obs.clickable_elements = obs.input_elements = []
+    obs.hoverable_elements = [entry] if kind == "hover" else []
+    obs.select_elements = [entry] if kind == "select" else []
+
+    async def complete(messages, model, temperature, max_tokens):
+        payload = json.loads(messages[1]["content"])
+        assert target not in payload["environment"]
+        controls = ElementTree.fromstring(payload["environment"]).findall(f"./controls/control[@kind='{kind}']")
+        assert len(controls) == 1, "The action target must survive the GPU projection"
+        control = controls[0]
+        assert control.text == entry.name and control.get("role") == entry.role
+        assert control.get("enabled") == "false" and control.get("focused") == "true"
+        assert control.get("checked") == "true" and control.get("href") == entry.href
+        proposal = {"action": kind, "target": control.get("id"), "description": "합성 조작"}
+        if kind == "select":
+            options = control.findall("option")
+            assert [(option.get("value"), option.text) for option in options] == [(option_value, "230 <일반>")]
+            assert control.get("value") == "old-size"
+            proposal["value"] = options[0].get("value")
+        return json.dumps({"actions": [proposal]}), {"provider": "gpu", "model": model,
+                                                   "input_tokens": 7, "output_tokens": 3}
+
+    provider.complete = complete
+    result = await brain.fast.act(brain.persona, "합성 과업", obs, [],
+                                 UPlan(plan="조작", rationale="합성", next_step="메뉴 또는 옵션 선택"))
+    action, _ = brain.fast.adapt_action(result.actions[0], obs)
+    assert action.type == kind and action.target_id == target
+    if kind == "select":
+        assert action.option_value == option_value
+    assert obs.html == original_html
+    assert entry.model_dump() == original_entry
+
+
+@pytest.mark.asyncio
+async def test_gpu_large_page_perception_reads_every_chunk_and_merges_until_one():
+    brain, obs, _, provider, _, _, _, calls, _ = setup()
+    markers = [f"상품{i:03d}" for i in range(300)]
+    obs.html = "<main>" + "".join(f"<p>{marker} 상세 설명과 가격 정보가 표시된다.</p>" for marker in markers) + "</main>"
+    seen = []
+
+    async def complete(messages, model, temperature, max_tokens):
+        payload = json.loads(messages[1]["content"])
+        seen.append(payload)
+        if not isinstance(payload, dict):
+            raise AssertionError("large page must be split into source chunks")
+        return json.dumps({"observations": [f"{payload['round']}단계 {payload['chunk_index']}번 조각"]}), {
+            "provider": "gpu", "model": model, "input_tokens": 7, "output_tokens": 3}
+
+    provider.complete = complete
+    result = await brain.fast.perceive_page(obs)
+    first = [payload for payload in seen if payload["round"] == 1]
+    assert len(first) > 1
+    assert all(len(payload["content"]) <= 1400 for payload in seen)
+    assert "".join(payload["content"] for payload in first) == obs.html
+    assert all(marker in "".join(payload["content"] for payload in first) for marker in markers)
+    assert len({payload["chunk_index"] for payload in first}) == len(first)
+    assert seen[-1]["round"] > 1
+    assert len(result.observations) == 1
+    assert len(calls) == len(seen)
 
 
 @pytest.mark.asyncio
@@ -242,11 +362,12 @@ async def test_cancelling_parallel_phase_leaves_no_requests_or_tasks_in_flight()
 
 
 @pytest.mark.asyncio
-async def test_unsupported_executor_action_keeps_the_original_proposal():
+async def test_forward_action_is_supported_and_keeps_the_original_proposal():
     brain, obs, retrieve, provider, memories, stages, *_ = setup()
     provider.overrides["decision"] = {"actions": [{"action": "forward", "description": "앞으로 이동"}]}
-    with pytest.raises(ValueError, match="unsupported_u_action"):
-        await brain.forward("러닝화 찾기", obs, 1, retrieve)
+    decision, _ = await brain.forward("러닝화 찾기", obs, 1, retrieve)
+    assert decision.action.type == "forward"
+    assert decision.proposed_actions[0].action == "forward"
     assert memories.rows[-1]["raw_action"]["action"] == "forward"
     assert stages.rows[-1]["model_response"]["actions"][0]["action"] == "forward"
 
@@ -326,10 +447,14 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
         system = payload['messages'][0]['content']
         if system.startswith('FAST_STAGE:'):
             stage = system.split(':', 1)[1].splitlines()[0]
-            content = {'perception': {'observations': ['검색 화면']},
-                       'feedback': {'thoughts': ['직전 검색 제안을 확인']},
-                       'plan': {'plan': '검색 확인', 'rationale': '검색 버튼 확인', 'next_step': '검색'},
-                       'decision': {'actions': [{'action': 'click', 'target': '검색', 'description': '검색'}]}}[stage]
+            if stage == 'decision':
+                decision_payload = json.loads(payload['messages'][-1]['content'])
+                content = {'actions': [{'action': 'click',
+                    'target': decision_payload['valid_targets']['clickable'][1], 'description': '검색'}]}
+            else:
+                content = {'perception': {'observations': ['검색 화면']},
+                           'feedback': {'thoughts': ['직전 검색 제안을 확인']},
+                           'plan': {'plan': '검색 확인', 'rationale': '검색 버튼 확인', 'next_step': '검색'}}[stage]
         elif system.startswith('SLOW_STAGE:importance'):
             content = {'score': 5, 'rationale': '기억 확인'}
         elif system.startswith('SLOW_STAGE:wonder'):
@@ -346,6 +471,11 @@ async def test_gpu_runner_uses_u_flow_for_two_turns_with_fake_http(tmp_path, mon
     assert summary['brain']['fast']['feedback']['completed'] == 1
     calls = [json.loads(line) for line in (folder / 'llm_calls.jsonl').read_text(encoding='utf-8').splitlines()]
     assert summary['llm_request_count'] == len(calls) >= len(requests)
+    fast_calls = [call for call in calls if call.get("module") == "fast"]
+    assert fast_calls and all(call["schema_version"] == "2.0" for call in fast_calls)
+    assert all("request" in call and "response" in call and "method_name" in call
+               and "recorded_at" in call for call in fast_calls)
+    assert all("retrieve_result" in call for call in fast_calls)
     assert all(request['model'] == 'persona-qwen' for request in requests)
     steps = [json.loads(line) for line in (folder / 'steps.jsonl').read_text(encoding='utf-8').splitlines()]
     assert all(step['decision']['proposed_actions'][0]['action'] == 'click' for step in steps)

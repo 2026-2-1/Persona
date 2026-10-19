@@ -11,9 +11,11 @@ from datetime import datetime, timezone
 from importlib.resources import files
 
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
+from .call_evidence import call_evidence
 from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord, UReflection, UWonder, UImportance
 from .fast_loop import FastLoop
 from .setup_guide import _check_sensitive
+from .security import check_sensitive_input
 
 
 class _SlowModelIO:
@@ -43,6 +45,7 @@ class _SlowModelIO:
         started = time.monotonic()
         self.budget.reserve(reservation)
         settled = False
+        result = None
         try:
             result, usage = await self.provider.complete(messages, self.model,
                                                          self.temperature, self.output_tokens)
@@ -60,6 +63,7 @@ class _SlowModelIO:
                                "estimated": actual is None,
                                "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
                                                                         output_tokens, model=actual_model)}
+            record.update(call_evidence(stage, messages, payload, result))
             try:
                 parsed = json.loads(result)
                 if not isinstance(parsed, dict):
@@ -83,7 +87,8 @@ class _SlowModelIO:
                                    "elapsed_ms": int((time.monotonic() - started) * 1000),
                                    "input_tokens": None, "output_tokens": None,
                                    "estimated": True, "estimated_cost_usd": None,
-                                   "error": type(exc).__name__})
+                                   "error": type(exc).__name__,
+                                   **call_evidence(stage, messages, payload, result)})
             raise
 
 class SlowLoop(_SlowModelIO):
@@ -554,6 +559,8 @@ class ContinuousSlowLoop(_SlowModelIO):
             raise
 
     def _u_record(self, item, seq, entries, response):
+        # Validate the whole response before either stage or memory persistence.
+        check_sensitive_input(response)
         record = BrainStageRecord(record_id=f"stage-{item['kind']}-{uuid.uuid4().hex}",
             task_id=item["task_id"], run_id=self.memory.run_id, stage=item["kind"],
             observation_id=item["observation_id"], snapshot_seq=seq,

@@ -1,6 +1,8 @@
 # 개발 순서
 
-2026-10-17 #85 작업 브랜치: U 기억 검색·사용자 확정 제거 순서·분리 GPU embedding·사용자 후속 대시보드 SSH/Slurm 수명주기를 구현한다. 실제 인증/원격 모델 준비·GPU 시작/반환 확인은 남아 있으며 #86~#90은 별도 후속이다. [검색 계약](tasks/85-u-memory.md), [자동 시작·반환](tasks/gpu-dashboard-lifecycle.md).
+2026-10-18 #86 작업 브랜치에서 DOM parser·semantic ID·network activity observation, #87에서 U action과 AI 접근 정책, #88에서 질문지·전체 기억 trace 사후 설문, #89에서 AI 종료와 사후 독립 평가를 연결했다. #90 브랜치에서 호출 trace와 legacy 소비 호환을 마무리하고 CI 확인 중이다. [#86](tasks/86-u-observation.md), [#87](tasks/87-u-actions.md), [#88](tasks/88-u-survey.md), [#89](tasks/89-u-termination-evaluation.md), [#90](tasks/90-u-transition-08.md).
+
+2026-10-17 #85 작업 브랜치: U 기억 검색·사용자 확정 제거 순서·분리 GPU embedding·대시보드 SSH/Slurm 수명주기를 구현했다. 실제 GPU 임베딩 모델·CUDA 벡터 요청과 dashboard 자동 시작·종료를 2026-10-18 확인했다. #86~#89의 전환 PR은 개별 작업 브랜치에 있으며 #90 통합 호환 검증이 남아 있다. [검색 계약](tasks/85-u-memory.md), [자동 시작·반환](tasks/gpu-dashboard-lifecycle.md).
 
 ## 현재 진행 상태
 

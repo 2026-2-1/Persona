@@ -55,7 +55,7 @@ async def run_comparison(study_path, personas_path, provider_name='mock', repeti
         try:
             stop_kwargs={'stop_file':stop_file} if stop_file is not None else {}
             run_dir, summary = await run_study(study_path, provider_name, by_id[session['pair_persona_id']], False, directory / 'runs', persona_mode=session['condition'], run_id_override=session['run_id'], **stop_kwargs)
-            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'action_attempts', 'elapsed_ms', 'cost', 'cost_complete', 'cost_measured_total', 'provider_usage_complete', 'llm_request_count', 'llm_tokens', 'llm_tokens_complete', 'llm_tokens_measured_total', 'llm_tokens_known_calls', 'llm_tokens_unknown_calls', 'provider_usage', 'metrics', 'provider', 'model', 'execution_mode', 'source_kind')})
+            session.update({key: summary.get(key) for key in ('run_id', 'verification', 'termination_reason', 'final_evaluation_step_id', 'final_observation_id', 'final_observation_url', 'final_observed_at', 'evaluator', 'action_attempts', 'elapsed_ms', 'cost', 'cost_complete', 'cost_measured_total', 'provider_usage_complete', 'llm_request_count', 'llm_tokens', 'llm_tokens_complete', 'llm_tokens_measured_total', 'llm_tokens_known_calls', 'llm_tokens_unknown_calls', 'provider_usage', 'metrics', 'provider', 'model', 'execution_mode', 'source_kind')})
             session['run_dir'] = str(run_dir.resolve())
             reason = summary.get('termination_reason')
             session['status'] = 'error' if reason in ('browser_error', 'model_error') else 'cancelled' if reason in ('interrupted', 'cancelled') else 'completed'

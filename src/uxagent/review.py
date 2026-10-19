@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import html, json, re
+import html, json
 from collections import Counter
 from pathlib import Path
-from .storage import JsonlWriter
-
-
-QUESTIONS=["과제를 완료했다고 생각하나요? 판단에 사용한 화면은 무엇인가요?","진행 중 이해하기 어려웠던 부분은 무엇인가요?","다시 이용한다면 바뀌었으면 하는 부분은 무엇인가요?"]
+from .survey import create_survey
+from .call_evidence import public_call_record
 
 
 def read_jsonl(path):
@@ -42,22 +40,11 @@ def create_review(run_dir):
             p=run/"observations"/f"{obs}.png"
             if p.exists():imgs.append(f'<a href="observations/{html.escape(obs)}.png"><img loading="lazy" alt="{html.escape(obs)}" src="observations/{html.escape(obs)}.png"></a><a href="observations/{html.escape(obs)}.json">observation JSON</a>')
         parts.append(f"<article><h3>Step {s.get('step_id')}</h3><p><b>Decision</b> {html.escape(str(s.get('decision') or ''))}</p><p><b>Action</b> {html.escape(str(s.get('action') or 'finish'))}</p><p><b>Result</b> {html.escape(str(s.get('result') or s.get('error') or ''))}</p><p><b>Verification</b> {html.escape(str(s.get('verification')))}</p><p><b>Reflection</b> {html.escape(json.dumps(reflections,ensure_ascii=False))}</p><div class='images'>{''.join(imgs)}</div></article>")
-    header=f"<h1>UXAgent run {html.escape(summary['run_id'])}</h1><p>Termination: {html.escape(summary['termination_reason'])} · Verification: {html.escape(summary['verification'])}</p><pre>{html.escape(json.dumps({'config':config,'persona':persona,'summary':summary,'llm_calls':calls},ensure_ascii=False,indent=2))}</pre>"
+    header=f"<h1>UXAgent run {html.escape(summary['run_id'])}</h1><p>Termination: {html.escape(summary['termination_reason'])} · Verification: {html.escape(summary['verification'])}</p><pre>{html.escape(json.dumps({'config':config,'persona':persona,'summary':summary,'llm_calls':[public_call_record(call) for call in calls]},ensure_ascii=False,indent=2))}</pre>"
     body="".join(parts)+"<h2>Issue candidates</h2><pre>"+html.escape(json.dumps(issues,ensure_ascii=False,indent=2))+"</pre>"
     document="<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>UXAgent review</title><style>body{font:15px system-ui;max-width:1100px;margin:2rem auto;color:#202124}article{border:1px solid #ddd;padding:1rem;margin:1rem 0;border-radius:8px}.images{display:flex;gap:1rem}.images img{width:min(45vw,480px);border:1px solid #bbb}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f5f5;padding:1rem}</style>"+header+body
     (run/"review.html").write_text(document,encoding="utf-8")
     return run/"review.html",issues
-
-
-def create_survey(run_dir):
-    run=Path(run_dir).resolve();summary=json.loads((run/"summary.json").read_text());steps=read_jsonl(run/"steps.jsonl")
-    evidence=[s["step_id"] for s in steps if s.get("observation_id")]
-    success=summary.get("verification")=="success"
-    answers=[{"question_id":"q1","answer":("기록에서는 과제가 완료된 것으로 확인되었습니다." if success else "기록에서는 성공이 확인되지 않았습니다.")+ (f" 근거 화면은 step {evidence[-1]}입니다." if evidence else " 기록에서 판단 근거를 확인할 수 없습니다."),"source_step_ids":evidence[-1:] if evidence else [],"data_type":"simulated_self_report"},
-             {"question_id":"q2","answer":"기록에서 반복 오류나 반복 행동이 확인되지 않았습니다." if not derive_issues(steps) else "반복 행동 또는 오류가 기록되어 있어 해당 화면을 검토할 수 있습니다.","source_step_ids":[i for x in derive_issues(steps) for i in x["evidence_step_ids"]],"data_type":"simulated_self_report"},
-             {"question_id":"q3","answer":"기록만으로 실제 사용자의 개선 요구를 확인할 수 없습니다.","source_step_ids":[],"data_type":"simulated_self_report"}]
-    payload=[{"question":q,"response":a} for q,a in zip(QUESTIONS,answers)]
-    (run/"survey.json").write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding="utf-8");return payload
 
 
 def interview(run_dir, at_step: int, question: str):

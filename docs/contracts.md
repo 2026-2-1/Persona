@@ -1,5 +1,28 @@
 # 평가·기록·결과 계약
 
+## D의 U 결과 소비 (2026-10-18 후속)
+
+- `survey`는 `survey_result.json`의 최신 시도를 우선하는 읽기 전용 projection이다. 완료 상태에서도 질문지와 답변을 검증한 뒤 질문·답변·사유·전체 trace의 기억/행동 출처만 공개한다. `raw_response`, 요청 프롬프트는 공개하지 않는다. 이 출처는 답변별 인과 증거가 아니라 설문에 전달된 전체 trace다.
+- 새 설문은 `data_type=simulated_self_report`, 구형 `survey.json`만 있는 실행은 `legacy_or_unknown`이다. 최신 설문이 실패/손상됐으면 이전 성공 답변으로 대체하지 않는다. 읽는 과정에서 원본을 수정하지 않는다.
+- `wonder.policy=u_every_cycle`은 응답 횟수·빈 응답 횟수·실제 thoughts 수를 구분한다. 빈 목록은 생각 0개다. `kind=thought`의 생성 단계와 내용을 맞춰 저장 여부를 표시하며 제거된 원본도 저장 이력으로 인정한다. 구형 `legacy_draw`만 1% 추첨 설명을 쓴다.
+- 종료 시점 실패 후보는 `evidence_observation_ids`로 최종 독립 평가의 관찰을 연결한다. 해당 관찰 내용도 카드 근거 버전에 포함한다. 단계별 scripted 후보의 기존 근거와 검토 버전은 유지한다.
+- JSON/CSV/Markdown/HTML은 동일 projection을 내보낸다. CSV는 기존 카드 열을 유지하고 설문/최종 평가/Wonder 요약을 유형별 확장 행으로 표시한다. HTTP 내보내기는 `Content-Disposition: attachment`와 검증된 실행 ID의 파일명을 제공한다.
+- CLI `review.html`과 대시보드 호출 목록은 공통 `public_call_record`를 사용한다. 로컬 `llm_calls.jsonl` 원본의 request/response/retrieve_result는 그대로 두며 공개 화면에 복사하지 않는다.
+
+## U 모델 호출 trace v2 (#90)
+
+새 `llm_calls.jsonl` 행은 기존 사용량 필드에 아래 로컬 전용 근거를 더한다. 기존 행은 읽을 때 변경하지 않으며 새 필드 없이도 그대로 소비한다.
+
+```json
+{"schema_version":"2.0","call_id":"call-…","module":"fast","stage":"plan","method_name":"planning","recorded_at":"UTC ISO-8601","request":[{"role":"system","content":"…"},{"role":"user","content":"…"}],"response":"원본 모델 응답","retrieve_result":[{"memory_id":"…"}]}
+```
+
+`request`/`response`는 로컬 실행 폴더의 재현 자료다. 인증정보로 보이는 입력·출력은 기록 전에 값 전체를 치환한다. 대시보드 상세 API에서는 `request`, `response`, `retrieve_result` 및 redaction 진단 필드를 제외하고, JSON/CSV/Markdown/HTML 결과에도 이 로컬 원문을 넣지 않는다. 사용량/provider/model·오류·시간·단계 메타데이터는 기존 집계·조회와 호환된다. 설문 응답 원문도 로컬 호출 파일에서만 보존한다.
+
+새 U Fast의 `feedback` stage와 `thought` memory는 생성 기록이며 실행된 행동·관찰 사실·독립 evaluator 결과를 뜻하지 않는다. `brain_trace`는 과거 `perception`/`plan_review`/`wonder` 및 `adopted`/`discarded` 이벤트를 계속 읽고, 새 실행에 없는 draw/adoption 행을 만들어내지 않는다. 기록의 출처 ID는 추적용이고 모델 결과 채택 또는 행동 허가가 아니다.
+
+`summary.json`의 독립 `verification`은 `termination_reason`과 분리한다. `final_evaluation.json`은 해당 판정의 termination step과 최종 observation ID/URL/시각을 보존하며, 조회와 네 형식 내보내기에서 읽는다. 이전 실행에 파일이 없으면 `final_evaluation: null`이고 파일을 보충/수정하지 않는다.
+
 ## #85 현재 검색·제거·GPU 연결 계약
 
 새 runner는 U 점수 `(dot(memory,query)+exp(timestamp-current)+importance/10)*kind_weight`와 ranked20/plan 최근 prefix를 사용한다. source-step 중복 제거·cosine·벽시계 반감기·단어 fallback을 사용하지 않는다. 미준비 시 최근 목록만 반환한다. 활성 상한64는 유지하며 사용자 결정으로 미산정 우선 임시 보존, 채점 기억은 중요도 낮은 순·동점 오래된 seq 순 제거다. 종류/관찰 단계/최근10개/Slow snapshot 보호는 없다. 원본 null·로그·점수 사건은 보존한다.
@@ -21,7 +44,7 @@
 
 새 `thought` 기억과 모든 Action 제안은 generated다. 기억의 `timestamp`는 차례 순번, Action의 `raw_action`은 U 원본 제안이다. `AgentDecision.proposed_actions`·`next_step`, `BrainStageRecord.model_response`·feedback stage는 추가 필드다. 기록의 perception/plan/decision 이름은 기존 소비용이며 U 원본 응답은 model_response에 남긴다. 원본 필드가 없는 구버전 기록은 기존대로 읽는다. 결과 성공 여부는 Action 기억에 쓰지 않고 steps의 result/evaluation을 확인한다.
 
-observation/tab ID는 실행 어댑터가 현재 관찰에서 붙인다. 모델 응답이나 완료된 Slow 결과를 현재 observation/plan version에 맞춰 강제로 허가하는 Brain gate는 없다. 실행기의 기존 브라우저 접근 정책은 #87, 과업 종료/평가 정책은 #89에서 변경한다. 제안 actions 전부를 기억에 저장하고 첫 번째만 실행하므로 두 번째 이후 제안을 실제 실행으로 집계하지 않는다. `type.enter=true`는 fill 후 Enter 한 번이며, clear는 빈 문자열 type으로 변환한다. 나머지 U 행동 확대와 선택적 key_press target 지원은 #87 범위다.
+observation/tab ID는 실행 어댑터가 기록용으로 붙인다. AI 행동 실행은 그 ID나 registry membership을 허가 조건으로 검사하지 않는다. U semantic ID는 현재 DOM에서 직접 조회하고, click/type/select 등은 Playwright가 실제 실패를 반환하면 도구 오류로 기록한다. Brain provenance gate도 없다. 제안 actions 전부를 기억에 저장하고 첫 번째만 실행하므로 두 번째 이후 제안을 실제 실행으로 집계하지 않는다. #87은 U의 전체 행동 집합, U tab ID 어댑터, origin 검사 없는 이동을 연결했다. `allowed_origins`는 과거 study 파일의 호환 입력이며 AI 경로에서 실행 허가로 사용하지 않는다. 사전 정의 scripted scenario는 `offline.py`에서 자체 origin/읽기 전용 정책을 유지한다. GPU API URL·로컬 서버·파일경로·인증정보 보호는 별도이며 변경하지 않는다.
 
 이 문서의 일부 필드는 목표 계약이며 실행 코드에 아직 연결되지 않았다. [#39](https://github.com/2026-2-1/Persona/issues/39)의 기록 스키마와 실제 구현 상태는 아래를 따른다.
 
@@ -73,9 +96,17 @@ Jev는 TypeSafe·Gemini 키가 모두 있어야 실행하며, embedding은 현�
 
 ## 행동과 근거
 
-각 시도는 session/step/action/observation ID, 전후 URL·PNG·시각, 행동 입력, 실행 결과·오류 코드, 평가 결과를 연결한다. 미실행 모델 오류/종료 선언은 action/result가 null일 수 있다. 로그 소비자는 null을 처리해야 한다.
+각 시도는 session/step/action/observation ID, 전후 URL·PNG·시각, 행동 입력, 실행 결과·오류 코드, 평가 결과를 연결한다. 관찰 ID는 기록 링크이며 AI 행동의 최신성 승인값이 아니다. 미실행 모델 오류/종료 선언은 action/result가 null일 수 있다. 로그 소비자는 null을 처리해야 한다.
 
 기록 확보율 = 필수 근거가 모두 있는 행동 / 시도 행동. 부족한 항목과 건수를 표시한다. 비용 unknown은 0으로 계산하지 않는다. 실제 클릭 수와 전체 행동 수를 구분한다.
+
+## AI 종료와 최종 독립 평가
+
+실제 task 취소도 `termination_reason=cancelled`로 최종 JSON·summary를 저장하고 writer를 닫은 뒤 호출자에게 다시 전파한다. 탐색 중 취소는 살아 있는 브라우저로 최종 관찰을 시도한다. 시작/마무리 중 취소로 새 관찰이 없으면 `unknown/cancelled_before_final_observation`이며 이전 화면으로 최종 성공을 대체하지 않는다.
+
+AI 탐색 중 evaluator는 행동 제어에 관여하지 않는다. U `terminate`와 예산·시간·단계 한도·취소·모델/브라우저 오류는 `termination_reason`으로 보존한다. `verification`은 loop 종료 후 Brain/Slow를 정리하고 활성 브라우저의 새 최종 observation을 저장한 뒤 별도로 결정한다. 한 실행은 `agent_finished + success`, `max_steps + success`, `model_error + unknown`처럼 종료 원인과 평가를 독립적으로 가질 수 있다.
+
+각 `steps.jsonl` 행은 실행 중 판정하지 않아 `unknown/deferred_until_run_end`를 보유하고, 사후 결과로 과거 행을 덮어쓰지 않는다. `final_evaluation.json`은 termination step, final observation ID/URL/시각과 evaluator 결과를 연결한다. 최종 캡처/evaluator 실패는 unknown reason으로 남고 이전 관찰을 최종이라고 가장하지 않는다. 종료 뒤 evaluator 결과는 모델 입력이나 추가 행동으로 돌아가지 않는다. summary와 comparison session은 최종 verification·evaluator·final observation provenance를 소비한다. 공개 Decathlon은 현재 `detail_basic` 상품명·가격 범위만 판정한다. [#89 계약](tasks/89-u-termination-evaluation.md).
 
 ## 기능 점검
 
@@ -83,7 +114,13 @@ API 없는 시나리오는 `provider=scenario`, `execution_mode=scripted`, `cond
 
 공개 부분 프로필은 `partial=true`, `scope=visible_cards/detail_name_price`, `unchecked_fields`로 미검증 범위를 보존한다. `search_results`는 URL과 표시 이름만 확인하므로 입력/폼 제출 성공이 아니다. `filters_price`는 URL 상한과 표시 가격, `detail_basic`은 이름/가격만 확인한다. DOM 값의 누락·서로 다른 중복 값은 unknown이며 넓은 상세 필드 성공으로 바꾸지 않는다.
 
-키보드는 Enter/Escape/Tab/ArrowUp/ArrowDown/Space, scroll은 명시적 허용 후 ±900px이다. 신뢰된 시나리오 selector도 최신 관찰 registry에 들어 있는 목표에만 적용한다. 이동·스크롤 후에는 새 관찰을 발행하고 stale 목표를 거절한다. native select는 관찰한 옵션 값만 허용하며 custom combobox를 native select로 간주하지 않는다.
+AI 실행은 U의 click, mouse_click, type, raw_type, scroll(direction/amount), hover, select, clear, key_press(전역 또는 대상), goto_url, back, forward, refresh, new_tab, switch_tab, close_tab을 소비한다. 실행 전 허용 origin·최신 observation/tab·target capability·option membership gate는 없다. semantic ID나 탭이 실제 DOM/session에 없거나 Playwright가 작업을 실행할 수 없으면 실패를 기록한다. 이전 scripted ScenarioStep의 bounded `scroll_y` 계약은 호환을 위해 별도로 남긴다. scripted scenario는 자체 origin/read-only 보호를 사용한다.
+
+## 사후 설문
+
+설문은 질문지 schema(`questionnaire_id`, `title`, ordered questions)와 전체 append-only `memory.jsonl`을 모델 user 입력으로 전달한다. 입력 순서는 memory seq이며 최근 `memory_changes.jsonl`의 중요도 점수를 덮어쓴다. eviction 여부와 상관없이 모든 run 기억을 포함한다. 입력 trace 필드는 U와 같은 timestamp/kind/importance/content이며 raw action·evaluator 정답·verification은 넣지 않는다. Qwen 실행은 `persona-qwen`을 사용하며 provider/model/token/error는 공통 `llm_calls.jsonl`과 run summary에 기록한다. 비용 미확인은 null이며 0으로 추정하지 않는다. 예산에 맞지 않는 큰 입력은 요약·절단 없이 `budget_exceeded`로 끝낸다.
+
+모델 출력은 질문 순서·ID·객관식 보기·confidence를 검증한다. JSON/raw·파싱 결과·trace IDs/seq 범위·provider/model·실패는 `survey_result.json`, 소비 호환 질문/response 행은 성공 시 `survey.json`에 저장한다. 각 답은 `simulated_self_report`다. 설문·이유·자신감은 evaluator 결과, 사람 검토, 실제 사용자 발화 또는 과업 verification을 덮어쓰지 않는다. Batch survey는 모든 browser 세션 종료 이후 실행하며 run별 실패를 분리한다.
 
 feature_id, scenario_id, 시작 상태, 입력, expected_result, 판정 방법(code/AI-assisted/human), 결과(pass/fail/unknown/unsupported), evidence를 가진다. 검색·필터·정렬은 실행 전 정의한 조건으로 확인한다. AI 해석만 있는 판정은 확정 결과로 둔갑시키지 않는다.
 

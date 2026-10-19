@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio, hashlib, json, os, socket, threading, time, uuid
+import asyncio, json, os, socket, threading, time, uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -17,7 +17,6 @@ from .brain import Brain
 from .memory import MemoryStore
 from .slow_loop import ContinuousSlowLoop
 from .storage import write_json, JsonlWriter
-from .security import normalize_origin
 from .model_catalog import resolve_model
 
 
@@ -57,9 +56,6 @@ def load_study(path: str | Path):
     path=Path(path).resolve()
     raw=json.loads(path.read_text(encoding="utf-8"))
     config=StudyConfig.model_validate(raw)
-    start_origin=normalize_origin(config.start_url)
-    if start_origin not in config.allowed_origins:
-        raise ValueError("start_url origin must be listed in allowed_origins")
     persona_path=Path(config.persona_file)
     if not persona_path.is_absolute():
         # Resolve config-relative first; support repository-root paths as fallback.
@@ -148,7 +144,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         "execution_mode":"ai", "source_kind":"synthetic_fixture" if is_fixture else config.source_kind})
     steps=JsonlWriter(run_dir/"steps.jsonl");calls=JsonlWriter(run_dir/"llm_calls.jsonl");memory_writer=JsonlWriter(run_dir/"memory.jsonl");memory_change_writer=JsonlWriter(run_dir/"memory_changes.jsonl")
     brain_task_writer=JsonlWriter(run_dir/"brain_tasks.jsonl");brain_stage_writer=JsonlWriter(run_dir/"brain_stages.jsonl")
-    started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;seen={};last_obs=None;slow=None;brain=None
+    started=time.monotonic();termination="browser_error";verification="unknown";error_counts={};action_attempts=action_successes=step_count=back_count=0;previous_error=None;last_obs=None;slow=None;brain=None;brain_closed=False
     budget=BudgetManager(config.max_llm_requests,config.max_total_tokens)
     llm_elapsed_total=0
     def log_call(record):
@@ -198,122 +194,205 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 config.embedding_model, log_call, mode=mode, limit=config.memory_limit)
         return memory.retrieve_u(query, config.memory_limit, mode=mode)
     evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
+    final_observation_id=None
+    final_observation_url=None
+    final_observed_at=None
+    brain_shutdown_error=False
+    cancelled_error=None
     actual_headed=config.headed if headed is None else headed
     try:
         async with BrowserSession(actual_headed,config.viewport.width,config.viewport.height) as browser:
             executor=ActionExecutor(browser,config.allowed_origins,config.action_timeout_ms,config.settle_timeout_ms,allow_scroll=config.explicit_scroll)
-            await browser.set_allowed_origins(config.allowed_origins)
-            page=browser.active
-            await page.goto(config.start_url,wait_until="domcontentloaded",timeout=config.action_timeout_ms)
-            if not is_fixture:
-                try:
-                    await page.wait_for_function("document.body && document.body.innerText.trim().length > 500",
-                                                 timeout=min(6000,config.action_timeout_ms))
-                except Exception:
-                    pass
-            run_deadline=started+config.run_timeout_seconds
-            for _ in range(config.max_steps):
-                if stop_requested():termination="cancelled";break
-                if time.monotonic()>=run_deadline:termination="run_timeout";break
-                observation,registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
-                pre_observed_at=datetime.now(timezone.utc).isoformat()
-                last_obs=observation
-                executor.publish(registry)
-                evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
-                verification="unknown"
-                step_id=step_count+1
-                if stop_requested():
-                    step_count+=1
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "cancelled","Run was stopped after observation.")
-                    termination="cancelled";break
-                try:
-                    decision_started=time.monotonic()
-                    remaining=run_deadline-time.monotonic()
-                    if remaining<=0:
+            try:
+                page=browser.active
+                await page.goto(config.start_url,wait_until="domcontentloaded",timeout=config.action_timeout_ms)
+                if not is_fixture:
+                    try:
+                        await page.wait_for_function("document.body && document.body.innerText.trim().length > 500",
+                                                     timeout=min(6000,config.action_timeout_ms))
+                    except Exception:
+                        pass
+                run_deadline=started+config.run_timeout_seconds
+                for _ in range(config.max_steps):
+                    if stop_requested():termination="cancelled";break
+                    if time.monotonic()>=run_deadline:termination="run_timeout";break
+                    observation,registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                    pre_observed_at=datetime.now(timezone.utc).isoformat()
+                    last_obs=observation
+                    evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
+                    verification="unknown"
+                    step_id=step_count+1
+                    if stop_requested():
                         step_count+=1
                         write_unexecuted_step(step_id,observation,pre_observed_at,
-                            "run_timeout","Run deadline was reached before a model decision.")
+                            "cancelled","Run was stopped after observation.")
+                        termination="cancelled";break
+                    try:
+                        decision_started=time.monotonic()
+                        remaining=run_deadline-time.monotonic()
+                        if remaining<=0:
+                            step_count+=1
+                            write_unexecuted_step(step_id,observation,pre_observed_at,
+                                "run_timeout","Run deadline was reached before a model decision.")
+                            termination="run_timeout";break
+                        async with asyncio.timeout(remaining):
+                            if provider_name=="mock" and hasattr(provider,"set_observation"):
+                                provider.set_observation(observation)
+                            decision,decision_sources=await brain.forward(config.task,observation,step_id,retrieve_fast_memories)
+                        decision_ms=int((time.monotonic()-decision_started)*1000)
+                        memory.set_current_stage_memories([])
+                    except BudgetExceeded:
+                        step_count+=1
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            "budget_exceeded","Model request budget was exhausted.")
+                        termination="budget_exceeded";break
+                    except TimeoutError:
+                        step_count+=1
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            "run_timeout","Run deadline was reached during model decision.")
                         termination="run_timeout";break
-                    async with asyncio.timeout(remaining):
-                        if provider_name=="mock" and hasattr(provider,"set_observation"):
-                            provider.set_observation(observation)
-                        decision,decision_sources=await brain.forward(config.task,observation,step_id,retrieve_fast_memories)
-                    decision_ms=int((time.monotonic()-decision_started)*1000)
-                    memory.set_current_stage_memories([])
-                except BudgetExceeded:
+                    except Exception as exc:
+                        step_count+=1
+                        termination="model_error";previous_error={"code":"model_output_error","message":str(exc)[:400]}
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            previous_error["code"],previous_error["message"])
+                        error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
                     step_count+=1
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "budget_exceeded","Model request budget was exhausted.")
-                    termination="budget_exceeded";break
-                except TimeoutError:
-                    step_count+=1
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "run_timeout","Run deadline was reached during model decision.")
-                    termination="run_timeout";break
-                except Exception as exc:
-                    step_count+=1
-                    termination="model_error";previous_error={"code":"model_output_error","message":str(exc)[:400]}
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        previous_error["code"],previous_error["message"])
-                    error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
-                step_count+=1
-                if decision.action is None:
-                    evaluation=await evaluate_current(browser.active);verification=evaluation["verification"]
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"memory_ids":decision_sources,"verification":verification,"evaluation":evaluation,"timing_ms":{"llm":decision_ms}})
-                    termination="cancelled" if stop_requested() else "agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
-                    break
-                if stop_requested():
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "cancelled","Run was stopped before action execution.",
-                        decision=decision,memory_ids=decision_sources)
-                    termination="cancelled";break
-                if time.monotonic()>=run_deadline:
-                    write_unexecuted_step(step_id,observation,pre_observed_at,
-                        "run_timeout","Run deadline was reached before action execution.",
-                        decision=decision,memory_ids=decision_sources)
-                    termination="run_timeout";break
-                action_attempts+=1
-                if decision.action.type=="back": back_count+=1
-                action_result=await executor.execute(decision.action)
-                if action_result.ok:action_successes+=1
-                if action_result.error:
-                    previous_error=action_result.error;code=previous_error["code"];error_counts[code]=error_counts.get(code,0)+1
-                else:previous_error=None
+                    if decision.action is None:
+                        steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision":decision.model_dump(),"action":None,"result":None,"next_observation_id":observation.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"memory_ids":decision_sources,"verification":"unknown","evaluation":{"verification":"unknown","reason":"deferred_until_run_end","feature_checks":[]},"timing_ms":{"llm":decision_ms}})
+                        termination="cancelled" if stop_requested() else "agent_finished" if decision.finish.claim=="completed" else "agent_gave_up"
+                        break
+                    if stop_requested():
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            "cancelled","Run was stopped before action execution.",
+                            decision=decision,memory_ids=decision_sources)
+                        termination="cancelled";break
+                    if time.monotonic()>=run_deadline:
+                        write_unexecuted_step(step_id,observation,pre_observed_at,
+                            "run_timeout","Run deadline was reached before action execution.",
+                            decision=decision,memory_ids=decision_sources)
+                        termination="run_timeout";break
+                    action_attempts+=1
+                    if decision.action.type=="back": back_count+=1
+                    action_result=await executor.execute(decision.action)
+                    if action_result.ok:action_successes+=1
+                    if action_result.error:
+                        previous_error=action_result.error;code=previous_error["code"];error_counts[code]=error_counts.get(code,0)+1
+                    else:previous_error=None
+                    try:
+                        next_obs,next_registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                    except Exception:
+                        previous_error={"code":"post_observation_error","message":"Post-action observation could not be captured."}
+                        error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1
+                        evaluation={"verification":"unknown","reason":"post_observation_error","feature_checks":[]};verification="unknown"
+                        steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":None,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"verification":verification,"evaluation":evaluation,"error":previous_error,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms}})
+                        termination="browser_error";break
+                    post_observed_at=datetime.now(timezone.utc).isoformat()
+                    last_obs=next_obs
+                    summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
+                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":"unknown","evaluation":{"verification":"unknown","reason":"deferred_until_run_end","feature_checks":[]},"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
+                    if stop_requested():termination="cancelled";break
+                else:termination="max_steps"
+            except asyncio.CancelledError as exc:
+                # Keep the browser open for normal shutdown and a fresh final view.
+                cancelled_error=exc
+                termination="cancelled"
+                previous_error={"code":"cancelled","message":"Run was cancelled during exploration."}
+            if brain:
                 try:
-                    next_obs,next_registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                    await brain.close()
                 except Exception:
-                    previous_error={"code":"post_observation_error","message":"Post-action observation could not be captured."}
-                    error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1
-                    evaluation={"verification":"unknown","reason":"post_observation_error","feature_checks":[]};verification="unknown"
-                    steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":None,"pre_observed_at":pre_observed_at,"post_observed_at":None,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"verification":verification,"evaluation":evaluation,"error":previous_error,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms}})
-                    termination="browser_error";break
-                post_observed_at=datetime.now(timezone.utc).isoformat()
-                last_obs=next_obs
-                executor.publish(next_registry)
-                evaluation=await evaluate_current(browser.active);verification=evaluation["verification"]
-                fingerprint_state=next_obs.model_dump(exclude={"observation_id","capture","error","tabs"})
-                fingerprint=hashlib.sha256(json.dumps(fingerprint_state,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
-                action_key=json.dumps({k:getattr(decision.action,k) for k in ("type","target_id","text","option_value","url","target_tab_id") if getattr(decision.action,k) is not None},sort_keys=True,ensure_ascii=False)
-                repeated_key=fingerprint+action_key;seen[repeated_key]=seen.get(repeated_key,0)+1
-                if seen[repeated_key]>=config.repeated_state_action_limit:termination="stuck"
-                summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
-                steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":verification,"evaluation":evaluation,"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
-                if stop_requested():termination="cancelled";break
-                if termination=="stuck":break
-                if verification=="success":termination="verified_success";break
-            else:termination="max_steps"
+                    error_counts["slow_shutdown_error"]=error_counts.get("slow_shutdown_error",0)+1
+                    brain_shutdown_error=True
+                brain_closed=True
+            if brain_shutdown_error:
+                previous_error={"code":"slow_shutdown_error","message":"Brain/Slow shutdown failed; final evaluation was skipped."}
+                evaluation={"verification":"unknown","reason":"slow_shutdown_error","feature_checks":[]}
+                verification="unknown"
+                write_json(run_dir/"final_evaluation.json",{
+                    "termination_reason":termination,
+                    "termination_step_id":step_count or None,
+                    "observation_id":None,
+                    "previous_observation_id":last_obs.observation_id if last_obs else None,
+                    "url":None,
+                    "observed_at":None,
+                    "evaluation":evaluation,
+                })
+            else:
+                try:
+                    final_observation,_=await observe(browser,run_dir,config.max_observation_text,
+                                                       config.max_observation_elements,previous_error)
+                    final_observation_id=final_observation.observation_id
+                    final_observation_url=final_observation.url
+                    final_observed_at=datetime.now(timezone.utc).isoformat()
+                    last_obs=final_observation
+                    evaluation=await evaluate_current(browser.active)
+                    verification=evaluation["verification"]
+                    write_json(run_dir/"final_evaluation.json",{
+                        "termination_reason":termination,
+                        "termination_step_id":step_count or None,
+                        "observation_id":final_observation_id,
+                        "url":final_observation_url,
+                        "observed_at":final_observed_at,
+                        "evaluation":evaluation,
+                    })
+                except Exception:
+                    previous_error={"code":"final_observation_error","message":"Final page state could not be captured for independent evaluation."}
+                    error_counts["final_observation_error"]=error_counts.get("final_observation_error",0)+1
+                    evaluation={"verification":"unknown","reason":"final_observation_error","feature_checks":[]}
+                    verification="unknown"
+                    final_observation_id=None
+                    final_observation_url=None
+                    final_observed_at=None
+                    write_json(run_dir/"final_evaluation.json",{
+                        "termination_reason":termination,
+                        "termination_step_id":step_count or None,
+                        "observation_id":None,
+                        "previous_observation_id":last_obs.observation_id if last_obs else None,
+                        "url":None,
+                        "observed_at":None,
+                        "evaluation":evaluation,
+                    })
+    except asyncio.CancelledError as exc:
+        cancelled_error=exc
+        termination="cancelled"
+        previous_error={"code":"cancelled","message":"Run was cancelled before finalization completed."}
     except KeyboardInterrupt:
         termination="interrupted"
     except Exception as exc:
         termination="browser_error";previous_error={"code":"browser_error","message":str(exc)[:500]}
         error_counts["browser_error"]=error_counts.get("browser_error",0)+1
     finally:
-        if brain: await brain.close()
+        if brain and not brain_closed:
+            try:
+                await brain.close()
+            except Exception:
+                error_counts["slow_shutdown_error"]=error_counts.get("slow_shutdown_error",0)+1
+                brain_shutdown_error=True
+                previous_error={"code":"slow_shutdown_error","message":"Brain/Slow shutdown failed before final observation."}
+            brain_closed=True
         if server and server_started:server.close()
+    if not (run_dir/"final_evaluation.json").exists():
+        unavailable_reason=("slow_shutdown_error" if brain_shutdown_error else
+                            "cancelled_before_final_observation" if cancelled_error is not None else
+                            "final_observation_unavailable")
+        evaluation={"verification":"unknown","reason":unavailable_reason,"feature_checks":[]}
+        verification="unknown"
+        write_json(run_dir/"final_evaluation.json",{
+            "termination_reason":termination,
+            "termination_step_id":step_count or None,
+            "observation_id":None,
+            "previous_observation_id":last_obs.observation_id if last_obs else None,
+            "url":None,
+            "observed_at":None,
+            "evaluation":evaluation,
+        })
+    if cancelled_error is not None:
+        # Cancellation can also arrive while the browser context exits.
+        final_result=json.loads((run_dir/"final_evaluation.json").read_text(encoding="utf-8"))
+        final_result["termination_reason"]=termination
+        write_json(run_dir/"final_evaluation.json",final_result)
     elapsed=int((time.monotonic()-started)*1000)
-    if termination=="verified_success":verification="success"
-    elif verification=="failure":verification="failure"
     call_records=[json.loads(line) for line in (run_dir/"llm_calls.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     provider_usage={}
     for record in call_records:
@@ -340,11 +419,13 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
              "limits":{"max_steps":config.max_steps,"run_timeout_seconds":config.run_timeout_seconds},
              "cost":sum((entry["estimated_cost_usd"] or 0) for entry in provider_usage.values()) if all(entry["estimated_cost_usd"] is not None for entry in provider_usage.values()) else None,
              "provider_usage":provider_usage,"elapsed_ms":elapsed,"llm_ms":llm_elapsed_total,"back_count":back_count,"error_counts":error_counts,"last_error":previous_error,
-             "provider":provider_name,"model":model,"condition":persona_mode,"brain_status":brain_summary["status"],"brain":brain_summary,"slow_loop_status":slow.status if slow else "not_started","importance_scoring_status":"pending" if any(entry.importance is None for entry in memory.entries) else "scored","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None}
+             "provider":provider_name,"model":model,"condition":persona_mode,"brain_status":brain_summary["status"],"brain":brain_summary,"slow_loop_status":slow.status if slow else "not_started","importance_scoring_status":"pending" if any(entry.importance is None for entry in memory.entries) else "scored","started_at":now,"finished_at":datetime.now(timezone.utc).isoformat(),"last_observation_id":last_obs.observation_id if last_obs else None,"final_observation_id":final_observation_id,"final_observation_url":final_observation_url,"final_observed_at":final_observed_at,"final_evaluation_step_id":step_count or None}
     from .metrics import run_metrics
     step_records=[json.loads(line) for line in (run_dir/"steps.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     summary.update(measured)
     summary["metrics"]=run_metrics(run_dir,step_records,attempted_count=action_attempts)
     write_json(run_dir/"summary.json",summary)
     steps.close();calls.close();memory_writer.close();memory_change_writer.close();brain_task_writer.close();brain_stage_writer.close()
+    if cancelled_error is not None:
+        raise cancelled_error
     return run_dir,summary

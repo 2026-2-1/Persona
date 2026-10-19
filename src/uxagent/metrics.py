@@ -61,7 +61,7 @@ def aggregate_sessions(sessions):
             'rate': success / len(rows) if rows else None,
             'median_actions': successful_median('action_attempts'),
             'median_ms': successful_median('elapsed_ms'),
-            'median_population': 'verified_success',
+            'median_population': 'verification_success',
             'median_actions_sessions': sum(_count(s.get('action_attempts')) for s in successful),
             'median_ms_sessions': sum(_number(s.get('elapsed_ms')) for s in successful),
             'statuses': {status: sum((s.get('status') or 'unknown') == status for s in rows)

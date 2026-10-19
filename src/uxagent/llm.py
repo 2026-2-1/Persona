@@ -238,8 +238,27 @@ class MockProvider:
         self.fixture_observation = observation
 
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
-        payload = json.loads(messages[-1]["content"])
         system = messages[0]["content"]
+        if system.startswith("Answer the supplied questionnaire using only the supplied memory trace."):
+            questionnaire_text, trace_text = messages[-1]["content"].split("\n", 1)
+            questionnaire = json.loads(questionnaire_text)
+            memories = json.loads(trace_text)
+            answers = []
+            for question in questionnaire["questions"]:
+                if question["type"] == "multiple_choice":
+                    value = next((option for option in question["options"]
+                                  if option.lower() in {"n/a", "기억나지 않는다", "해당 없음"}),
+                                 question["options"][0])
+                else:
+                    value = "N/A" if not memories else "기록된 기억을 참고했습니다."
+                answers.append({"question_id": question["id"], "value": value,
+                                "reason": "로컬 fixture 응답이며 실제 GPU 설문 호출이 아닙니다."})
+            return json.dumps({"questionnaire_id": questionnaire["questionnaire_id"],
+                               "answers": answers, "meta": {"confidence_overall": 0.0}},
+                              ensure_ascii=False), {
+                "provider": "mock", "model": self.model, "input_tokens": 0, "output_tokens": 0,
+            }
+        payload = json.loads(messages[-1]["content"])
         if system.startswith("SLOW_STAGE:"):
             # Synthetic transport latency for the fixture provider only. The real
             # scheduler has no delay/rate gate; empty later outputs are valid U JSON.

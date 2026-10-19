@@ -55,6 +55,11 @@ def enrich_card_identity(card, detail):
                 observed["capture"] = {key: value for key, value in observed["capture"].items()
                                        if key != "screenshot_path"}
             linked_observations[observation_id] = observed
+    for observation_id in card.get("evidence_observation_ids", []):
+        observation = (detail.get("observations") or {}).get(observation_id)
+        if isinstance(observation, dict):
+            linked_observations[observation_id] = {key: value for key, value in observation.items()
+                if key in ("schema_version", "observation_id", "url", "title", "html", "error")}
     version_facts = {"card": facts, "linked_steps": linked_steps}
     if linked_observations:
         version_facts["linked_observations"] = linked_observations
@@ -76,6 +81,7 @@ def build_cards(detail):
     for check in checks:
         if check.get("status") != "fail":
             continue
+        final_id = (detail.get("final_evaluation") or {}).get("observation_id")
         cards.append({"issue_id":f"feature-{check['id']}","title":check["label"],
             "observed_behavior":f"{'점검 단계에서' if scripted else '종료 시'} '{check['label']}' 확인 조건이 충족되지 않았습니다.",
             "hypothesis":"과업 미완료, 화면 정보 부족 또는 에이전트 조작 실패 가능성을 검토하세요.",
@@ -83,6 +89,8 @@ def build_cards(detail):
             "task_id":check.get("task_id"),"reason":check.get("reason"),
             "feature_evidence":check.get("evidence",{}),"review_status":"needs_human_review",
             "classification":"unmet_checkpoint"})
+        if not scripted and check.get("step_id") is None and final_id:
+            cards[-1]["evidence_observation_ids"] = [final_id]
     if scripted:
         for step in steps:
             if step.get("error") or (step.get("result") or {}).get("error"):
@@ -116,7 +124,9 @@ def build_cards(detail):
 def export_report(detail, kind):
     safe = redact({"run":detail.get("run",{}),"config":detail.get("config",{}),
                    "summary":detail.get("summary"),"metrics":detail.get("metrics",{}),
+                   "final_evaluation":detail.get("final_evaluation"),
                    "wonder":detail.get("wonder",{}),
+                   "survey":detail.get("survey",{}),
                    "trace":detail.get("trace",[]),
                    "brain_stages":detail.get("brain_stages",[]),
                    "brain_tasks":detail.get("brain_tasks",[]),
@@ -134,21 +144,29 @@ def export_report(detail, kind):
         fields=["issue_id","title","review_status","observed_behavior","recommendation","acceptance","evidence_step_ids","verdict","note","reviewer_id","review_history","run_id","card_id","card_version"]
         brain=safe["brain"]
         include_brain=bool(brain.get("available"))
+        include_evidence=include_brain or isinstance(safe.get("final_evaluation"), dict) or safe["survey"].get("status") not in (None, "not_recorded")
         evidence_fields=["record_type","record_id","brain_record","stage_or_kind","status","text","observation_id","source_memory_ids"]
-        columns=fields + (evidence_fields if include_brain else [])
+        columns=fields + (evidence_fields if include_evidence else [])
         def safe_cell(value):
             value=str(value if value is not None else "")
             return "'"+value if value.lstrip().startswith(("=","+","-","@")) else value
         writer.writerow(columns)
         for card in safe["cards"]:
-            row={**card,"record_type":"candidate","run_id":safe["run"].get("run_id","")}
+            row={**card,"record_type":"candidate","run_id":safe["run"].get("run_id",""),
+                 "observation_id":",".join(card.get("evidence_observation_ids",[]))}
             writer.writerow([safe_cell(row.get(key,"")) for key in columns])
-        if include_brain:
+        if include_evidence:
             groups=[("stages","brain_stage"),("task_events","brain_task_event"),
                     ("memories","memory"),("memory_changes","memory_change"),
                     ("wonder_draws","wonder_draw"),("warnings","brain_warning")]
             evidence=[(record_type,record) for group,record_type in groups for record in brain.get(group,[])]
             evidence.extend(("step",record) for record in safe["trace"])
+            if isinstance(safe.get("final_evaluation"), dict):
+                evidence.append(("final_evaluation", safe["final_evaluation"]))
+            if safe["survey"].get("status") not in (None, "not_recorded"):
+                evidence.append(("survey", safe["survey"]))
+            if safe["wonder"].get("policy") == "u_every_cycle":
+                evidence.append(("wonder_summary", safe["wonder"]))
             for record_type,record in evidence:
                 row={"run_id":safe["run"].get("run_id",""),"record_type":record_type,
                      "record_id":record.get("record_id") or record.get("event_id") or record.get("memory_id") or record.get("draw_index") or record.get("step_id") or "",
@@ -167,16 +185,25 @@ def export_report(detail, kind):
     lines=[f"# Persona 결과: {safe['run'].get('run_id','')}", "", safe["notice"], f"실행 출처: {source}", "",
            f"과업: {safe['config'].get('task','')}", "", "## 결과", "",
            json.dumps(safe.get("summary"),ensure_ascii=False,indent=2)]
+    if isinstance(safe.get("final_evaluation"), dict):
+        lines.extend(["", "## 최종 독립 평가 provenance", "",
+                      json.dumps(safe["final_evaluation"], ensure_ascii=False, indent=2)])
     if safe["trace"]:
         lines.extend(["", "## 행동별 관찰·제안·실행·독립 평가", ""])
         for row in safe["trace"]:
             result = row.get("result") or {}
             execution = "실행됨" if result.get("ok") is True else "실패" if result.get("ok") is False else "미실행/미확인"
             lines.append(f"- 단계 {row.get('step_id','?')}: 관찰 {row.get('observation_id') or '없음'} → AI 제안 {json.dumps(row.get('action'), ensure_ascii=False)} → 도구 {execution} → 재관찰 {row.get('next_observation_id') or '없음'} → 독립 판정 {row.get('verification') or 'unknown'} ({(row.get('evaluation') or {}).get('reason') or '사유 미확인'})")
-    thoughts=(safe.get("wonder") or {}).get("thoughts",[])
-    if thoughts:
+    if safe["survey"].get("status") not in (None, "not_recorded"):
+        lines.extend(["", "## 종료 후 설문 기록", "",
+                      "AI가 생성한 자기보고이며 실제 참여자의 응답이나 사람 검토 판정이 아닙니다." if safe["survey"].get("data_type") == "simulated_self_report" else "이전 형식의 설문 기록입니다. 응답 생성 출처는 확인되지 않았습니다.",
+                      json.dumps(safe["survey"], ensure_ascii=False, indent=2)])
+    wonder=safe.get("wonder") or {}
+    thoughts=wonder.get("thoughts",[])
+    if thoughts or wonder.get("policy") == "u_every_cycle":
         lines.extend(["", "## AI가 생성한 가정된 생각", "",
-                      "실제 사용자 기억이나 검증된 선호가 아닙니다. 1%는 실제 시작된 Slow 작업당 실험 추첨률이며 인간 행동 확률이 아닙니다."])
+                      wonder.get("description") or "실제 사용자 기억이나 검증된 선호가 아닙니다.",
+                      f"응답 {wonder.get('responses',len(thoughts))}회 / 빈 응답 {wonder.get('empty_responses',0)}회 / 생각 {len(thoughts)}개"])
         lines.extend(f"- {thought.get('text','')} (기억 저장: {'예' if thought.get('stored') else '아니요'})"
                      for thought in thoughts)
     if not safe["cards"]:
@@ -185,7 +212,7 @@ def export_report(detail, kind):
         lines.extend(["", f"## {card['issue_id']}: {card.get('title','')}", "",
             f"카드 ID: {card.get('card_id', card['issue_id'])}", f"근거 버전: {card.get('card_version') or '미기록'}",
             f"관찰: {card['observed_behavior']}", f"가설: {card['hypothesis']}",
-            f"근거 단계: {card['evidence_step_ids']}", f"제안: {card['recommendation']}",
+            f"근거 단계: {card['evidence_step_ids']}", f"최종 관찰 근거: {card.get('evidence_observation_ids',[])}", f"제안: {card['recommendation']}",
             f"완료 조건: {card['acceptance']}", f"상태: {'판단 보류' if card.get('review_status') == 'deferred' else '사람 검토됨'} ({card.get('review_status')})" if card.get('review_status') != 'needs_human_review' else "상태: 사람 검토 전",
             f"판정: {card.get('verdict') or ''}", f"검토 메모: {card.get('note','')}",
             f"검토자: {card.get('reviewer_id') or ''}", f"검토 이력: {json.dumps(card.get('review_history',[]),ensure_ascii=False)}"])

@@ -1,6 +1,6 @@
 # 대시보드가 소유하는 GPU 세션
 
-2026-10-17 사용자 후속 요청으로 #85 구현에 추가했다. 기존 수동 SSH·Slurm 사용법을 유지하며, 비공개 GPU 설정을 둔 대시보드만 자동 할당한다. 2026-10-18 Qwen 단독 health200/persona-qwen과 작업19346 반환을 실제 확인했다. 임베딩·키 전용 인증·추론은 해당 smoke 범위가 아니다.
+2026-10-17 사용자 후속 요청으로 #85 구현에 추가했다. 기존 수동 SSH·Slurm 사용법을 유지하며, 비공개 GPU 설정을 둔 대시보드만 자동 할당한다. 2026-10-18 대시보드 자동 시작에서 Qwen HTTP200, 임베딩 CUDA·벡터 응답 및 작업 반환을 실제 확인했다. 생성형 Qwen 과업 추론은 별도 검증 대상이다.
 
 ## 시작과 종료
 
@@ -111,4 +111,4 @@ python3 -m uxagent dashboard
 
 근거: [Apple Keychain 저장 API](https://developer.apple.com/documentation/security/seckeychainaddgenericpassword(_:_:_:_:_:_:_:_:)), [Keychain 조회 API](https://developer.apple.com/documentation/security/seckeychainfindgenericpassword(_:_:_:_:_:_:_:_:)), [OpenSSH SSH_ASKPASS_REQUIRE](https://man.openbsd.org/ssh).
 
-2026-10-18 실제 검증: 사용자가 최초 저장한 뒤 Codex의 비대화형 시작에서 추가 입력 없이 HTTP200/status=ok/model=persona-qwen과 자기 Slurm 작업19347 반환을 확인했다. 키체인 저장/실제 설정/원자료는 공개 저장소에 포함하지 않는다. Qwen-only health 검사이며 embedding·생성 추론·데카트론 성공은 미검증이다.
+2026-10-18 실제 검증: macOS 키체인 자격증명과 비공개 설정으로 대시보드를 시작했다. Qwen `/health` HTTP200/status=ok/model=persona-qwen, sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2의 `cuda:0`·384차원 및 벡터 probe를 통과했고 Slurm 작업19357을 반환했다. 검증용 번들과 wrapper는 원격 사용자 홈·노드 임시 디스크에 두며 비밀번호·키체인 값은 출력하거나 저장소에 넣지 않았다. 생성형 Qwen 과업 성공은 검증하지 않았다.

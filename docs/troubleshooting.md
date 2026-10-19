@@ -1,6 +1,54 @@
 # 트러블슈팅과 회귀 확인
 
+## 2026-10-19 설문 실패 재시도와 이전 성공 파일
+
+- 증상: 성공 후 재시도가 실패해도 `survey.json`에는 이전 답변이 남았다. #100 reader는 이를 숨기지만 직접 파일 소비자는 실패를 알 수 없었다.
+- 원인: 생산 모듈이 성공 시 파일을 쓰고 실패 시에는 최신 상태 파일만 갱신했다.
+- 해결: 실패 결과를 저장할 때 이전 호환 답변 파일을 제거한다. 실패 원인/usage는 유지하고 다음 성공 시 새 답변을 생성한다.
+- 함께 확인할 회귀: provider 오류·JSON 오류·보기 위반·예산·민감 입력·빈 기억의 6개 실패와 각 실패 후 성공 복구, D reader와 summary 상태 일치.
+- 실제 검증: 신규 6개가 수정 전 실패했다. 수정 후 결과는 verification에 기록한다. 질문지·기억 범위·일반/페르소나 조건·성공 판정은 바꾸지 않는다.
+
+## 2026-10-19 실제 task 취소 후 결과 누락
+
+- 증상: `task.cancel()` 또는 asyncio CLI의 첫 Ctrl+C가 `summary.json`·`final_evaluation.json` 기록을 건너뛰었다.
+- 원인: `CancelledError`는 `Exception`이 아니어서 기존 예외 분류 뒤의 결과 저장 코드까지 도달하지 않았다.
+- 해결: 탐색 취소를 브라우저 종료 전에 분류하고 최종 관찰/평가를 수행한다. 시작/마무리 취소는 unknown 근거를 남기며 브라우저 종료 후 취소도 최종 종료 사유에 반영한다. writer 종료 뒤 원래 취소를 재전파한다.
+- 함께 확인할 회귀: 브라우저 진입·판단·행동·Brain close·최종 캡처·브라우저 종료의 6개 취소 지점, evaluator 순서, JSON/summary 일치, writer 종료, 비교 호출자의 취소 인식.
+- 실제 검증: 실제 runner와 가짜 I/O를 사용한 신규 6개가 수정 전 실패하고 수정 후 통과했다. 실제 GPU/브라우저 강제 종료 실험과는 구분한다.
+
+## 2026-10-19 Qwen 큰 화면의 hover와 select
+
+- 증상: 8,000자 초과 화면에서 hover 전용 semantic ID와 select의 실제 option 값이 모델 입력에서 사라졌다.
+- 원인: GPU projection의 요소 종류가 clickable/input/select에 한정됐고 옵션과 요소 상태를 직렬화하지 않았다.
+- 해결: hover 목록과 선택 옵션/상태를 포함하고 같은 짧은 ID 복원표를 사용한다. 원본 관찰과 실행 ID는 유지한다.
+- 함께 확인할 회귀: hover/select 제안부터 호스트 Action 변환, opaque 옵션 값, HTML 특수문자, disabled/checked/focused·href, 원본 관찰 불변, 기존 GPU 조각 인식과 다른 제공자 입력.
+- 실제 검증: 신규 2개가 수정 전 실패했다. 수정 후 집중 검사 결과는 verification에 기록한다. GPU 원격 호출이나 실제 사이트 과업 품질 검증은 포함하지 않는다.
+
+## 2026-10-19 Slow 생성물의 민감정보 저장
+
+- 증상: 호출 근거는 치환되지만 U Wonder/성찰의 민감정보 형태 응답이 단계·기억과 네 형식 출력에 남았다.
+- 원인: 새 U 단계 저장 경로가 기존 민감정보 검사를 거치지 않았다.
+- 해결: `_u_record`가 전체 파싱 응답을 저장 전에 검사한다. 문자열 목록의 뒤쪽 항목과 importance rationale도 같은 경계에서 거부한다.
+- 함께 확인할 회귀: reflection·wonder·importance × 비밀번호 패턴/환경 비밀값, 부분 기억 발행 금지, 실패 사건·실측 usage 보존, JSON/CSV/Markdown/HTML 비노출.
+- 실제 검증: 신규 6개가 수정 전 실패했다. 수정 후 결과와 인접 Slow/출력 검사는 verification에 기록한다. 실제 인증정보나 유료 모델은 사용하지 않는다.
+
+## 2026-10-19 비밀번호 type 대소문자
+
+- 증상: `type="PASSWORD"`/`"PassWord"` 입력의 실제 값이 관찰 HTML에 재삽입됐다.
+- 원인: 속성 복사에서는 DOM의 정규화된 type을 검사하지만 편집 가능 입력 판정과 구조화 값 생성은 대소문자를 구분했다.
+- 해결: 두 경로 모두 type을 소문자로 비교한다. 원래 페이지 값은 그대로 두고 관찰값만 제외/치환한다.
+- 함께 확인할 회귀: 소문자·대문자·혼합 표기, 초기 value·런타임 fill, parser 원본 반환·관찰 JSON·실제 DOM 값 보존 6개 조합.
+- 실제 검증: 이전 Chromium 합성 재현과 동일 소스임을 확인하고 회귀를 확장했다. 이번 로컬 브라우저 실행 요청은 자동 승인 검토의 모델 용량 부족으로 실행되지 않았다. 최종 CI 결과는 verification에 별도 기록한다.
+
 기존 테스트가 보호하는 사례다. 변경할 때 원래 증상과 함께 발생한 문제를 확인한다.
+
+## 2026-10-18 D/U 결과 불일치와 HTML 다운로드
+
+- 증상: U Wonder가 1% 추첨으로 보이고 빈 응답도 생각으로 집계됐다. 설문 답변은 D 화면/출력에 없었으며 최종 실패 카드가 이전 단계 화면만 가리킬 수 있었다. CLI review HTML은 로컬 호출 원문을 복사했다. 앱 내 브라우저의 HTML 파일 다운로드도 완료되지 않았다.
+- 원인: legacy 전용 소비 코드와 최신 생성 파일 계약의 차이, 최종 관찰을 카드 버전에서 제외한 연결, CLI의 별도 호출 직렬화, attachment 헤더 누락이다.
+- 해결: 공통 읽기 전용 projection·최종 관찰 ID/버전·공개 호출 projection·파일 응답 헤더를 연결했다. 최신 설문 실패/손상 때 구형 성공 파일로 fallback하지 않는다. 최종 평가/설문 없는 구형 실행의 빈 패널은 숨겨 기존 배치를 유지한다.
+- 함께 확인할 회귀: 구형 Wonder의 stage-only 저장 기록, 제거된 생각, 빈 생각, 설문 재실패/손상/출처, 근거 변경 후 판정 비적용, 자동 갱신 초안/이력, 모바일 390px와 기존 desktop 배치, 네 형식 파일의 같은 검토 버전.
+- 실제 검증: 실패 재현 후 단위/브라우저 검사와 실제 합성 실행의 저장·새로고침·앱 내 브라우저 네 형식 다운로드를 대조했다. 세부 결과와 선행 PR 제한은 [D/U 검증 기록](handoffs/2026-10-18-d-u-integration.md)을 따른다.
 
 ## 2026-10-16 최신 Brain/D 통합의 기록 누락·중복
 
@@ -17,9 +65,11 @@
 | 최신 화면이 안 보임 | step 연결 전 observation, 중첩 runs 검색 | test_latest_observation_and_nested_run_are_visible |
 | 실패를 완료로 표시 | subprocess 결과와 run 종료 사유 전달 | test_batch_reports_browser_failure_instead_of_completion |
 | 실패 로그에 키 노출 | 서버 오류 메시지에서 값 제거; API 상태에 내부 필드 제외 | test_failed_job_explains_error_without_exposing_key |
-| 잘못된 대상/외부 이동 | 최신 observation만 허용; 허용 origin 검사 | test_observation_hides_hidden_text_and_stale_ids_are_rejected |
-| 잘못된 모델 완료/무한 반복 | 독립 evaluator; 같은 상태 행동 반복 종료 | test_runner_distinguishes_false_finish_and_repeated_state |
+| 이전 대상 ID / 외부 이동 | AI ActionExecutor에서 registry·origin 사전 차단 제거; 실제 DOM·Playwright 실패는 유지 | test_observation_hides_hidden_text_and_old_observation_ids_do_not_authorize_targets; test_executor_supports_navigation_redirect_history_and_tabs_across_origins |
+| 모델 종료가 성공과 혼동되거나 반복 상태가 일찍 멈춤 | 탐색 중 evaluator 없음; U terminate/자원 한도 종료 후 새 최종 관찰 평가 | test_intermediate_success_does_not_end_exploration_and_final_eval_follows_terminate; test_final_capture_failure_is_unknown_and_does_not_reuse_a_stale_observation |
 | 한도 초과 추가 요청 | reserve/settle 공통 예산 | test_mock_run_stops_when_request_budget_is_exhausted |
+| 설문 답이 고정되거나 실행 판정과 같은 값으로 바뀜 | 질문지+전체 trace payload, strict response validation, verification 불변 | test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_provenance; test_semantically_invalid_json_is_not_rendered_as_a_successful_survey |
+| batch 설문 한 건이 다음 결과를 지움 | 전체 세션 종료 후 run별 사후 실행·오류 격리·usage 누산 | test_batch_runs_every_session_before_surveys_and_keeps_later_results_after_one_survey_fails |
 
 ## 아직 검증/수정할 후보
 
@@ -176,6 +226,14 @@
 - 증상: codex 브랜치 push 후 D-03/#49와 D-04/#50에 검사 결과가 없었다.
 - 원인: push 분기 목록에 codex/**가 없고 두 PR의 base도 pull_request 대상인 prototype/main이 아니었다.
 - 해결: push 대상에 codex/**를 추가한다. 기존 검사·권한·승인 조건은 유지한다. D-03에 반영한 뒤 D-04로 병합해 각각 push 이벤트 검사를 확인한다.
+
+## 2026-10-18 #89 탐색 종료와 사후 평가 분리
+
+- 증상: 행동 뒤 evaluator의 `success`가 모델을 중간 종료했고, 반복 fingerprint도 U 종료 선언 전 탐색을 끝냈다. `verification`과 `termination_reason`이 함께 바뀌어 자원 한도와 성공 판정을 구분하기 어려웠다.
+- 원인: evaluator 호출과 repeated-state 정책이 탐색 loop 안에 종료 조건으로 있었다.
+- 해결: loop 중 evaluator/repeated-state 종료를 제거한다. Brain/Slow를 정리하고 browser context가 열린 동안 새 최종 observation을 저장한 뒤 독립 evaluator를 한 번 호출한다. step 기록은 unknown/deferred 상태로 보존하고 최종 provenance를 별도 JSON·summary·comparison에 둔다. 최종 캡처 실패 시 이전 화면을 재사용하지 않고 unknown을 남긴다.
+- 함께 확인할 회귀: 중간 success 이후 계속 탐색, terminate 뒤 평가 1회, timeout·cancel·model/browser error 사유 유지, stale final 캡처 거부, evaluator 예외, 최종 observation ID·PNG·URL, 비교/집계의 독립 verification.
+- 실제 검증은 [verification.md](verification.md)의 #89 기록을 따른다. fake provider는 라이브 Qwen·Decathlon 성공을 뜻하지 않는다.
 - 검증: repo/staged/diff 검사와 실제 GitHub Actions의 Ubuntu/Windows 결과를 확인한다. 실행 결과는 PR의 해당 커밋 검사에서 확인한다.
 
 ## D-05: 문서 내보내기의 현재 근거 버전 누락
@@ -438,3 +496,27 @@
 - 해결: macOS gpu-password-setup으로 OS 키체인 저장, 별도 askpass helper로 SSH 자동 전달을 제공한다. 원격 공개 키 등록은 필요하지 않다.
 - 회귀: 명령 인자/환경/JSON 비밀 제외, 확인 값 불일치·빈 값 거부, 알 수 없는 host 자동 승인 금지, 기존 키/수동 인증·소유 Slurm 반환을 함께 확인한다.
 - 실제 검증: 모듈 부재 실패 후 관련36개 통과. 네이티브 키체인 임시 테스트 항목 생성/조회/갱신·실제 helper pipe 전달·비밀번호 외 prompt 거부·항목 삭제를 확인했다. 사용자가 자신의 터미널에서 저장한 뒤, Codex의 비대화형 실행에서 추가 입력 없는 실제 Qwen health200/persona-qwen·작업19347 반환을 확인했다. 비밀번호 본문은 출력/열람하지 않았다.
+
+## 2026-10-18 #90 호출 근거·최종 평가 출력 호환
+
+- 증상: U Fast의 `feedback`/`thought`와 종료 후 독립 판정은 생성되지만, U 호출별 요청·원본 응답·검색 결과를 기존 `llm_calls.jsonl`/출력과 연결해 재현할 공통 형식이 없었다. 새 최종 평가 JSON도 기존 상세 조회에서 직접 읽지 않았다.
+- 원인: 호출 기록은 사용량 중심이고, 로컬 raw call evidence와 외부 API/내보내기 경계가 정해져 있지 않았다.
+- 해결: Fast/Slow/설문 호출에 schema v2 call id·method·시각·request/response/retrieve_result를 로컬에 남긴다. 인증정보로 판단되는 값은 원문 전체를 치환한다. Dashboard API는 call raw evidence를 빼고, 내보내기는 final evaluation provenance만 추가한다. 구형 run에 final JSON이 없으면 null로 읽는다.
+- 함께 확인할 회귀: feedback stage와 thought 출처, legacy Brain/Memory 기록·symlink/오염 행, raw evidence local-only, secret 치환, final evaluation detail·네 형식 출력, 부분/누락 usage와 Qwen model/provider 필드.
+- 실제 검증 결과는 [#90 통합 검증](verification.md#2026-10-18-90-u-계약-로그-출력-통합)에 기록한다. 라이브 Qwen·Decathlon 호출은 포함하지 않았다.
+
+## 2026-10-18 공개 데카트론 Qwen 첫 요청 `Prompt too long`
+
+- 증상: p001~p005의 실행 `20261018T144435-e83805e8` 등 다섯 건이 모두 첫 `perception` 호출에서 `provider_http_400: {"error": "Prompt too long"}`으로 종료됐다. 실행 이유는 `model_error`, 독립 판정은 `unknown`이었다.
+- 원인: 첫 화면 관찰 HTML은 111,443~125,629자였다. 측정한 125,629자 화면에서 `parser-semantic-id` 속성만 약 96,000자이고 실제 텍스트는 약 1,000자였다. U 전체 HTML 입력과 3,542자 perception 지시가 Qwen 서버 입력 한도를 넘었다. ID만 줄인 19,082자 입력은 HTTP 200을 받았으나 서버가 요청한 1,200 출력토큰 대신 512토큰에서 끊어 JSON이 불완전했다.
+- 해결: GPU의 8,000자 초과 화면에 한해 보이는 텍스트와 클릭·입력·선택 대상 목록을 모델에 전달한다. 모델용 짧은 ID는 제안 뒤 실제 semantic ID로 되돌린다. 큰 화면 perception은 서버가 완료할 수 있는 짧은 JSON 관찰을 요청한다. 원본 observation·registry·스크린샷은 보존한다. 이는 U의 전체 문구 서술과 다르다.
+- 함께 확인할 회귀: 작은 화면과 다른 제공자의 U 원본 입력, Qwen 행동 대상 ID 복원, feedback의 화면 입력, 독립 평가의 `unknown` 보존, 저장된 관찰 원본과 모델 요청의 구분.
+- 실제 검증: 실패한 화면의 모델 입력이 125,629자에서 5,493자로 줄었다. 실제 GPU Qwen에서 첫 perception, 이어지는 plan과 action 제안이 모두 유효한 응답으로 완료됐다. 같은 화면의 실제 브라우저 실행은 한 단계와 두 단계 모두 행동 시도 수만큼 성공했다. 제한 없는 두 단계에서는 후속 feedback·perception·plan·decision과 Slow 포함 요청 41회를 기록했고 `Prompt too long`은 없었다. 두 검사의 독립 판정은 `unknown`이며 전체 상품 과업 성공을 뜻하지 않는다. 상세 테스트 결과는 [검증 기록](verification.md)을 따른다.
+
+## 2026-10-19 큰 화면의 단일 짧은 관찰이 세부 정보를 놓치는 문제
+
+- 증상: 위 Qwen 호환 경로는 5,493자 모델 입력 전체를 한 번에 최대 180자 관찰로 줄였다. 화면의 다른 상품·가격·옵션이 관찰에서 빠질 수 있다.
+- 원인: 실제 서버가 긴 출력을 512토큰에서 중단하므로 출력만 늘려서는 유효한 JSON과 모든 문구를 동시에 얻을 수 없다.
+- 해결: perception에는 원본 HTML에서 모델이 읽을 필요 없는 내부 parser 속성만 제거한 자료를 사용한다. 이를 1,400자 이하 조각으로 모두 나눠 관찰하고, 단계별 결과를 다시 나눠 한 결과가 될 때까지 합친다. 단계와 조각 번호, 입력 조각과 응답은 기존 비공개 모델 호출 로그에 남긴다. 빈 결과·과도하게 긴 결과는 조용히 버리지 않는다.
+- 함께 확인할 회귀: 첫 단계의 모든 조각 포함, 합치기 단계의 수렴, 작은 화면과 다른 제공자의 U 입력, 행동 대상 원래 ID 복원, 모델 비용·호출 한도, 요약 중 문구 누락. 반복 요약 자체의 정보 손실은 여전히 가능하며 feedback/행동의 큰 화면 입력은 기존 텍스트·대상 목록을 사용한다.
+- 실제 검증: [검증 기록](verification.md)의 2026-10-19 항목을 따른다. 현재 로컬 GPU 서버는 연결되지 않아 실제 Qwen의 다단계 응답 품질은 미확인이다.

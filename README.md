@@ -1,5 +1,9 @@
 # Persona / UXAgent Prototype
 
+2026-10-19 검토 후속에서 비밀번호 관찰값·Slow 생성물 보호, GPU 조작 정보, 취소 결과 저장, 설문 재시도 5건을 문제별 커밋으로 수정했습니다. 최신 #99와 기존 #100의 D 변경을 보존했습니다. [수정 범위·PR 중복 정리·검증](docs/handoffs/2026-10-19-review-fixes.md)을 참고하세요. 작업 브랜치의 수정과 prototype 병합 상태는 구분합니다.
+
+2026-10-18 D 후속 작업 브랜치는 U 종료 후 평가·설문·Wonder를 기존 검토와 네 형식 출력에 연결합니다. 최종 화면 근거, 새로고침 후 판정 유지, 구형 기록 호환과 실제 다운로드 결과는 [D/U 통합 검증](docs/handoffs/2026-10-18-d-u-integration.md)을 따릅니다. 원격 `prototype`에는 #91–#94가 병합됐고 #95–#99는 Draft 대기 중입니다. 이 문서의 작업 브랜치 구현과 원격 병합 완료를 구분합니다.
+
 개발 통합 기준은 `prototype`입니다. C/D 검토·출력과 A Brain·Slow·메모리 변경, 협업 문서와 B OpenAI 형식 호환을 원본 PR 단위로 squash 통합합니다. [병합 절차·검증·남은 제한](docs/handoffs/2026-10-16-prototype-merge-queue.md)을 따릅니다.
 
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.
@@ -8,15 +12,17 @@
 
 2026-10-17 Qwen 적용 준비본은 로컬 전체 **426개** 검사와 doctor·무료 Mock 통합을 통과했습니다. 실제 GPU/공개 데카트론은 이번에 재호출하지 않았으며, 원격 CI 및 과업 성공과 구분합니다. 상세 환경과 한계는 [검증 기록](docs/verification.md)을 따릅니다.
 
-#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·종료 후 평가의 후속 전환은 남아 있습니다.
+#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·질문지 설문은 #84–#88에서 연결했고, #89에서 AI 종료와 최종 독립 평가를 분리했습니다. #90은 로컬 호출 근거와 개인정보 경계, final evaluation·legacy reader 통합을 추가했습니다. [최종 통합 계약과 검증 상태](docs/tasks/90-u-transition-08.md)를 확인하세요.
 
 macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 번 `python3 -m uxagent gpu-password-setup`을 실행합니다. 로그인·계산 서버 비밀번호는 OS 키체인에 저장되며 이후 대시보드 실행마다 입력하지 않습니다. [저장 방식](docs/tasks/gpu-dashboard-lifecycle.md#macos-서버-비밀번호-저장과-자동-접속)을 참고하세요.
 
 SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent gpu-key-setup`으로 등록합니다. 이후 대시보드는 전용 키/agent를 사용합니다. [설정과 초기 인증](docs/tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증)을 참고하세요.
 
-#85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. SSH 인증과 원격 임베딩 최초 준비 후 사용할 수 있습니다. 실제 GPU/Slurm 검증은 남아 있으며 테스트와 구분합니다.
+#85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. 실제 임베딩 GPU health·벡터 응답과 Slurm 반환을 확인했습니다.
 
-#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. 실제 GPU embedding·U 검색 공식·DOM/전체 행동·종료 후 평가는 후속입니다.
+#86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다. #87은 [U 행동 계약](docs/tasks/87-u-actions.md)에 따라 전체 dispatcher와 AI 경로 접근 정책을 연결합니다.
+
+#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85 GPU embedding·U 검색, #86 DOM 관찰, #87 U 행동 집합, #88 사후 설문, #89 종료 후 평가가 연결됐고 전체 호환 검증은 #90 후속입니다.
 
 ## 빠른 시작 (Windows)
 
@@ -52,6 +58,8 @@ macOS/Linux 설치와 개발 검사는 [개발 안내](docs/development.md)를 �
 GPU 서버의 `persona-qwen` 모델을 사용하려면 먼저 원격 `api_server.py`와 SSH 터널을 실행하고 `curl http://127.0.0.1:8000/health`로 확인합니다. 대시보드 3단계에서 **GPU 서버 — Qwen3.5-9B → 연결 확인**을 선택하면 키 없이 실제 채팅 요청으로 확인합니다. CLI는 `--provider gpu`를 사용합니다. 기본 채팅 주소는 `http://127.0.0.1:8000/v1/chat/completions`이며, 다른 로컬 포트로 터널을 열었다면 `PERSONA_QWEN_API_URL`에 전체 채팅 주소를 설정합니다. GPU 할당과 터널은 사용 중 유지해야 합니다. [실행 순서](docs/development.md#gpu-서버-qwen-연결)를 참고하세요.
 
 기본 합성 사이트도 로컬 8000번 포트를 사용합니다. 합성 사이트에서 GPU 모델을 시험할 때는 터널의 로컬 포트를 8001 등 다른 번호로 열고 `PERSONA_QWEN_API_URL`을 그 포트로 맞춥니다. 공개 사이트 설정인 `configs/study-decathlon-live.json`은 이 충돌이 없습니다. GPU 모델의 실제 비용은 서버 응답만으로 알 수 없으므로 비용 미확인으로 기록합니다.
+
+Qwen 서버는 공개 데카트론의 큰 첫 화면 HTML을 그대로 받으면 `Prompt too long`으로 거절합니다. 큰 화면의 인식은 원본 HTML에서 내부 parser 속성만 제외하고 모든 조각을 나눠 읽은 뒤, 각 관찰을 다시 합치는 과정을 한 결과가 남을 때까지 반복합니다. 원본 관찰과 실행용 semantic ID는 보존하며 조각별 요청·응답은 비공개 실행 로그에 남깁니다. 반복 요약은 모든 문구 보존을 보장하지 않으며, 이 Qwen 호환 경로는 논문 UXAgent의 전체 HTML 설명과 다릅니다. 과업 성공은 별도 평가로 확인해야 합니다.
 
 대시보드 3단계에서 GPU 서버 / OpenAI / Claude / Gemini / Jev+Gemini를 선택하고 **연결 확인**을 누릅니다. GPU 서버는 SSH 터널을 사용하며 키 입력이 필요 없습니다. 다른 제공자는 API 키가 필요하고 Jev는 Gemini 연결도 필요합니다. 연결 확인은 작은 실제 요청을 보냅니다. 키는 서버 프로세스 메모리에만 보관하고 브라우저 저장소·원자료·저장소에 쓰지 않습니다. 서버 재시작 시 다시 연결해야 합니다. 로컬 `.env`로 설정해도 되며 프로세스의 기존 값을 덮어쓰지 않습니다. `.env.example`에는 빈 변수만 있습니다.
 
@@ -90,7 +98,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 .venv/Scripts/python.exe -m uxagent compare --study configs/study.json --personas runs/personas/personas.jsonl --provider mock --repetitions 1
 ```
 
-관찰·실행 원자료는 Git에서 제외된 `runs/` 아래에 저장합니다. 비교 실험은 `runs/experiments/<id>/experiment.json`과 대응 실행 기록을 생성합니다. `review`, `survey`, `interview` CLI도 유지하며 기존 설문·인터뷰는 기록 기반 템플릿입니다.
+관찰·실행 원자료는 Git에서 제외된 `runs/` 아래에 저장합니다. 비교 실험은 `runs/experiments/<id>/experiment.json`과 대응 실행 기록을 생성합니다. 설문은 질문지(`configs/survey.json`)와 전체 누적 기억 trace로 실행 후 GPU Qwen 응답을 만들며 batch에서는 모든 브라우저 세션 뒤에 수행합니다. `python3 -m uxagent survey --run runs/<run-id> --provider gpu`로 단독 실행할 수 있습니다. 결과는 `simulated_self_report`이고 실제 사람 증언이나 독립 성공 판정이 아닙니다. `review`와 `interview` 경로는 별개로 유지합니다.
 
 [검증 기록](docs/verification.md)에서 실제 확인 범위를 확인하세요. CI는 Windows/Python 3.13과 Ubuntu/Python 3.11의 mock·테스트만 실행하며 라이브 API 키를 사용하지 않습니다.
 
@@ -115,7 +123,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 
 모의 행동·응답은 실제 사용자 증언이나 인간 행동 재현의 증거가 아닙니다. 문제 후보는 사람 검토 전이며, 후보가 없다고 사이트에 문제가 없다는 뜻도 아닙니다. 비교의 mock 결과는 시스템 흐름 검증용이고 페르소나 효과 측정 결과가 아닙니다.
 
-viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM·password 입력은 미지원입니다. 제한된 keypress와 명시적으로 활성화한 최대 ±900px scroll을 지원합니다. custom combobox는 관찰된 클릭/키보드/option 요소만 조작하며 native select와 같은 범용 지원을 보장하지 않습니다. 외부 확인 조건은 특정 화면 상태를 확인하며 모든 사이트 기능이나 실제 상품 데이터의 정답을 보장하지 않습니다. 최종 화면의 점검 결과는 실행 전체의 모든 중간 상태를 검증한 결과와 구분합니다. Brain은 모든 실제 AI 실행에 Fast·Slow를 구성합니다. Slow는 단일 worker에서 비동기로 돌며 대기열 제한은 없고, 실행 종료 시 남은 작업은 취소합니다. Wonder는 기본 활성화되며 시작된 Slow 작업마다 1% 추첨 후 별도 비동기 요청으로 가정된 생각을 만듭니다. `enable_wonder=false`로 끄고 `wonder_seed`로 추첨을 재현할 수 있습니다. 일반 AI 조건에는 공통 제약만 전달합니다. 새 기억은 미산정 상태로 저장하고 Slow가 공통 예산을 써서 1~10점 중요도를 산정합니다. 산정 전 또는 실패 후에도 검색할 수 있습니다. Fast 계획·행동 결정과 Slow 성찰은 서로 다른 기억 검색 우선순위를 사용하며 현재 관찰·계획은 별도로 전달합니다. 활성 기억 상한을 지키면서 현재 단계와 비동기 출처를 보호하고 제거 이유를 기록합니다. 상한 10·64의 mock 실행으로 원본 기억과 점수·제거·출처 기록을 함께 검증합니다.
+viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM은 완전히 처리하지 않습니다. U action 실행 전 AI 경로의 allowed-origin·최신 observation/registry·capability 제한은 제거됐습니다. 모델이 제안한 URL 이동도 브라우저에서 시도하며 Playwright 실패는 도구 오류로 남깁니다. `allowed_origins`는 이전 study 파일의 호환 입력이고 scripted offline scenario는 별도 origin/read-only 경계를 유지합니다. 예산·timeout·사용자 stop, GPU API URL·local server bind·파일 경로·인증정보 보호는 유지합니다. custom combobox의 범용 지원을 보장하지 않으며 실제 Qwen 생성/데카트론 과업 성공은 별도 검증 대상입니다.
 
 2026-10-11 공개 데카트론의 사전 지정 검색 결과 → 8만원 상한 → 킵코어 상세 79,900원 부분 점검을 실제 Python 실행기에서 확인했습니다. 홈페이지 한글 검색 폼 제출은 별도 시도에서 미확인이었습니다. 색상·사이즈·재고·픽업·전체 상품 목록은 성공 범위에 포함하지 않습니다. 상세 결과는 [검증 기록](docs/verification.md)에 남깁니다.
 

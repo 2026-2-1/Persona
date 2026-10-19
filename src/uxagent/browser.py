@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from importlib.resources import files
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
-from .security import origin_allowed
 
 
 class BrowserSession:
@@ -14,12 +14,13 @@ class BrowserSession:
         self.context: BrowserContext | None = None
         self.pages: list[Page] = []
         self.active: Page | None = None
-        self.blocked_navigations: list[str] = []
 
     async def __aenter__(self):
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=not self.headed)
         self.context = await self.browser.new_context(viewport={"width": self.width, "height": self.height})
+        init_script = files("uxagent").joinpath("parser/initscript.js").read_text(encoding="utf-8")
+        await self.context.add_init_script(init_script)
         page = await self.context.new_page()
         self.pages = [page]
         self.active = page
@@ -40,17 +41,6 @@ class BrowserSession:
         self.active = page
         await page.bring_to_front()
 
-    async def set_allowed_origins(self, allowed_origins: list[str]):
-        async def guard(route):
-            request = route.request
-            main_document = request.is_navigation_request() and request.frame.parent_frame is None
-            if main_document and not origin_allowed(request.url, allowed_origins):
-                self.blocked_navigations.append(request.url)
-                await route.abort()
-            else:
-                await route.continue_()
-        await self.context.route("**/*", guard)
-
     async def __aexit__(self, exc_type, exc, tb):
         if self.context:
             await self.context.close()
@@ -61,18 +51,31 @@ class BrowserSession:
 
 
 async def wait_for_settle(page: Page, timeout_ms: int) -> bool:
-    """Wait for a quiet DOM window, bounded even when analytics keep networking active."""
+    """Wait for network activity and DOM changes to settle within one bounded deadline."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(0, timeout_ms) / 1000
     try:
         await page.wait_for_load_state("domcontentloaded", timeout=min(timeout_ms, 1000))
     except Exception:
         pass
     try:
-        await page.evaluate("""async (limit) => await new Promise(resolve => {
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return False
+        network_idle = await asyncio.wait_for(page.evaluate("""async ({idleMs, limitMs}) => {
+          const activity = window.__uxagentNetworkActivity;
+          return activity ? activity.waitForIdle(idleMs, limitMs) : true;
+        }""", {"idleMs": 180, "limitMs": max(1, int(remaining * 1000))}), timeout=remaining)
+        if not network_idle:
+            return False
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return False
+        return await asyncio.wait_for(page.evaluate("""async (limit) => await new Promise(resolve => {
           let timer, hard, done=false; const finish=v=>{if(!done){done=true;clearTimeout(timer);clearTimeout(hard);observer.disconnect();resolve(v)}};
           const observer=new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(()=>finish(true),180)});
           observer.observe(document,{subtree:true,childList:true,attributes:true,characterData:true});
           timer=setTimeout(()=>finish(true),180); hard=setTimeout(()=>finish(false),limit);
-        })""", timeout_ms)
-        return True
-    except Exception:
+        })""", max(1, int(remaining * 1000))), timeout=remaining)
+    except (Exception, asyncio.TimeoutError):
         return False

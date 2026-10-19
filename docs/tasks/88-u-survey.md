@@ -36,6 +36,7 @@ python3 -m uxagent batch --study configs/study-decathlon-live.json \
 
 - 모델은 U JSON (`questionnaire_id`, ordered `answers`, `meta.confidence_overall`)으로 응답한다. 객관식은 제공된 보기 안에 있어야 한다. JSON 파싱·필드·질문 ID·보기 검증이 실패하면 raw 응답을 보존하고 `survey.json` 성공 결과로 쓰지 않는다.
 - 기존 `survey.json`은 질문/response 목록을 유지한다. 모델 생성 value/reason, `simulated_self_report`, memory IDs·step 출처를 추가한다.
+- 2026-10-19 후속: 재시도가 실패하면 이전 성공의 `survey.json`을 제거한다. 최신 실패 상태·원인은 `survey_result.json`과 summary에 남기고, 이후 성공하면 새 답변 파일을 다시 만든다. D reader의 실패 우선 처리와 별개로 직접 파일 소비자도 오래된 답변을 최신 결과로 읽지 않게 한다.
 - `survey_result.json`은 상태, 원본/파싱 응답, 질문지, provider/model, usage, memory 범위와 IDs/seq, 시각, 오류를 보존한다. 민감한 입력/모델 출력은 보내거나 저장하지 않고 generic 오류로 분류한다.
 - 설문 시도는 `llm_calls.jsonl`에 module=`survey`로 추가되고 `summary.json`의 공통 request/token/usage/cost 기록을 갱신한다. Qwen 비용은 가격 미확인인 만큼 `null`이며 0으로 바꾸지 않는다.
 - 설문 답은 `summary.verification`이나 evaluator 결과를 변경하지 않는다. 사람 검토·인터뷰 경로도 바꾸지 않는다.

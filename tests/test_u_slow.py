@@ -60,6 +60,50 @@ def make_slow(provider=None, *, capacity=64, budget=None, embedding_model=None, 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["reflection", "wonder", "importance"])
+@pytest.mark.parametrize("credential", ["password_pattern", "environment_secret"])
+async def test_u_slow_rejects_sensitive_output_before_stage_memory_or_export(stage, credential, monkeypatch):
+    from uxagent.reports import export_report
+
+    marker = "synthetic-review-output-marker"
+    if credential == "environment_secret":
+        monkeypatch.setenv("PERSONA_TEST_API_KEY", marker)
+    else:
+        marker = "password=" + marker
+    slow, store, provider, tasks, stages, calls, changes = make_slow()
+    original = store.append("observation", "합성 페이지", [1], ["obs-safe"])
+    slow.persona, slow.intent, slow.observation_id = {}, "합성 과업", "obs-safe"
+    slow.plan_getter = lambda: "합성 계획"
+
+    async def generate(_stage, _payload):
+        return {"reflection": {"insights": ["안전한 성찰", marker]},
+                "wonder": {"thoughts": ["안전한 생각", marker]},
+                "importance": {"score": 8, "rationale": marker}}[stage]
+
+    provider.hook = generate
+    operation = {"reflection": slow.reflect, "wonder": slow.wonder,
+                 "importance": slow.update_memory}[stage]
+    with pytest.raises(ValueError, match="sensitive_input_rejected"):
+        await operation()
+    assert stages.rows == []
+    assert [entry.memory_id for entry in store.entries] == [original.memory_id]
+    assert store.entries[0].importance is None
+    assert changes.rows == []
+    assert any(row["status"] == "failed" and row["kind"] == stage for row in tasks.rows)
+    assert slow.budget.requests == 1 and slow.budget.tokens == 6
+    assert calls.rows[0]["evidence_redacted"] is True
+    persisted = [store.writer.rows, stages.rows, tasks.rows, calls.rows, changes.rows]
+    assert marker not in json.dumps(persisted, default=str)
+    memories = [entry.model_dump() for entry in store.entries]
+    detail = {"run": {"run_id": store.run_id}, "cards": [], "brain_stages": stages.rows,
+              "memories": memories, "brain": {"available": True, "stages": stages.rows,
+              "memories": memories, "task_events": tasks.rows, "memory_changes": changes.rows}}
+    detail = json.loads(json.dumps(detail, default=str))  # JsonlWriter's persisted representation.
+    for kind in ("json", "csv", "md", "html"):
+        assert marker not in export_report(detail, kind)
+
+
+@pytest.mark.asyncio
 async def test_single_worker_repeats_reflect_wonder_update_and_publishes_directly():
     slow, store, provider, tasks, stages, calls, _ = make_slow()
     store.append('observation', '검색 결과')

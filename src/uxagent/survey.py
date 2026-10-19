@@ -364,6 +364,9 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                                         "memory_scope": trace_provenance["scope"],
                                         "memory_ids": trace_provenance["memory_ids"]}})
         write_json(run / "survey.json", rows)
+    else:
+        # This compatibility file represents the latest attempt, not past success.
+        (run / "survey.json").unlink(missing_ok=True)
     write_json(run / "survey_result.json", result)
     _update_summary(run, status=status, provider_name=actual_provider, model=actual_model, budget=budget)
     return result

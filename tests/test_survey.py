@@ -274,3 +274,47 @@ def test_batch_runs_every_session_before_surveys_and_keeps_later_results_after_o
     batch = json.loads((tmp_path / "runs/batch_summary.json").read_text(encoding="utf-8"))
     assert [row["survey_status"] for row in batch["runs"]] == ["provider_error", "completed"]
     assert batch["llm_request_count"] == 4 and batch["llm_tokens"] == 16
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["provider_error", "invalid_json", "invalid_model_response",
+                                     "budget_exceeded", "sensitive_input_rejected", "empty_memory_trace"])
+async def test_failed_survey_retry_removes_previous_success_and_can_recover(tmp_path, failure):
+
+    folder = _make_run(tmp_path / failure)
+    memories = (folder / "memory.jsonl").read_bytes()
+    assert (await create_survey(folder, QUESTIONNAIRE, provider=SurveyProvider()))["status"] == "completed"
+    assert json.loads((folder / "survey.json").read_text())[1]["response"]["answer"] == "가격 필터 위치가 어려웠다."
+    provider, questionnaire = SurveyProvider(), QUESTIONNAIRE
+    if failure == "provider_error":
+        provider.error = RuntimeError("synthetic_provider_failure")
+    elif failure == "invalid_json":
+        provider.response = "not json"
+    elif failure == "invalid_model_response":
+        response = json.loads(provider.response)
+        response["answers"][0]["value"] = "not an option"
+        provider.response = json.dumps(response)
+    elif failure == "budget_exceeded":
+        summary = json.loads((folder / "summary.json").read_text())
+        summary["budget"]["max_requests"] = summary["budget"]["requests"]
+        (folder / "summary.json").write_text(json.dumps(summary))
+    elif failure == "sensitive_input_rejected":
+        questionnaire = {**QUESTIONNAIRE, "title": "password=synthetic-only"}
+    else:
+        (folder / "memory.jsonl").write_text("")
+    failed = await create_survey(folder, questionnaire, provider=provider)
+    assert failed["status"] == failure
+    assert not (folder / "survey.json").exists(), "A failed retry must invalidate the old success projection"
+    assert json.loads((folder / "survey_result.json").read_text())["status"] == failure
+    assert json.loads((folder / "summary.json").read_text())["survey"]["status"] == failure
+
+    (folder / "memory.jsonl").write_bytes(memories)
+    summary = json.loads((folder / "summary.json").read_text())
+    summary["budget"]["max_requests"] = 20
+    (folder / "summary.json").write_text(json.dumps(summary))
+    provider = SurveyProvider()
+    response = json.loads(provider.response)
+    response["answers"][1]["value"] = "재시도 후 새 답변"
+    provider.response = json.dumps(response)
+    assert (await create_survey(folder, QUESTIONNAIRE, provider=provider))["status"] == "completed"
+    assert json.loads((folder / "survey.json").read_text())[1]["response"]["answer"] == "재시도 후 새 답변"

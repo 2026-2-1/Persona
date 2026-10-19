@@ -1,5 +1,13 @@
 # 트러블슈팅과 회귀 확인
 
+## 2026-10-19 실제 task 취소 후 결과 누락
+
+- 증상: `task.cancel()` 또는 asyncio CLI의 첫 Ctrl+C가 `summary.json`·`final_evaluation.json` 기록을 건너뛰었다.
+- 원인: `CancelledError`는 `Exception`이 아니어서 기존 예외 분류 뒤의 결과 저장 코드까지 도달하지 않았다.
+- 해결: 탐색 취소를 브라우저 종료 전에 분류하고 최종 관찰/평가를 수행한다. 시작/마무리 취소는 unknown 근거를 남기며 브라우저 종료 후 취소도 최종 종료 사유에 반영한다. writer 종료 뒤 원래 취소를 재전파한다.
+- 함께 확인할 회귀: 브라우저 진입·판단·행동·Brain close·최종 캡처·브라우저 종료의 6개 취소 지점, evaluator 순서, JSON/summary 일치, writer 종료, 비교 호출자의 취소 인식.
+- 실제 검증: 실제 runner와 가짜 I/O를 사용한 신규 6개가 수정 전 실패하고 수정 후 통과했다. 실제 GPU/브라우저 강제 종료 실험과는 구분한다.
+
 ## 2026-10-19 Qwen 큰 화면의 hover와 select
 
 - 증상: 8,000자 초과 화면에서 hover 전용 semantic ID와 select의 실제 option 값이 모델 입력에서 사라졌다.

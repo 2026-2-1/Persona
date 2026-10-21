@@ -10,7 +10,7 @@
   "observation_policy": "viewport",
   "explicit_scroll": true,
   "max_steps": 30,
-  "run_timeout_seconds": 300,
+  "run_timeout_seconds": null,
   "max_llm_requests": null,
   "max_total_tokens": null
 }

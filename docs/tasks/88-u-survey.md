@@ -15,7 +15,11 @@
 
 ## 기억 범위 결정
 
-Owner는 **전체 누적 trace**를 선택했다. 설문은 `memory.jsonl`의 모든 기억을 `seq` 오름차순으로 사용한다. `memory_changes.jsonl`에서 최신 `importance_scored.importance_after`를 복원하고 `evicted` 기억도 포함한다. 검색용 활성 기억 상한 64개는 변경하지 않는다. 모델 입력에는 U 필드(`timestamp`, `kind`, `importance`, `content`)만 넣으며 raw action·evaluator 답·성공 기대값은 넣지 않는다.
+2026-10-20 사용자 후속 변경: 전체 trace는 그대로 유지하며 각 기억의 content_status를 포함한다. 세 번째 JSON 줄로 steps.jsonl의 실제 행동·성공/실패·오류·전후 URL과 종료 사유를 제공한다. 계획/생성 생각을 실행 증거로 취급하지 않는다. evaluator 결과·기대값은 보내지 않는다. 실행 기록이 있을 때 응답 meta.execution_error_count가 실제 실패 수와 일치해야 하며, 누락/불일치는 execution_fact_mismatch다. subjective 답변은 여전히 unverified_simulated_self_report이며 오류 수 검증을 답변 전체의 사실 확인으로 해석하지 않는다.
+
+이후 실패한 설문 재실행은 이전 survey.json을 survey.previous-<id>.json으로 보존하고 현재 답변에서 제외한다. 원본 응답·새 실패 상태는 survey_result에 남긴다. 실제 20261020T121820-e98c2e82 기록의 임시 사본으로 재생한 Qwen은 오류3건과 검색 미제출을 구분했다. 검증 기록을 따른다.
+
+Owner는 **전체 누적 trace**를 선택했다. 설문은 `memory.jsonl`의 모든 기억을 `seq` 오름차순으로 사용한다. `memory_changes.jsonl`에서 최신 `importance_scored.importance_after`를 복원하고 `evicted` 기억도 포함한다. 검색용 활성 기억 상한 64개는 변경하지 않는다. U 필드(`timestamp`, `kind`, `importance`, `content`)에 content_status와 별도 실행 사실을 추가한 범위는 위 후속 변경을 따른다. evaluator 답·성공 기대값은 넣지 않는다.
 
 큰 trace는 요약·절단하지 않는다. 실행의 남은 token budget이 예상 입력/최대 출력보다 작으면 `budget_exceeded`로 기록하고 호출하지 않는다. 공급자 문맥 한도·응답 실패는 오류이며 정상 답변으로 대체하지 않는다.
 
@@ -51,3 +55,5 @@ python3 -m uxagent batch --study configs/study-decathlon-live.json \
 가짜 provider로 실제 메시지 payload, 제거된 기억·최신 importance, 질문별 다른 응답 저장, 출력 계약, raw fallback, API/예산/빈 입력·민감정보 오류, batch 실행 순서를 검사한다. 실제 GPU 요청 여부는 별도로 기록한다. Mock 테스트는 Qwen 품질 증거가 아니다. 실제 GPU Qwen 설문과 실제 Decathlon 설문 품질은 이슈 구현 테스트와 구분한다.
 
 고정 이슈: [#88](https://github.com/2026-2-1/Persona/issues/88). 선행 Qwen provider는 [PR #91](https://github.com/2026-2-1/Persona/pull/91), survey 선행 행동·memory는 #83–#87이다. 실제 검사 결과와 추가 변경 커밋은 [verification.md](../verification.md)에 남긴다.
+
+2026-10-21 후속: 전체 누적 trace를 모두 분할 요약에 입력하되 Qwen 전송 한도를 넘으면 생성 요약본으로 병합해 설문에 전달한다. 질문지/실제 execution_trace는 그대로 보존하고 요약은 generated_summary로 표시한다. 원본 전체 trace/provenance는 유지하므로 전체 trace 일부를 조용히 잘라 버리지 않는다. 추가 요약도 같은 설문 예산·호출 로그에 포함한다. 이는 U의 전체 원문 단일 요청과 다른 길이 호환 경로다.

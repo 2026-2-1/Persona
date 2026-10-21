@@ -77,9 +77,10 @@ def test_claude_runtime_routes_and_logs_usage(tmp_path, monkeypatch):
     import uxagent.runner as runner
     captures = []
     def fast(provider, budget, model, temperature, max_tokens, log_call):
+        from types import SimpleNamespace
         captures.append((provider, model))
         log_call({'model':model, 'input_tokens':7, 'output_tokens':4})
-        return object()
+        return SimpleNamespace()
     class UnavailableBrowser:
         def __init__(self, *args): pass
         async def __aenter__(self): raise RuntimeError('test browser unavailable')

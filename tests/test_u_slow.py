@@ -60,6 +60,45 @@ def make_slow(provider=None, *, capacity=64, budget=None, embedding_model=None, 
 
 
 @pytest.mark.asyncio
+async def test_gpu_importance_scoring_sends_one_request_at_a_time():
+    slow, store, provider, _, _, _, _ = make_slow()
+    for index in range(4):
+        store.append('observation', f'상품 {index}')
+    slow.persona, slow.intent, slow.observation_id = {}, '상품 찾기', 'obs-test'
+    slow.plan_getter = lambda: None
+    first_started, release_first = asyncio.Event(), asyncio.Event()
+    active = maximum = 0
+
+    async def hook(stage, payload):
+        nonlocal active, maximum
+        if stage != 'importance':
+            return None
+        active += 1
+        maximum = max(maximum, active)
+        if not first_started.is_set():
+            first_started.set()
+            await release_first.wait()
+        active -= 1
+        return {'score': 8, 'rationale': '중요도'}
+
+    provider.hook = hook
+    job = asyncio.create_task(slow.update_memory())
+    try:
+        await asyncio.wait_for(first_started.wait(), timeout=2)
+        await asyncio.sleep(0)
+        assert maximum == 1
+        release_first.set()
+        await asyncio.wait_for(job, timeout=2)
+        assert maximum == 1
+        assert all(entry.importance == 8 for entry in store.entries)
+    finally:
+        release_first.set()
+        if not job.done():
+            job.cancel()
+            await asyncio.gather(job, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_single_worker_repeats_reflect_wonder_update_and_publishes_directly():
     slow, store, provider, tasks, stages, calls, _ = make_slow()
     store.append('observation', '검색 결과')

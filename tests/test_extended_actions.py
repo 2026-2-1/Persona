@@ -36,7 +36,7 @@ def test_legacy_scroll_and_u_key_action_schema():
     {'type':'key_press', 'target_id':'search', 'key':'Enter', 'text':'script'},
     {'type':'scroll', 'scroll_y':0}, {'type':'scroll', 'scroll_y':901},
     {'type':'scroll', 'scroll_y':-901}, {'type':'scroll', 'scroll_y':True},
-    {'type':'scroll', 'scroll_y':2.5}, {'type':'scroll', 'scroll_y':100, 'target_id':'x'},
+    {'type':'scroll', 'scroll_y':2.5},
     {'type':'click', 'target_id':'x', 'key':'Enter'},
 ])
 def test_action_rejects_unsafe_or_unrelated_fields(fields):

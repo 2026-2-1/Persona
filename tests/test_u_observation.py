@@ -42,6 +42,46 @@ async def test_u_parser_preserves_empty_controls_and_semantic_ids_on_original_do
 
 
 @pytest.mark.asyncio
+async def test_decathlon_search_control_is_named_for_its_function_not_promotion():
+    markup = '''<header><div data-cy="search-bar-desktop">
+      <input placeholder="리뷰 작성 시 즉시 사용 가능한 2,000포인트 증정!">
+      <div data-cy="search-bar-icon-desktop"></div></div></header>
+      <main><input placeholder="이메일"></main>'''
+    async with BrowserSession(False) as browser:
+        await open_markup(browser, markup)
+        obs, _ = await observe(browser)
+        search = next(item for item in obs.input_elements if "포인트" in item.name or "검색" in item.name)
+        assert search.name == "상품 검색"
+        assert "상품 검색" in obs.html
+        assert next(item for item in obs.input_elements if item.name == "이메일").name == "이메일"
+
+
+@pytest.mark.asyncio
+async def test_icon_only_dialog_dismiss_control_is_preserved_and_executes():
+    from uxagent.actions import ActionExecutor
+    from uxagent.schemas import Action
+    markup = '''<button id=background>러닝</button>
+      <div id=popup role=dialog aria-modal=true aria-label="Promotional pop-up"
+        style="position:fixed;inset:0;background:#fff">
+        <div><div role=button aria-label=Close tabindex=0 style="width:24px;height:24px;cursor:pointer"
+          onclick="document.getElementById('popup').remove()"><svg width=24 height=24><path d="M0 0L24 24"/></svg></div></div>
+        <div>다가오는 마라톤! 추천 제품 보러가기</div>
+      </div>'''
+    async with BrowserSession(False) as browser:
+        await open_markup(browser, markup)
+        obs, _ = await observe(browser)
+        close = next((x for x in obs.clickable_elements if x.name == 'Close'), None)
+        assert close is not None, 'Icon-only role=button must survive SVG stripping'
+        assert 'role="dialog"' in obs.html and 'aria-modal="true"' in obs.html
+        result = await ActionExecutor(browser, [], 1000).execute(Action(
+            type='click', observation_id=obs.observation_id, tab_id=obs.tab_id, target_id=close.id))
+        assert result.ok, result.error
+        following, _ = await observe(browser)
+        assert 'role="dialog"' not in following.html
+        assert not any(x.name == 'Close' for x in following.clickable_elements)
+
+
+@pytest.mark.asyncio
 async def test_u_parser_includes_scrollable_below_viewport_and_excludes_hidden():
     markup = """<div style="height:1200px"></div><button id=below>필터</button>
       <button style="display:none">숨김</button>

@@ -46,12 +46,13 @@ class ActionExecutor:
         error = None
         events = []
         settled = False
+        interaction = {}
 
         try:
             if page is None or page.is_closed():
                 raise ActionFailure("target_not_found", "There is no active browser tab")
 
-            if action.type in {"click", "type", "hover", "select", "clear", "key_press", "keypress"} and action.target_id:
+            if action.type in {"click", "type", "hover", "select", "clear", "key_press", "keypress", "scroll"} and action.target_id:
                 locator = await self._semantic_locator(page, action.target_id)
                 if await locator.count() == 0:
                     raise ActionFailure("target_not_found", "Semantic target is not present in the current DOM")
@@ -77,9 +78,25 @@ class ActionExecutor:
                 if action.scroll_y is not None:
                     await page.evaluate("distance => window.scrollBy({top: distance, behavior: 'instant'})", action.scroll_y)
                 else:
-                    key = {"up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft", "right": "ArrowRight"}[action.scroll_direction]
-                    for _ in range(action.scroll_amount * 3):
-                        await page.keyboard.press(key)
+                    scroll_target = locator if locator is not None else page.locator('html')
+                    interaction = await scroll_target.evaluate("""(node, args) => {
+                      const el = node === document.documentElement ? document.scrollingElement : node;
+                      const horizontal = ['left', 'right'].includes(args.direction);
+                      const rect = el.getBoundingClientRect();
+                      const extent = el === document.scrollingElement ? (horizontal ? innerWidth : innerHeight) :
+                        Math.max(1, horizontal ? Math.min(innerWidth,rect.right)-Math.max(0,rect.left) :
+                                                 Math.min(innerHeight,rect.bottom)-Math.max(0,rect.top));
+                      const before = horizontal ? el.scrollLeft : el.scrollTop;
+                      const maximum = Math.max(0, horizontal ? el.scrollWidth-el.clientWidth : el.scrollHeight-el.clientHeight);
+                      const distance = Math.min(args.amount, Math.max(1, Math.floor(extent * 0.8)));
+                      const sign = ['left', 'up'].includes(args.direction) ? -1 : 1;
+                      el.scrollBy({left: horizontal ? sign*distance : 0,
+                                   top: horizontal ? 0 : sign*distance, behavior: 'instant'});
+                      const after = horizontal ? el.scrollLeft : el.scrollTop;
+                      return {kind:'scroll', direction:args.direction, before, after,
+                        moved:Math.abs(after-before)>0.5, maximum, viewport_extent:extent,
+                        at_start:after<=0, at_end:after>=maximum-1};
+                    }""", {'direction': action.scroll_direction, 'amount': action.scroll_amount})
             elif action.type == "hover":
                 await locator.scroll_into_view_if_needed(timeout=self.timeout_ms)
                 await locator.hover(force=True, timeout=self.timeout_ms)
@@ -154,6 +171,7 @@ class ActionExecutor:
             elapsed_ms=int((time.monotonic() - started) * 1000),
             settled=settled,
             tab_events=events,
+            interaction=interaction,
         )
 
 

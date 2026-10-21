@@ -176,6 +176,8 @@ async def test_runner_distinguishes_false_finish_and_repeated_state(monkeypatch,
     class RepeatingProvider:
         async def complete(self,messages,*args,**kwargs):
             stage=messages[0]["content"].split("FAST_STAGE:",1)[1].splitlines()[0]
+            if stage == "search_query":
+                return json.dumps({"use_search":False,"query":None,"reason":"반복을 관찰합니다."}), {"model":"fake","input_tokens":1,"output_tokens":1}
             if stage=="perception":return json.dumps({"observations":["검색 버튼이 보인다"]}),{"model":"fake","input_tokens":1,"output_tokens":1}
             if stage=="feedback":return json.dumps({"thoughts":["검색 결과가 같다"]}),{"model":"fake","input_tokens":1,"output_tokens":1}
             if stage=="plan":return json.dumps({"plan":"검색 버튼을 누른다","rationale":"버튼이 보인다","next_step":"검색"}),{"model":"fake","input_tokens":1,"output_tokens":1}

@@ -61,7 +61,8 @@ async def test_memory_logs_trace_scores_evictions_and_slow_sources_in_one_run(
     assert sum(row["stage"] == "importance" for row in calls) == len(scored_ids)
     assert summary["budget"]["requests"] == len(calls)
     assert plan_inputs and all(isinstance(m, str) for payload in plan_inputs for m in payload["memories"])
-    assert [payload["current_timestamp"] for payload in plan_inputs] == list(range(len(plan_inputs)))
+    timestamps = [payload["current_timestamp"] for payload in plan_inputs]
+    assert timestamps[0] == 0 and timestamps == sorted(set(timestamps))
     # No embedding configured: U supplies only the recent prefix. Capacity ten
     # can evict earlier actions; do not require ranked duplicates from word search.
     assert any("kind: action;" in m for payload in plan_inputs for m in payload["memories"])

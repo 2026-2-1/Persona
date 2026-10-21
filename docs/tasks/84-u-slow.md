@@ -1,5 +1,7 @@
 # #84 U Slow·Wonder 반복
 
+2026-10-20 GPU 대기 후속: 원격 api_server.py의 ThreadingHTTPServer와 generate 잠금을 읽기 확인했다. 채팅 제공자 안의 공통 대기열이 한 요청씩 전송하며 Fast 우선/최대3건 후 대기 Slow 차례로 기아를 방지한다. U reflect→wonder→memory.update 반복과 기억 정책은 유지한다. 취소된 대기는 전송하지 않고 이미 진행 중인 추론은 완료 전 다음 요청과 겹치지 않는다. provider_queue_ms는 성공한 호출의 클라이언트 대기 시간이며 원격 추론 시간이나 전체 비용이 아니다. 실제 취소 요청의 usage는 기존처럼 unknown이다.
+
 이슈: [#84](https://github.com/2026-2-1/Persona/issues/84). 선행: Qwen [PR #91](https://github.com/2026-2-1/Persona/pull/91), Fast [PR #92](https://github.com/2026-2-1/Persona/pull/92), `4e42109a94898fb772a7c214221115ce25b75d66`. 작업 브랜치는 `feat/84-u-transition-02`다. prototype 병합·실제 모델 과업 성공과 구분한다.
 
 ## 현재 실행 순서
@@ -13,6 +15,8 @@
 | memory.update | 현재 활성 기억 중 미산정·미임베딩 항목의 ID별 snapshot | 설정된 embedding과 importance를 gather, 응답을 같은 활성 ID에만 적용 |
 
 각 반복 완료 뒤 `asyncio.sleep(0)`으로 실행권만 양보한다. 시간 간격·확률 추첨·반복 횟수 제한을 도입하지 않는다. Python 조율기는 Slow 전체 완료를 기다리지 않는다. 단일 GPU 서버의 실제 요청 경합·동시 처리 성능은 미검증이다. 오류/예산 소진은 worker를 failed/budget_exceeded로 끝내고 원인을 남긴다. 정상 실행 종료·중지·시간 초과에서는 task와 갱신 하위 task를 취소한 뒤 await한다. 취소한 호출을 완료/성공으로 표시하지 않는다.
+
+2026-10-19 실제 Qwen 실행에서 중요도 요청을 한꺼번에 보낸 뒤 Fast 판단이 216초 걸리고 실행 제한에 도달했다. GPU 제공자에 한해 한 `memory.update` 안의 중요도 요청을 기억 순서대로 한 번에 하나씩 보낸다. 채점 대상·점수 적용·embedding과 importance의 병행·Slow 반복 순서는 유지한다. 다른 제공자의 병렬 채점도 유지한다. 이 조정은 GPU 서버 내부 대기열 우선순위를 보장하지 않는다.
 
 ## 모델·메모리 계약
 
@@ -58,3 +62,5 @@ Mock은 합성 fixture 전용이다. 새 Slow 응답은 최초 성찰·Thought �
 - [실행별 반복·시작·close](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/main/model.py#L137-L212)
 - [reflect](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L136-L164), [wonder](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L220-L246)
 - [memory.update](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/memory.py#L59-L153), [프롬프트](https://github.com/neuhai/UXAgent/tree/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/shop_prompts)
+
+2026-10-21 공통 전송 전 검사: reflection/importance/wonder도 Qwen 한도를 먼저 확인하며 초과 context는 조각 요약·병합을 거친다. 요약은 같은 provider 큐/공통 예산/호출 로그를 사용하며 원래 Slow 반복·기억64개 상한·Wonder 출력 계약은 유지한다. 보호 정보 자체가 한도를 넘으면 축약해 성공시키지 않고 준비 실패로 기록한다.

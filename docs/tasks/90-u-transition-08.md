@@ -36,3 +36,5 @@ U Fast/Slow/설문 API 호출을 현재 `llm_calls.jsonl`에 기록할 때 기�
 실제 GPU Qwen·공개 데카트론은 이 로그-reader 변경에서 호출하지 않는다. 실제 라이브 과업 결과로 간주하지 않는다.
 
 고정 이슈: [#90](https://github.com/2026-2-1/Persona/issues/90). 원본 기준: [U LogApiCall](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L21-L50), [U memory 직렬화](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/memory.py#L225-L281), [U session trace](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/main/experiment.py#L135-L183).
+
+2026-10-21 사용자 요청 후속: Qwen 공통 전송 전 입력 검사와 계층 요약을 연결했다. 추가 생성은 prompt_summary 단계와 parent_stage/round/chunk 메타데이터로 분리하며 기존 원문 비공개·usage·budget 계약을 유지한다. 실제 준비된 최종 메시지를 호출 근거로 남기고 원본 memory/관찰은 덮어쓰지 않는다. [공통 계약](../contracts.md)의 최신 요약 조건을 따른다.

@@ -1,5 +1,7 @@
 # 문서 안내
 
+- [모델 연결·JSON 오류 운영 매뉴얼](model-json-operations.md): 증상별 대응·자동 복구·중단 기준·필수 회귀 검사.
+
 - [#85 U 기억 검색](tasks/85-u-memory.md)
 - [#86 U DOM parser 화면 관찰](tasks/86-u-observation.md)
 - [#87 U 행동 집합·접근 정책](tasks/87-u-actions.md)

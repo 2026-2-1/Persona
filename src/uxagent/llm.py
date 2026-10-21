@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio, hashlib, json, os, threading, time, urllib.request, urllib.error
 import ssl
+import base64
 from pathlib import Path
+from collections import deque
 from urllib.parse import urlsplit
 
 
@@ -239,10 +241,11 @@ class MockProvider:
 
     async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
         system = messages[0]["content"]
-        if system.startswith("Answer the supplied questionnaire using only the supplied memory trace."):
-            questionnaire_text, trace_text = messages[-1]["content"].split("\n", 1)
+        if system.startswith("Answer the supplied questionnaire "):
+            questionnaire_text, trace_text, *facts = messages[-1]["content"].split("\n", 2)
             questionnaire = json.loads(questionnaire_text)
             memories = json.loads(trace_text)
+            errors = json.loads(facts[0])['execution_trace']['error_count'] if facts else None
             answers = []
             for question in questionnaire["questions"]:
                 if question["type"] == "multiple_choice":
@@ -254,11 +257,23 @@ class MockProvider:
                 answers.append({"question_id": question["id"], "value": value,
                                 "reason": "로컬 fixture 응답이며 실제 GPU 설문 호출이 아닙니다."})
             return json.dumps({"questionnaire_id": questionnaire["questionnaire_id"],
-                               "answers": answers, "meta": {"confidence_overall": 0.0}},
+                               "answers": answers, "meta": {"confidence_overall": 0.0,
+                                                            'execution_error_count': errors}},
                               ensure_ascii=False), {
                 "provider": "mock", "model": self.model, "input_tokens": 0, "output_tokens": 0,
             }
         payload = json.loads(messages[-1]["content"])
+        if system.startswith('FAST_STAGE:search_query'):
+            return json.dumps({'use_search': True, 'query': '가방', 'reason': '합성 쇼핑 fixture의 검색어입니다.'}, ensure_ascii=False), {
+                'model': self.model, 'provider': 'mock', 'input_tokens': 0, 'output_tokens': 0}
+        if system.startswith('FAST_STAGE:popup_decision'):
+            popup = payload['popup']
+            close = next((c for c in popup['controls'] if c['name'].lower() in {'close', '닫기', '팝업 닫기', '창 닫기'}), None)
+            result = {'choice': 'interact' if close else 'stop' if popup['modal'] else 'ignore',
+                      'reason': '합성 fixture 팝업 판단입니다.',
+                      'action': {'action': 'click', 'target': close['id'], 'description': '관찰한 닫기를 선택합니다.'} if close else None}
+            return json.dumps(result, ensure_ascii=False), {
+                'model': self.model, 'provider': 'mock', 'input_tokens': 0, 'output_tokens': 0}
         if system.startswith("SLOW_STAGE:"):
             # Synthetic transport latency for the fixture provider only. The real
             # scheduler has no delay/rate gate; empty later outputs are valid U JSON.
@@ -428,23 +443,126 @@ class OpenAIProvider:
         return [item["embedding"] for item in ordered],{"model":data.get("model",model),"input_tokens":usage.get("prompt_tokens"),"output_tokens":0}
 
 
+class ProviderConnectionError(RuntimeError):
+    """The model endpoint is unavailable; no model output was received."""
+
+
 class LocalQwenProvider:
     """OpenAI-compatible Qwen API reached through a local SSH tunnel."""
 
     model = "persona-qwen"
 
-    async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
-        return await asyncio.to_thread(self._complete, messages, model or self.model, temperature, max_tokens)
+    def __init__(self):
+        from .prompt_guard import PromptGuard
+        from .token_counter import QwenTokenCounter
+        counter_url = os.environ.get('PERSONA_QWEN_TOKENIZER_URL')
+        self.prompt_guard = PromptGuard(QwenTokenCounter(counter_url) if counter_url else None)
+        self._loop = None
+        self._worker = None
+        self._fast_pending = deque()
+        self._slow_pending = deque()
 
-    def _complete(self, messages, model, temperature, max_tokens):
-        if model != self.model:
-            raise ValueError("GPU 서버 모델은 persona-qwen이어야 합니다")
-        url = os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
+    async def complete(self, messages, model=None, temperature=0.2, max_tokens=1200):
+        summaries = []
+        prepared = await self.prepare_messages(messages, model or self.model, max_tokens,
+                                               call_log=summaries.append)
+        content, usage = await self._enqueue(prepared, model or self.model, temperature, max_tokens)
+        if summaries:
+            for key in ('input_tokens', 'output_tokens'):
+                values = [usage.get(key)] + [row.get(key) for row in summaries]
+                usage[key] = sum(values) if all(value is not None for value in values) else None
+        return content, {**usage, 'prompt_guard': self.prompt_guard.metadata(prepared, max_tokens),
+                         **({'prompt_summary_requests': len(summaries)} if summaries else {})}
+
+    async def prepare_messages(self, messages, model, max_tokens, *, budget=None,
+                               call_log=None, module='provider', stage='completion'):
+        return await self.prompt_guard.prepare(messages, model, max_tokens,
+            send=self._enqueue, budget=budget if budget is not None else BudgetManager(None, None),
+            call_log=call_log, module=module, stage=stage)
+
+    async def complete_image(self, messages, image_path, temperature=0.2, max_tokens=512):
+        if not os.environ.get('PERSONA_QWEN_VISION_API_URL') or not os.environ.get('PERSONA_QWEN_VISION_MODEL'):
+            raise RuntimeError('popup_vision_unavailable: configure a local image-capable chat endpoint and model')
+        return await self._enqueue(messages, os.environ['PERSONA_QWEN_VISION_MODEL'], temperature,
+                                   max_tokens, image_path=image_path)
+
+    async def _enqueue(self, messages, model=None, temperature=0.2, max_tokens=1200, *, image_path=None):
+        self.prompt_guard.assert_fits(messages, max_tokens)
+        loop = asyncio.get_running_loop()
+        if self._loop is not loop:
+            if self._worker is not None and not self._worker.done():
+                raise RuntimeError('GPU provider cannot span active event loops')
+            self._loop, self._worker = loop, None
+            self._fast_pending, self._slow_pending = deque(), deque()
+        future = loop.create_future()
+        fast = bool(messages and messages[0].get('content', '').startswith('FAST_STAGE:'))
+        pending = self._fast_pending if fast else self._slow_pending
+        args = (messages, model or self.model, temperature, max_tokens)
+        if image_path is not None:
+            args += (image_path,)
+        pending.append((future, args, time.monotonic()))
+        if self._worker is None or self._worker.done():
+            self._worker = loop.create_task(self._dispatch(self._fast_pending, self._slow_pending))
+        return await future
+
+    async def _dispatch(self, fast, slow):
+        # The remote server serializes generation with a lock. Keep its queue
+        # local so interactive Fast calls can pass waiting Slow work. Reserve a
+        # Slow turn after three Fast requests to avoid starving shared memory.
+        fast_streak = 0
+        try:
+            while fast or slow:
+                choose_fast = bool(fast) and (not slow or fast_streak < 3)
+                future, args, queued_at = (fast if choose_fast else slow).popleft()
+                if future.cancelled():
+                    continue
+                fast_streak = fast_streak + 1 if choose_fast else 0
+                queue_ms = int((time.monotonic() - queued_at) * 1000)
+                try:
+                    content, usage = await asyncio.to_thread(self._complete, *args)
+                except asyncio.CancelledError:
+                    if not future.done():
+                        future.cancel()
+                    raise
+                except Exception as exc:
+                    if not future.done():
+                        future.set_exception(exc)
+                else:
+                    if not future.done():
+                        future.set_result((content, {**usage, 'provider_queue_ms': queue_ms}))
+                # Let completed callers enqueue the next phase before dispatch.
+                await asyncio.sleep(0)
+        finally:
+            for future, _, _ in [*fast, *slow]:
+                if not future.done():
+                    future.cancel()
+            fast.clear(); slow.clear()
+
+    @staticmethod
+    def endpoint(url=None):
+        url = url or os.environ.get("PERSONA_QWEN_API_URL", "http://127.0.0.1:8000/v1/chat/completions")
         parsed = urlsplit(url)
         if (parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}
                 or parsed.username or parsed.password or parsed.path != "/v1/chat/completions"
                 or parsed.query or parsed.fragment or not parsed.port):
             raise ValueError("PERSONA_QWEN_API_URL은 로컬 SSH 터널의 /v1/chat/completions 주소여야 합니다")
+        return url
+
+    def health(self, *, url=None):
+        url = self.endpoint(url).removesuffix('/v1/chat/completions') + '/health'
+        with urllib.request.urlopen(url, timeout=2) as response:
+            data = json.loads(response.read())
+        if data.get('status') != 'ok' or data.get('model') != self.model:
+            raise ValueError('GPU health의 상태 또는 모델명이 설정과 다릅니다')
+        return data
+
+    def _complete(self, messages, model, temperature, max_tokens, image_path=None):
+        if image_path is not None:
+            return self._complete_image(messages, model, temperature, max_tokens, image_path)
+        if model != self.model:
+            raise ValueError("GPU 서버 모델은 persona-qwen이어야 합니다")
+        url = self.endpoint()
+        self.prompt_guard.assert_fits(messages, max_tokens)
         body = json.dumps({"model": model, "messages": messages, "temperature": temperature,
                            "max_tokens": max_tokens, "response_format": {"type": "json_object"}},
                           ensure_ascii=False).encode()
@@ -456,7 +574,7 @@ class LocalQwenProvider:
             detail = exc.read().decode("utf-8", "replace")[:400]
             raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-            raise RuntimeError(_transport_error(exc)) from None
+            raise ProviderConnectionError(_transport_error(exc)) from None
         usage = data.get("usage", {})
         return data["choices"][0]["message"]["content"], {
             "provider": "gpu", "model": data.get("model", model),
@@ -464,3 +582,32 @@ class LocalQwenProvider:
 
     async def embed(self, texts, model):
         raise ValueError("GPU 서버의 임베딩 API는 확인되지 않았습니다")
+
+    def _complete_image(self, messages, model, temperature, max_tokens, image_path):
+        # The existing text-only remote server is never assumed to accept images.
+        url = self.endpoint(os.environ['PERSONA_QWEN_VISION_API_URL'])
+        image_bytes = Path(image_path).read_bytes()
+        if not image_bytes.startswith(b'\x89PNG\r\n\x1a\n') or len(image_bytes) > 8 * 1024 * 1024:
+            raise RuntimeError('popup_image_invalid: expected a cropped PNG under 8 MiB')
+        attached = [dict(message) for message in messages]
+        index = next(i for i, message in enumerate(attached) if message['role'] == 'user')
+        attached[index]['content'] = [
+            {'type': 'text', 'text': attached[index]['content']},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(image_bytes).decode()}}]
+        body = json.dumps({'model': model, 'messages': attached, 'temperature': temperature,
+                           'max_tokens': min(max_tokens, 512), 'response_format': {'type': 'json_object'}},
+                          ensure_ascii=False).encode()
+        request = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                data = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            # Do not log a server response that might echo the image payload.
+            raise RuntimeError(f'popup_vision_http_{exc.code}: image request rejected') from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise ProviderConnectionError(_transport_error(exc)) from None
+        usage = data.get('usage', {})
+        return data['choices'][0]['message']['content'], {
+            'provider': 'gpu', 'model': data.get('model', model),
+            'input_tokens': usage.get('prompt_tokens'), 'output_tokens': usage.get('completion_tokens'),
+            'image_preflight': 'text_checked_image_tokens_not_counted'}

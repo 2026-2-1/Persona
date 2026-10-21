@@ -27,6 +27,45 @@ def read_steps(run_dir):
 
 
 @pytest.mark.asyncio
+async def test_runner_sends_actual_failed_execution_into_next_feedback(monkeypatch, tmp_path):
+    from uxagent.schemas import ActionResult
+    seen = []
+    class Provider(MockProvider):
+        async def complete(self, messages, *args, **kwargs):
+            if messages[0]['content'].startswith('FAST_STAGE:feedback'):
+                seen.append(json.loads(messages[1]['content']))
+            return await super().complete(messages, *args, **kwargs)
+    original = ActionExecutor.execute
+    failed = False
+    async def execute(self, action):
+        nonlocal failed
+        if not failed:
+            failed = True
+            return ActionResult(action_id='failed-click', observation_id=action.observation_id, ok=False,
+                error={'code': 'action_timeout', 'message': 'Click intercepted by modal'},
+                url_before=self.session.active.url, url_after=self.session.active.url, elapsed_ms=15000)
+        return await original(self, action)
+    monkeypatch.setattr(runner_module, 'MockProvider', Provider)
+    monkeypatch.setattr(ActionExecutor, 'execute', execute)
+    folder, summary = await run_study(study_file(tmp_path, max_steps=2), 'mock', None, False, tmp_path / 'runs')
+    assert seen and seen[0]['last_action_result']['ok'] is False
+    assert seen[0]['last_action_result']['error']['code'] == 'action_timeout'
+    assert seen[0]['last_action_result']['action_id'] == read_steps(folder)[0]['result']['action_id']
+
+
+@pytest.mark.asyncio
+async def test_connection_loss_is_recorded_separately_from_invalid_model_json(monkeypatch, tmp_path):
+    from uxagent.llm import ProviderConnectionError
+    async def disconnected(*a, **kw):
+        raise ProviderConnectionError('provider_transient:ConnectionRefusedError')
+    monkeypatch.setattr(runner_module.Brain, 'forward', disconnected)
+    folder, summary = await run_study(study_file(tmp_path), 'mock', None, False, tmp_path / 'runs')
+    assert summary['termination_reason'] == 'model_error'
+    assert summary['last_error']['code'] == 'model_connection_error'
+    assert read_steps(folder)[0]['error']['code'] == 'model_connection_error'
+
+
+@pytest.mark.asyncio
 async def test_intermediate_success_does_not_end_exploration_and_final_eval_follows_terminate(monkeypatch, tmp_path):
     events = []
 
@@ -68,6 +107,7 @@ async def test_intermediate_success_does_not_end_exploration_and_final_eval_foll
     assert events.index("slow_closed") < events.index("evaluate")
     assert events.count("evaluate") == 1
     assert len(steps) == 2 and steps[0]["action"] and steps[0]["result"]
+    assert steps[1]["observation_id"] == steps[0]["next_observation_id"]
     assert all(step["evaluation"]["verification"] == "unknown" for step in steps)
     assert steps[-1]["decision"]["finish"]["claim"] == "completed"
     assert final["termination_reason"] == "agent_finished"

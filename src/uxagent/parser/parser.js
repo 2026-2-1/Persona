@@ -56,6 +56,9 @@ const parse = () => {
   };
 
   const isEmpty = (el) => {
+    // Stripping SVG must not strip an otherwise empty, named icon control.
+    if (el.hasAttribute('parser-clickable') ||
+        ['dialog', 'alertdialog'].includes(el.getAttribute('role'))) return false;
     if (el.hasAttribute('contenteditable')) return false;
     if (PRESERVE_EMPTY_TAGS.has(el.tagName.toLowerCase())) return false;
     for (const n of el.childNodes) {
@@ -110,6 +113,9 @@ const parse = () => {
   const flatten = (el) => {
     while (el.children.length === 1) {
       const child = el.children[0];
+      if ([el, child].some(node => node.hasAttribute('parser-clickable') ||
+          ['dialog', 'alertdialog'].includes(node.getAttribute('role')) ||
+          node.hasAttribute('aria-modal'))) break;
       const p = el.tagName.toLowerCase();
       const c = child.tagName.toLowerCase();
       if (p !== 'div' && c !== 'div') break;
@@ -152,7 +158,8 @@ const parse = () => {
     let clone = document.createElement(original.tagName);
     copyAllowed(original, clone);
     const accessibleName = original.getAttribute('aria-label') ||
-      (original.labels ? Array.from(original.labels).map(label => label.textContent.trim()).filter(Boolean).join(' ') : '');
+      (original.labels ? Array.from(original.labels).map(label => label.textContent.trim()).filter(Boolean).join(' ') : '') ||
+      (tag === 'input' && original.closest('[data-cy="search-bar-desktop"]') ? '상품 검색' : '');
     if (accessibleName) clone.setAttribute('parser-accessible-name', accessibleName);
     if (tag === 'input' && ['checkbox', 'radio'].includes((original.type || '').toLowerCase())) {
       clone.checked = original.checked;

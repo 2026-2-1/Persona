@@ -221,6 +221,12 @@ async def _evaluate_public_live(page, task_id, expectations, profile):
             evidence['expected'] = {'product_name': expected_name, 'product_name_contains': name_keyword, 'max_price': limit}
             if not (expected_name or name_keyword) or limit is None:
                 return outcome('unknown', 'basic_detail_expectations_required')
+            current = urlsplit(page.url)
+            if (name is None and price is None and
+                    current.hostname in {'www.decathlon.co.kr', 'decathlon.co.kr'} and
+                    current.path.rstrip('/') in {'', '/search'}):
+                evidence['url'] = page.url
+                return outcome('fail', 'not_on_product_detail')
             if name is not None and expected_name and name != expected_name:
                 return outcome('fail', 'detail_product_mismatch')
             if name is not None and name_keyword and name_keyword.casefold() not in name.casefold():

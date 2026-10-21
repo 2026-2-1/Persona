@@ -76,6 +76,42 @@ class SurveyProvider:
                                "input_tokens": 32, "output_tokens": 18}
 
 
+@pytest.mark.asyncio
+async def test_long_gpu_survey_summarizes_full_trace_and_accounts_for_every_extra_call(tmp_path):
+    from uxagent.llm import LocalQwenProvider
+    memories = [{'schema_version': '2.0', 'memory_id': f'm-{i}', 'seq': i + 1,
+                 'kind': 'thought', 'text': f'기억{i} ' + '러닝화 검색 가격 확인. ' * 20,
+                 'timestamp': i, 'importance': 5, 'source_step_ids': [i + 1]}
+                for i in range(80)]
+    folder = _make_run(tmp_path / 'run', memories=memories, budget={'max_requests': 200})
+    original = (folder / 'memory.jsonl').read_bytes()
+    provider = LocalQwenProvider()
+    final_requests = []
+
+    async def enqueue(messages, model, temperature, max_tokens):
+        assert provider.prompt_guard.fits(messages, max_tokens)
+        if 'PROMPT_SUMMARY' in messages[0]['content']:
+            raw = '{"summary":"생성된 기억에서 가격과 검색 경험을 회고했다. 실행 성공의 증거는 아니다."}'
+        else:
+            final_requests.append(messages)
+            raw = SurveyProvider().response
+        return raw, {'provider': 'gpu', 'model': model, 'input_tokens': 10, 'output_tokens': 10}
+
+    provider._enqueue = enqueue
+    result = await create_survey(folder, QUESTIONNAIRE, provider=provider)
+    assert result['status'] == 'completed'
+    assert result['memory_trace']['count'] == 80
+    assert (folder / 'memory.jsonl').read_bytes() == original
+    records = [json.loads(line) for line in (folder / 'llm_calls.jsonl').read_text().splitlines()][2:]
+    assert sum(row['stage'] == 'prompt_summary' for row in records) > 1
+    assert records[-1]['stage'] == 'questionnaire'
+    assert records[-1]['prompt_guard']['checked'] is True
+    summary = json.loads((folder / 'summary.json').read_text())
+    assert summary['budget']['requests'] == 2 + len(records)
+    assert summary['budget']['reserved_tokens'] == 0
+    assert json.loads(final_requests[0][1]['content'].splitlines()[0])['questions'][0]['options'] == QUESTIONNAIRE['questions'][0]['options']
+
+
 def test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_provenance(tmp_path):
     async def run():
         old = {"schema_version": "2.0", "memory_id": "m-1", "seq": 1, "kind": "observation",
@@ -99,7 +135,7 @@ def test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_pro
         result = await create_survey(folder, QUESTIONNAIRE, provider=provider)
 
         user_input = provider.messages[0][1]["content"]
-        questionnaire_text, trace_text = user_input.split("\n", 1)
+        questionnaire_text, trace_text, _ = user_input.split("\n", 2)
         trace = json.loads(trace_text)
         assert json.loads(questionnaire_text) == QUESTIONNAIRE
         assert [item["content"] for item in trace] == [old["text"], current["text"]]
@@ -124,6 +160,76 @@ def test_survey_sends_questionnaire_and_full_append_only_trace_and_preserves_pro
         assert summary["verification"] == "success"
     import asyncio
     asyncio.run(run())
+
+
+def _failed_execution(folder):
+    step = {'step_id': 1, 'action': {'type': 'click', 'target_id': 'running'},
+            'result': {'ok': False, 'error': {'code': 'action_timeout', 'message': 'Popup intercepted click'},
+                       'url_before': 'https://shop.test/', 'url_after': 'https://shop.test/'}}
+    (folder / 'steps.jsonl').write_text(json.dumps(step) + '\n')
+
+
+def test_survey_separates_generated_memories_from_executed_failures(tmp_path):
+    import asyncio
+    folder = _make_run(tmp_path / 'facts', memories=[{
+        'memory_id': 'm-generated', 'seq': 1, 'timestamp': 1, 'kind': 'thought',
+        'content_status': 'generated', 'text': '클릭에 성공했고 필터가 직관적이었다.'}])
+    _failed_execution(folder)
+    response = json.loads(SurveyProvider().response)
+    response['meta']['execution_error_count'] = 1
+    provider = SurveyProvider(response=json.dumps(response, ensure_ascii=False))
+    result = asyncio.run(create_survey(folder, QUESTIONNAIRE, provider=provider))
+    parts = provider.messages[0][1]['content'].split('\n')
+    memories = json.loads(parts[1])
+    assert memories[0]['content_status'] == 'generated'
+    facts = json.loads(parts[2])['execution_trace']
+    assert facts['steps'][0]['ok'] is False
+    assert facts['error_count'] == 1
+    assert facts['steps'][0]['error']['code'] == 'action_timeout'
+    assert 'verification' not in json.dumps(facts)
+    assert 'evaluation_expectations' not in provider.messages[0][1]['content']
+    assert result['status'] == 'completed'
+    assert result['grounding']['execution_errors_validated'] is True
+
+
+@pytest.mark.parametrize('reported', [None, 0, 2])
+def test_survey_cannot_claim_no_execution_errors_when_a_click_failed(tmp_path, reported):
+    import asyncio
+    folder = _make_run(tmp_path / 'contradiction')
+    _failed_execution(folder)
+    response = json.loads(SurveyProvider().response)
+    if reported is not None:
+        response['meta']['execution_error_count'] = reported
+    result = asyncio.run(create_survey(folder, QUESTIONNAIRE,
+        provider=SurveyProvider(response=json.dumps(response))))
+    assert result['status'] == 'invalid_model_response'
+    assert result['error']['reason'] == 'execution_fact_mismatch'
+    assert not (folder / 'survey.json').exists()
+
+
+def test_failed_survey_rerun_archives_old_answers_instead_of_showing_them_as_current(tmp_path):
+    import asyncio
+    folder = _make_run(tmp_path / 'rerun')
+    old = [{'question': '이전 질문', 'response': {'answer': '이전 답변'}}]
+    (folder / 'survey.json').write_text(json.dumps(old, ensure_ascii=False))
+    result = asyncio.run(create_survey(folder, QUESTIONNAIRE, provider=SurveyProvider(response='invalid')))
+    assert result['status'] == 'invalid_json'
+    assert not (folder / 'survey.json').exists()
+    archived = list(folder.glob('survey.previous-*.json'))
+    assert len(archived) == 1 and json.loads(archived[0].read_text()) == old
+
+
+def test_execution_trace_secrets_are_rejected_before_model_call(tmp_path):
+    import asyncio
+    folder = _make_run(tmp_path / 'execution-secret')
+    step = {'step_id': 1, 'action': {'type': 'type', 'text': 'password=do-not-send'},
+            'result': {'ok': True}}
+    (folder / 'steps.jsonl').write_text(json.dumps(step) + '\n')
+    provider = SurveyProvider()
+    result = asyncio.run(create_survey(folder, QUESTIONNAIRE, provider=provider))
+    assert result['status'] == 'sensitive_input_rejected'
+    assert not provider.messages
+    assert 'do-not-send' not in (folder / 'survey_result.json').read_text()
 
 
 @pytest.mark.parametrize(("questionnaire", "memories", "code"), [
@@ -190,6 +296,15 @@ def test_survey_budget_exhaustion_is_recorded_without_provider_call(tmp_path):
     assert result["status"] == "budget_exceeded"
     assert not provider.messages
     assert not (folder / "survey.json").exists()
+
+
+def test_survey_budget_also_reserves_system_instructions(tmp_path):
+    import asyncio
+    folder = _make_run(tmp_path / 'system-budget', budget={'max_tokens': 900})
+    provider = SurveyProvider()
+    result = asyncio.run(create_survey(folder, QUESTIONNAIRE, provider=provider))
+    assert result['status'] == 'budget_exceeded'
+    assert not provider.messages
 
 
 def test_sensitive_questionnaire_is_rejected_before_prompt_or_log_storage(tmp_path):

@@ -11,8 +11,9 @@ from .browser import BrowserSession
 from .observation import observe
 from .actions import ActionExecutor
 from .evaluator import evaluate
-from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, LocalQwenProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model
+from .llm import BudgetManager, MockProvider, OpenAIProvider, JevProvider, GeminiProvider, ClaudeProvider, LocalQwenProvider, CLAUDE_MODEL, GEMINI_MODEL, load_env_file, BudgetExceeded, provider_for_model, ProviderConnectionError
 from .fast_loop import FastLoop
+from .prompt_guard import PromptSizeError
 from .brain import Brain
 from .memory import MemoryStore
 from .slow_loop import ContinuousSlowLoop
@@ -184,6 +185,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
         embedding_provider = LocalEmbeddingProvider()
     memory=MemoryStore(run_id,memory_writer,max_active_memories=config.max_active_memories,change_writer=memory_change_writer)
     fast=FastLoop(provider,budget,model,config.temperature,config.max_output_tokens,log_call)
+    fast.artifact_root = run_dir
     slow=ContinuousSlowLoop(provider,budget,model,config.temperature,config.max_output_tokens,
                             memory,brain_task_writer,brain_stage_writer,log_call,
                             embedding_model=config.embedding_model, embedding_provider=embedding_provider)
@@ -198,6 +200,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
     final_observation_url=None
     final_observed_at=None
     brain_shutdown_error=False
+    pending_observation=None
     actual_headed=config.headed if headed is None else headed
     try:
         async with BrowserSession(actual_headed,config.viewport.width,config.viewport.height) as browser:
@@ -210,11 +213,15 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                                                  timeout=min(6000,config.action_timeout_ms))
                 except Exception:
                     pass
-            run_deadline=started+config.run_timeout_seconds
+            run_deadline=started+config.run_timeout_seconds if config.run_timeout_seconds is not None else None
             for _ in range(config.max_steps):
                 if stop_requested():termination="cancelled";break
-                if time.monotonic()>=run_deadline:termination="run_timeout";break
-                observation,registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                if run_deadline is not None and time.monotonic()>=run_deadline:termination="run_timeout";break
+                if pending_observation is None:
+                    observation,_=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                else:
+                    observation=pending_observation
+                    pending_observation=None
                 pre_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=observation
                 evaluation={"verification":"unknown","reason":"not_evaluated","feature_checks":[]}
@@ -227,8 +234,8 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     termination="cancelled";break
                 try:
                     decision_started=time.monotonic()
-                    remaining=run_deadline-time.monotonic()
-                    if remaining<=0:
+                    remaining=run_deadline-time.monotonic() if run_deadline is not None else None
+                    if remaining is not None and remaining<=0:
                         step_count+=1
                         write_unexecuted_step(step_id,observation,pre_observed_at,
                             "run_timeout","Run deadline was reached before a model decision.")
@@ -251,7 +258,11 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     termination="run_timeout";break
                 except Exception as exc:
                     step_count+=1
-                    termination="model_error";previous_error={"code":"model_output_error","message":str(exc)[:400]}
+                    code = ('model_capability_error' if str(exc).startswith(('popup_vision_', 'popup_image_')) else
+                            'model_input_error' if isinstance(exc, PromptSizeError) else
+                            'model_connection_error' if isinstance(exc, ProviderConnectionError)
+                            or str(exc).startswith('prompt_tokenizer_unavailable:') else 'model_output_error')
+                    termination="model_error";previous_error={"code":code,"message":str(exc)[:400]}
                     write_unexecuted_step(step_id,observation,pre_observed_at,
                         previous_error["code"],previous_error["message"])
                     error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1;break
@@ -265,7 +276,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                         "cancelled","Run was stopped before action execution.",
                         decision=decision,memory_ids=decision_sources)
                     termination="cancelled";break
-                if time.monotonic()>=run_deadline:
+                if run_deadline is not None and time.monotonic()>=run_deadline:
                     write_unexecuted_step(step_id,observation,pre_observed_at,
                         "run_timeout","Run deadline was reached before action execution.",
                         decision=decision,memory_ids=decision_sources)
@@ -273,12 +284,13 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                 action_attempts+=1
                 if decision.action.type=="back": back_count+=1
                 action_result=await executor.execute(decision.action)
+                brain.record_action_result(action_result)
                 if action_result.ok:action_successes+=1
                 if action_result.error:
                     previous_error=action_result.error;code=previous_error["code"];error_counts[code]=error_counts.get(code,0)+1
                 else:previous_error=None
                 try:
-                    next_obs,next_registry=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
+                    next_obs,_=await observe(browser,run_dir,config.max_observation_text,config.max_observation_elements,previous_error)
                 except Exception:
                     previous_error={"code":"post_observation_error","message":"Post-action observation could not be captured."}
                     error_counts[previous_error["code"]]=error_counts.get(previous_error["code"],0)+1
@@ -287,6 +299,7 @@ async def run_study(study_path, provider_name="mock", persona_override=None, hea
                     termination="browser_error";break
                 post_observed_at=datetime.now(timezone.utc).isoformat()
                 last_obs=next_obs
+                pending_observation=next_obs
                 summary=f"{decision.action.type} {decision.action.target_id or decision.action.url or ''}: {'ok' if action_result.ok else action_result.error['code']}"
                 steps.write({"step_id":step_id,"observation_id":observation.observation_id,"decision_id":decision.decision_id,"action_id":action_result.action_id,"next_observation_id":next_obs.observation_id,"pre_observed_at":pre_observed_at,"post_observed_at":post_observed_at,"recorded_at":datetime.now(timezone.utc).isoformat(),"decision":decision.model_dump(),"action":decision.action.model_dump(),"result":action_result.model_dump(),"memory_ids":decision_sources,"verification":"unknown","evaluation":{"verification":"unknown","reason":"deferred_until_run_end","feature_checks":[]},"timing_ms":{"llm":decision_ms,"action":action_result.elapsed_ms,"observation":0,"settle":0}})
                 if stop_requested():termination="cancelled";break

@@ -780,3 +780,14 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 전체 `python3 -m pytest -q tests`: **686 passed, 486.18s**. `compileall`, `scripts/check_repo.py`, `git diff --check` 통과. 별도 lint/type-check 도구 설정 없음.
 - 무료 Mock CLI 통합: 임시 study의 max_steps=6, 원본 persona 경로를 지정했다. run `20261022T020316-80e8ecb3`, 독립 판정 failure, 행동 6/6, 오류 {}, 종료 사유 max_steps. 출력 `/private/tmp/uxagent-feedback-check-4g49i16b/runs/20261022T020316-80e8ecb3`. 실제 모델 생성 검증과 구분한다.
 - 같은 Mock을 기본30단계로 재검증: run `20261022T020349-32b2a86b`, CLI 종료 코드0, 독립 판정 success, 행동 30/30, 오류 {}, 종료 max_steps.
+
+
+## 2026-10-22 누적 수정 PR 준비·prototype 통합
+
+- 새 브랜치 fix/90-qwen-dom-json-preflight-20261022에 기존 미병합 오류 수정과 후속 JSON·공통 DOM·토큰/feedback 수정을 보존했다. 최신 prototype9095b3c를 merge해 D/U 검토 수정을 함께 유지한다.
+- 충돌 해결 시 GPU hover/select 옵션 값·href, 비밀번호/Slow 출력 보호, 취소 최종 기록, 설문 재시도 무효화, 최종 평가/설문 화면·다운로드와 취소 표시를 함께 확인했다. 관련8개 테스트 파일 **138 passed, 74.36s**.
+- 병합 후 전체 `python3 -m pytest -q tests`: **724 passed, 423.02s**. 병합 전686건과 구분한다.
+- compileall, JS 구문 검사, repo/staged 검사와 diff 공백 검사 통과. doctor는 제한 환경에서 Chromium 권한으로 실패했고 허용 환경에서 Chromium available/study_errors=[]로 통과했다.
+- prototype 대비77개 파일의 경로와 로컬 비밀 값 포함 여부를 검사했다. .env.example의 추가 값은 모두 빈 값이다. .env/인증정보/runs/비공개 비교 원자료는 포함하지 않는다. 실제 Qwen 요약 품질·전체 과업 성공, 대시보드 상태 조회 성능은 별도 후속이다.
+- 최종 무료 Mock CLI: run `20261022T040921-b13b644a`, 독립 판정 success, 행동 30/30, 오류0, 종료 max_steps. 임시 경로에 보관하며 실제 Qwen 과업 성공과 구분한다.
+- 최초 push의 원격 CI는 Ubuntu 성공/Windows 진행 중으로 확인했으며 최종 문서 커밋의 CI와 별도로 본다.

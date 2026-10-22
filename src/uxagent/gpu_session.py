@@ -236,7 +236,12 @@ class GpuSession:
             ports.append(self.config.tokenizer_local_port)
         for port in ports:
             with socket.socket() as probe:
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if os.name == 'nt':
+                    exclusive = getattr(socket, 'SO_EXCLUSIVEADDRUSE', None)
+                    if exclusive is not None:
+                        probe.setsockopt(socket.SOL_SOCKET, exclusive, 1)
+                else:
+                    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     probe.bind(('127.0.0.1', port))
                 except OSError:

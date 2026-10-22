@@ -707,3 +707,11 @@
 - 해결: Fast feedback의 observation만 전체 조각 요약을 허용한다. URL·검색 상태·직전/포커스 입력·관찰 오류를 feedback_state에 분리하고 페르소나/실행 결과 등 사실을 원문 보존한다. decision/미지정 단계는 기존 보호를 유지한다.
 - 회귀: 전체 조각 포함, 보호 필드/원본 불변, 정확 입력·포커스 snapshot, 실제 실행 결과 유지, decision에서 같은 큰 controls의 요약 금지, 모든 요청 사전검사·예산·로그를 확인한다.
 - 실제 검증: 실패 run의 입력을 원격 토큰 계산으로 재생했다. 모의 요약9회 후 최종1,141토큰으로 통과했으며 실제 모델 생성/브라우저 행동0회다. 요약 품질/전체 과업 성공 검증은 별도다.
+
+## Windows CI에서 사용 중인 GPU 로컬 포트를 허용함 (2026-10-22)
+
+- 증상: PR #103의 Windows Python 3.13 push/PR 필수 검사가 `test_port_probe_rejects_listener_but_accepts_its_closed_connections`에서 실패했다. 이미 listen 중인 로컬 포트인데 `_check_ports()`가 예외를 내지 않았다.
+- 원인: Windows의 `SO_REUSEADDR` bind 검사는 다른 소켓이 점유한 포트에도 성공할 수 있다. Unix에서 사용하던 옵션 의미를 Windows에도 그대로 적용했다.
+- 해결: Windows 포트 검사 probe에 `SO_EXCLUSIVEADDRUSE`를 사용하고, 그 외 플랫폼은 기존 `SO_REUSEADDR` 동작을 유지한다. 실제 포워딩 충돌 검사는 OpenSSH 설정도 계속 수행한다.
+- 함께 확인할 회귀: 사용 중인 listener 거부, listener 종료 뒤 TIME_WAIT 연결 허용, Windows/Unix 포트 옵션 분기.
+- 실제 검증: CI 두 경로에서 동일 실패를 확인했다. 변경 후 로컬 타깃 테스트는 sandbox가 loopback bind를 거부해 시작 단계에서 실패했으므로 통과로 기록하지 않는다. 변경 커밋을 push한 뒤 Windows CI 결과를 확인한다.

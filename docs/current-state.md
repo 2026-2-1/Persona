@@ -1,5 +1,9 @@
 # 현재 구현 상태
 
+## 2026-10-22 Windows GPU 로컬 포트 검사 후속
+
+Windows에서 `SO_REUSEADDR` bind probe가 사용 중인 listener 포트를 놓칠 수 있는 문제를 확인해, 해당 플랫폼에서는 `SO_EXCLUSIVEADDRUSE`를 사용한다. PR #103의 Windows push/PR 검사는 같은 포트 회귀로 실패했고 Ubuntu 검사는 통과했다. 수정 후 로컬 테스트는 sandbox loopback bind 제한으로 실행되지 못했으므로 최종 확인은 Windows CI 재실행 결과와 구분한다. [상세](troubleshooting.md).
+
 ## 2026-10-19 코드 검토 후속 작업 브랜치
 
 `fix/90-reviewed-regressions`는 prototype `0fad8e5`, 최신 #99 `f121aaf`와 #100 `ae18a8f`를 포함한다. 선행 코드 동기화 커밋은 `dc2a473`이다. 그 뒤 문제별 수정 커밋 5개에서 password 타입 정규화, Slow 응답 전체 민감정보 검사, GPU hover/select 정보 보존, 실제 취소 후 최종 기록/취소 재전파, 설문 실패 후 이전 성공 파일 제거를 구현했다. 기존 D 검토·출력 코드를 다시 작성하지 않았다.

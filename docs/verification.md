@@ -791,3 +791,9 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - prototype 대비77개 파일의 경로와 로컬 비밀 값 포함 여부를 검사했다. .env.example의 추가 값은 모두 빈 값이다. .env/인증정보/runs/비공개 비교 원자료는 포함하지 않는다. 실제 Qwen 요약 품질·전체 과업 성공, 대시보드 상태 조회 성능은 별도 후속이다.
 - 최종 무료 Mock CLI: run `20261022T040921-b13b644a`, 독립 판정 success, 행동 30/30, 오류0, 종료 max_steps. 임시 경로에 보관하며 실제 Qwen 과업 성공과 구분한다.
 - 최초 push의 원격 CI는 Ubuntu 성공/Windows 진행 중으로 확인했으며 최종 문서 커밋의 CI와 별도로 본다.
+
+## 2026-10-22 PR #103 Windows GPU 포트 검사 수정
+
+- PR #103 Windows 3.13의 push와 pull_request 필수 검사가 모두 같은 회귀에서 실패했다: 이미 listen 중인 포트에 `_check_ports()`가 `RuntimeError`를 내지 않았다. 두 로그 모두 **718 passed, 1 failed, 5 skipped**였다. Ubuntu 3.11 push/PR은 성공했다.
+- 원인은 Windows에서 `SO_REUSEADDR`를 설정한 bind가 점유된 listener 포트에도 성공할 수 있는 플랫폼 차이다. Windows probe에 `SO_EXCLUSIVEADDRUSE`를 설정했다.
+- 수정 후 타깃 테스트를 로컬에서 실행했으나 sandbox가 테스트 listener의 `127.0.0.1` bind를 `PermissionError`로 막아 테스트 본문에 도달하지 못했다. 따라서 로컬 재검증은 미완료이며, 수정 후 Windows CI 재실행 결과를 별도로 확인한다.

@@ -10,7 +10,7 @@ from pathlib import Path
 from playwright.async_api import Locator, Page
 
 from .browser import wait_for_settle
-from .schemas import CaptureInfo, ElementInfo, Observation, TabInfo
+from .schemas import CaptureInfo, ElementInfo, ElementContext, ContextGroup, Observation, TabInfo
 
 
 @dataclass
@@ -37,6 +37,7 @@ def _element_info(item: dict) -> ElementInfo:
         checked=item.get("checked"), focused=bool(item.get("focused", item.get("isFocused", False))),
         in_viewport=bool(item.get('in_viewport', True)),
         href=item.get("href"), options=item.get("options") or [],
+        context=ElementContext.model_validate(item.get('context', {})),
     )
 
 
@@ -66,12 +67,19 @@ async def observe(session, run_dir: Path | None = None, max_text: int = 12000, m
         raise RuntimeError("U DOM parser returned an invalid observation")
     state_script = files('uxagent').joinpath('parser/interaction_state.js').read_text(encoding='utf-8')
     interaction_state = await asyncio.wait_for(page.evaluate(state_script), timeout=10)
+    context_script = files('uxagent').joinpath('parser/element_context.js').read_text(encoding='utf-8')
+    context_ids = list(dict.fromkeys(item['id'] for group in
+        ('clickable_elements', 'input_elements', 'hoverable_elements', 'select_elements')
+        for item in data.get(group, []) if item.get('id')))
+    context_ids += [item['id'] for item in interaction_state.get('scroll_regions', []) if item['id'] != 'page']
+    contexts = await asyncio.wait_for(page.evaluate(context_script, context_ids), timeout=10)
 
     if page.url != data.get("url"):
         if not _retried:
             return await observe(session, run_dir, previous_error=previous_error, _retried=True)
         previous_error = {"code": "capture_error", "message": "URL changed during observation capture"}
         interaction_state = {}
+        contexts = {'groups': [], 'elements': {}}
         data.update({"url": page.url, "title": await page.title(), "html": "", "clickable_elements": [],
                      "input_elements": [], "hoverable_elements": [], "select_elements": [], "observed_urls": []})
 
@@ -96,6 +104,10 @@ async def observe(session, run_dir: Path | None = None, max_text: int = 12000, m
             if not isinstance(item, dict) or not item.get("id"):
                 continue
             item = {**item, 'in_viewport': item['id'] in visible_ids}
+            context = contexts['elements'].get(item['id'], {})
+            if context:
+                item['name'] = context.get('name') or item.get('name')
+                item['context'] = {key: value for key, value in context.items() if key != 'name'}
             if group == "input_elements" and not item.get("canEdit", True):
                 continue
             if group == "select_elements":
@@ -110,6 +122,14 @@ async def observe(session, run_dir: Path | None = None, max_text: int = 12000, m
         if entry['id'] in input_info:
             info = input_info[entry['id']]
             entry.update(name=info.name, enabled=info.enabled, value=info.value, focused=info.focused)
+            if info.context.model_dump(exclude_defaults=True):
+                entry['context'] = info.context.model_dump(exclude_defaults=True)
+    for region in interaction_state.get('scroll_regions', []):
+        if region['id'] in contexts['elements']:
+            context = contexts['elements'][region['id']]
+            region['context'] = {key: value for key, value in context.items() if key != 'name'}
+            if context.get('name'):
+                region['name'] = context['name']
 
     screenshot = None
     if run_dir is not None:
@@ -133,6 +153,8 @@ async def observe(session, run_dir: Path | None = None, max_text: int = 12000, m
         observation_id=obs_id, tab_id=tab_id, url=data["url"], title=data.get("title", ""), html=data["html"],
         **groups, tabs=tabs, error=previous_error,
         interaction_state=interaction_state,
+        context_groups=[ContextGroup.model_validate(group) for group in contexts['groups']],
+        context_only_elements=[ElementInfo.model_validate(item) for item in contexts.get('context_only_elements', [])],
         capture=CaptureInfo(policy="u-dom-parser", screenshot_path=screenshot,
                             observed_text_chars=len(data["html"]),
                             observed_element_count=int(data.get("semantic_element_count", 0)),

@@ -12,6 +12,7 @@ from importlib.resources import files
 
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
 from .call_evidence import call_evidence
+from .model_json import loads_model_json, dumps_json
 from .prompt_guard import prepare_model_messages
 from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord, UReflection, UWonder, UImportance
 from .fast_loop import FastLoop
@@ -39,7 +40,7 @@ class _SlowModelIO:
     async def _generate(self, item, system, payload, stage, *, response_model=None):
         messages = [
             {"role": "system", "content": system + " Return valid JSON only."},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            {"role": "user", "content": dumps_json(payload, ensure_ascii=False)},
         ]
         messages = await prepare_model_messages(self.provider, messages, self.model,
             self.output_tokens, budget=self.budget, call_log=self.call_log,
@@ -71,8 +72,9 @@ class _SlowModelIO:
                 record['provider_queue_ms'] = usage['provider_queue_ms']
             if 'prompt_guard' in usage:
                 record['prompt_guard'] = usage['prompt_guard']
+            json_repairs = []
             try:
-                parsed = json.loads(result)
+                parsed = loads_model_json(result, repairs=json_repairs)
                 if not isinstance(parsed, dict):
                     raise ValueError("Slow Loop response must be a JSON object")
                 if response_model is not None:
@@ -81,6 +83,8 @@ class _SlowModelIO:
                 record["error"] = "model_output_error"
                 raise
             finally:
+                if json_repairs:
+                    record['json_repairs'] = json_repairs
                 if self.call_log:
                     self.call_log(record)
             return parsed

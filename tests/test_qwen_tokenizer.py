@@ -1,4 +1,6 @@
 import json
+import io
+import urllib.error
 
 import pytest
 
@@ -53,3 +55,28 @@ def test_counter_validates_model_and_uses_bounded_cache(monkeypatch):
     assert len(calls) == 1 and calls[0]['messages'] == messages
     with pytest.raises(ValueError):
         QwenTokenCounter('https://external.test/tokenize')
+
+
+@pytest.mark.parametrize('body,expected', [
+    (b'{"error":"tokenization_failed"}', 'tokenization_failed'),
+    (b'{"error":"invalid_body_size"}', 'invalid_body_size'),
+    (b'{"error":"PRIVATE_REQUEST_CONTENT"}', 'unknown'),
+    (b'PRIVATE_REQUEST_CONTENT', 'unknown'),
+    (b'["PRIVATE_REQUEST_CONTENT"]', 'unknown'),
+    (b'{"error":{"secret":"PRIVATE_REQUEST_CONTENT"}}', 'unknown'),
+])
+def test_counter_http_error_retains_status_and_only_known_safe_code(monkeypatch, body, expected):
+    calls = []
+
+    def request(req, timeout):
+        calls.append(req)
+        raise urllib.error.HTTPError(req.full_url, 500, 'PRIVATE_REASON', {}, io.BytesIO(body))
+
+    monkeypatch.setattr('uxagent.token_counter.urllib.request.urlopen', request)
+    counter = QwenTokenCounter('http://127.0.0.1:8003/tokenize')
+    for _ in range(2):
+        with pytest.raises(RuntimeError) as error:
+            counter.count([{'role': 'user', 'content': 'PRIVATE_REQUEST_CONTENT'}])
+        assert str(error.value) == f'prompt_tokenizer_unavailable: HTTP 500 {expected}'
+        assert 'PRIVATE' not in str(error.value)
+    assert len(calls) == 2 and not counter.cache

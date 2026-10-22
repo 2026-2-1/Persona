@@ -682,3 +682,78 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 재요청 메시지에 기대 JSON 템플릿을 넣도록 바꿨다. `response_model` JSON Schema의 필수 구조를 빈 템플릿으로 만들고, 기존 JSON을 읽을 수 있으면 유효한 action 선택·대상·텍스트·옵션을 유지한 채 빠진 필수 필드만 빈칸으로 남긴다. 수정 후에도 검증되지 않으면 기존처럼 한 번 뒤 중단한다. 원본·수정 응답과 usage 호출 로그는 기존처럼 각각 보존한다.
 - 최소 회귀는 누락 description 응답과 원 실행의 잘못된 `enter=false` JSON을 재현한다. 파싱 가능할 때 기존 action/type/target/text/enter를 유지한 빈 description을 만들고, 파싱 불가일 때 required schema 템플릿을 제시하며 원본 응답이 대화에 남는지 확인한다. `python3 -m pytest -q tests/test_u_fast.py tests/test_prompt_guard.py tests/test_target_selection.py`: **46 passed in 4.64s** (Chromium/fake HTTP 실행 포함). 실제 Qwen 요청, 실제 검색어 입력, 전체 pytest는 실행하지 않았다.
 - `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (**0 problems**) 및 `git diff --check` 통과.
+
+## 2026-10-21 검색 제출 포커스와 결과 판정
+
+- 실제 run `20261021T112804-6b33bb9d`에서 `type(러닝화, enter=false)` 뒤 다음 모델 판단에 약64초가 걸렸다. 다음 `key_press(Enter)`는 target_id가 없었고 실행 결과는 `ok=true`였으나 URL은 그대로였다. 이어 모델은 검색 결과가 아니라 `모든 스포츠` 링크를 눌렀고 세 번째 행동 뒤 JSON 제어 문자 오류로 종료됐다. 포커스는 Enter 전 관찰에서는 true였지만 키 전달 시점 값은 기록되지 않아 정확한 키 도달 위치는 확정할 수 없다.
+- 검색 상호작용에서 선택된 query를 `type+Enter` 하나로 같은 input locator에 보낸다. 일반 모델이 먼저 type만 제안한 경로도 다음 Enter를 동일 input에 포커스해 보낸다. 관찰 스크립트는 main 결과 영역·검색 제안 영역 fingerprint와 로딩 표시를 기록한다. URL/영역 변화는 결과 확인 근거이며, 로딩은 pending으로 기록하고 Enter를 재전송하지 않는다. 세 신호가 없으면 미확인으로 유지한다.
+- URL/결과 변화, 로딩 중/종료, 신호 없음, 제출 실패를 포함한 `tests/test_interaction_flows.py` 및 연계 Fast/runner/관찰/action/dashboard 회귀 **92 passed in 83.30s**. 전체 `python3 -m pytest -q tests`: **613 passed in 352.64s**. targeted Playwright 테스트는 submit form으로 이동하는 로컬 route만 사용했다.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 실제 Qwen·Decathlon 사이트 재실행은 하지 않았다.
+
+## 2026-10-21 Qwen `enter=false` JSON 문법 교정
+
+- 실제 실행 `20261021T123650-e2648528`의 4번째 행동에서 Qwen은 `"enter=false"`를 JSON 키로 반환했다. 최초 응답에는 `description`도 없었고, 한 번의 수정 요청 뒤에는 설명이 생겼지만 같은 문법 오류가 남았다. 행동은 실행 전에 차단됐다.
+- 이 원본 표기와 누락 설명을 재현한 테스트는 수정 전 실패했다. `model_json.py` 추가 후 UActions 응답에서 해당 키 오타만 교정하고 기존 스키마 검증을 통과시키는 회귀를 확인했다. 정상 JSON의 설명 문자열과 다른 문법 오류는 교정하지 않는다. 호출 로그는 원본 응답과 교정 표시를 별도로 보존한다.
+- `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_prompt_guard.py tests/test_target_selection.py`: **51 passed in 4.73s**. 첫 sandbox 실행의 Chromium/로컬 HTTP 2건은 권한 때문에 실패했고, 허용 환경에서 동일 명령으로 재검사했다. `compileall`, 저장소 검사(0 problems), diff 공백 검사도 통과했다. 실제 Qwen·데카트론 전체 과업 재실행은 하지 않았다.
+
+## 2026-10-21 모델 JSON 문법 공통 검사 확장
+
+- `model_json.py`에 모델용 제한 교정과 엄격한 전송 JSON 검사를 분리했다. 코드블록/BOM, 후행 쉼표, True/False/None, 확인 가능한 키/구분자 오류, 문자열 제어 문자를 처리하고 기존 GPU 인식 suffix 교정을 한곳으로 옮겼다. 중복 키·NaN/Infinity/overflow·잘린 응답·복수 루트는 거부하며 교정은 최대32회다. 원래 필드·값을 추가하지 않고 문법 검사 뒤 기존 response model과 의미 검증을 유지한다.
+- Fast 모든 단계와 Slow/Wonder/중요도, 요약·설문·페르소나·설정 도우미·연결 확인을 연결했다. 호출 trace가 있는 경로에서는 원본 response와 `json_repairs`, usage를 함께 확인했다. API envelope가 깨진 경우는 ProviderJSONError이며 모델 수정 요청을 하지 않는다. API 전송은 엄격한 직렬화로 비표준 숫자를 차단한다.
+- 최종 집중 검사: `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_u_slow.py tests/test_survey.py tests/test_setup_guide.py tests/test_prompt_guard.py tests/test_target_selection.py tests/test_gpu_provider.py tests/test_provider_budget.py tests/test_local_embeddings.py tests/test_gpu_session.py tests/test_qwen_tokenizer.py tests/test_setup_guide_http.py tests/test_claude.py` → **241 passed in 13.99s**. 파서/각 단계/요약/페르소나/설정 직접 회귀만으로도 **41 passed**였다.
+- 전체 검사는 중간 코드에서 **654 passed / 1 failed in 368.10s**였다. 실패는 연결 확인에 불필요하게 추가했던 `ok=true` 필수 조건 때문에 기존 `{}` fixture가 거부된 것이었다. 이 조건을 제거하고 문법 검사만 유지했다. 해당 회귀 단독·`--lf` 재검사와 위 최종 집중241건은 통과했다. 최종 전체 suite를 다시 실행하지 않았으며 중간 전체 결과를 최종 전체 통과로 표시하지 않는다.
+- 기존 실행 `20261021T123650-e2648528`의 모델 응답43개를 원문 수정 없이 로컬 재생했다. 기존 json.loads에서 문법 오류였던9개 모두 공통 파서를 통과했다. 이는 문법 복구만의 결과다. 계획 배열/누락 description 등의 스키마 문제 해결이나 실제 행동 성공을 의미하지 않는다.
+- 대시보드의 이전 소유 GPU 세션 정리를 확인하고 수정 코드로 재시작했다. 실제 사이트/Qwen 자율 과업은 재실행하지 않았다. HTTP/GPU 준비 확인은 이 과업의 성공 판정과 구분한다.
+
+## 2026-10-22 행동별 양식과 인자 오류 재요청
+
+- 실제 `20261021T142323-1302c49e`에서 두 번 반환된 raw_type+target=s23+text=80000을 확인했다. 원인은 기존 공통 스키마 템플릿이 raw_type의 금지 인자 target도 보존한 것이었다. 재현 테스트2건은 수정 전 실패했다.
+- 행동 프롬프트는17개 지원 행동의 JSON 예시, 선택 필드와 raw_type/type 차이를 제공한다. 최종2375자로 기존2400자 미만 제한을 만족한다. 예시 전체를 UAction 스키마로 검증하고 지원 행동 목록과 일치하는지 확인한다.
+- UAction.argument_contract의 필수/허용 인자를 validator와 재요청에서 공유한다. 금지 인자를 제외한 행동별 초안, 인자 진단, raw_type의 대상/Enter 의도에 맞는 type 대안을 제공한다. 원래 대상·텍스트·설명과 가능한 Enter를 보존하며 실제 선택은 재응답한 모델이 결정한다. 좌표/탭 등 누락한 숫자를0으로 만들지 않고 null로 둔다.
+- `python3 -m pytest -q tests/test_u_fast.py tests/test_target_selection.py tests/test_u_actions.py tests/test_model_json.py tests/test_prompt_guard.py tests/test_interaction_flows.py tests/test_runner_flow.py`: **120 passed in 32.03s**. 최초 집중 실행은 프롬프트가2405자여서 길이 회귀1건이 실패했고, 최종 축약 후 통과했다. 마지막 예시/문구 조정 뒤 `tests/test_target_selection.py`도 **4 passed in 0.19s**로 재확인했다.
+- 모델이 type 또는 raw_type을 선택한 두 경로, 반복 invalid 응답 차단, 한 번의 재요청/원문/usage/예약 예산, 필수 설명과 좌표 누락, 실제 실행기 연계 및 prompt guard를 검사했다. `compileall`, 저장소 검사와 diff 공백 검사도 통과했다. 실제 Qwen 재요청/데카트론 전체 과업은 이번 변경 후 실행하지 않았고 전체 suite도 재실행하지 않았다.
+- 마지막으로 대안 선택 안내와 충돌하던 “템플릿을 그대로 완성” 문구를 “참고하여 완성”으로 정리한 뒤 재요청 관련7건도 통과했다.
+
+## 2026-10-22 Min/Max 입력 관찰과 마지막 객체 괄호 누락
+
+- `20261021T152740-3bda475a`의7번째 행동은 text=80000을 Min 대상에 입력했다. 직전 관찰의 두 숫자 입력은 이름이 input, 값은20900/269000이었다. 원본 HTML에는 각각 앞의 span에 Min/Max가 있었지만 입력 이름에 연결되지 않았다. 모델은 s22를 최대 가격 입력으로 설명했고, 이후 전역 Enter와 잘못된 범위 해석이 이어졌다.
+- 원인 회귀2건을 수정 전에 실패시켰다. 수정 후 Min/Max 이름·원래 locator ID 대응·interaction_state.inputs·강제 GPU 압축 입력 모두에 역할이 보존됨을 실제 로컬 Chromium에서 확인했다. 명시적 aria 이름과 이메일 placeholder도 유지했다. 계획/행동 지침은 이하=최대/상한, 이상=최소/하한으로 설명하며 예산을 임의 변경하지 않게 했다. 행동 지침2353자/계획1474자로 기존 제한 미만이다.
+- 실패한 plan 원본449자와388자를 다시 읽었다. 둘 다 문자열과 내부 구조는 완결됐고 마지막 바깥 `}` 하나만 없었다. 수정 후 `root_object_close` 규칙으로 JSON 및 UPlan 검증을 모두 통과했다. 기존 로그/실패 판정은 바꾸지 않았다. 이 재생은 모델의 잘못된 예산 해석을 정답으로 바꾸거나 실제 행동 성공을 증명하지 않는다.
+- `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_u_observation.py tests/test_target_selection.py tests/test_prompt_guard.py tests/test_survey.py tests/test_runner_flow.py`: **140 passed in 29.35s**. 완결 값의 마지막 객체 괄호 복구, 문자열 내 괄호/escape 보존, 잘린 숫자/문자열/중첩 거부, 추가 호출 없는 원문·usage·교정 로그를 함께 검사했다.
+- `compileall`, `node --check src/uxagent/parser/parser.js`, 저장소 검사(0 problems), diff 공백 검사 통과. 실제 Qwen/Decathlon 과업·전체 pytest는 이번 수정 후 재실행하지 않았다.
+
+
+## 2026-10-22 공통 DOM 요소 문맥 검증
+
+- 가격 전용 보완을 이름 출처·소속 그룹·제약·상태·관계의 공통 추출로 확장했다. 원본 semantic ID/실행 registry는 유지한다.
+- 구현 전 새 소속 그룹 테스트2건의 실패를 확인한 뒤 구현했다. 추가로 긴 한국어 그룹 이름의 구역 선택 입력 초과를 재현하고, 미리보기와 최종 전체 문맥을 분리해 해결했다.
+- 전체 `python3 -m pytest -q tests`: **672 passed, 2 failed, 376.54s**. usage partial 사례는 Chromium launch180초 timeout, wonder seed 사례는 UI 클릭30초 timeout이었다. 두 파일을 분리 재실행한 `tests/test_usage_coverage.py tests/test_wonder_seed_precision.py`: **15 passed, 22.72s**. 전체 검사가 처음부터 모두 통과했다고 표기하지 않는다.
+- 최종 관련 회귀 `tests/test_dom_context.py tests/test_u_observation.py tests/test_target_selection.py tests/test_interaction_flows.py tests/test_prompt_guard.py`: **38 passed, 15.55s**. 카드/폼/표 소속, 옵션 상태, 비활성 대상, 팝업 격리, 요약과 계층 선택 후 그룹 참조를 검사했다.
+- `compileall`(src 및 수집 스크립트), 새 JS의 `node --check`, `scripts/check_repo.py`, `git diff --check` 통과. 프로젝트에 별도 lint/type-check 도구 설정은 없다.
+- 실제 Chromium으로 공개15개 사이트를 읽어 **서로 다른13곳**의 DOM·스크린샷·모델 입력을 수집했다. 컨트롤2,525개, 공유 그룹1,428개, 명시적 라벨 대조150건, unknown 라벨206건이다. 통과 사이트의 관찰 오류는0건이다. W3C403 challenge와 GNU 네트워크 중단은 제외했다. 사이트별 결과와 한계는 [공통 DOM 문맥](tasks/dom-context.md)에 기록했다.
+- 실제 수집 명령: `python3 scripts/verify_dom_context_sites.py --output runs/private/dom-context-live-2026-10-22-verified`. 해당 폴더에 source.html/관찰/PNG/model-context/model-input/pipeline/result 및 report.md/json을 보관하며 Git 제외를 확인했다.
+- 실제 네트워크 검증은 페이지 읽기뿐이다. 실제 모델 요청·로그인·폼 제출·구매0회. Fast 입력 검사/대상 선택의 모델 응답은 모의했고 원격 tokenizer 없이 보수적 크기 검사를 사용했다. 실제 Qwen 의미 해석·과업 성공·속도 개선량을 입증하는 결과는 아니다.
+- 무료 Mock CLI 통합: `python3 -m uxagent run --study configs/study.json --provider mock --headless --output runs/private/dom-context-mock-2026-10-22` 종료 코드0. run `20261022T000021-b859892d`에서 최종 독립 판정 success(검색/필터/상세3항목 pass), 행동30/30 성공, 기록30/30, 오류0건을 확인했다. 모델 terminate가 아닌 max_steps30 종료이며 Brain incomplete를 유지한다. 모의 Slow는 즉시 응답 반복으로1,858회 순환·총 모의 모델 요청3,973회를 기록했으며 실제 GPU 지연/비용의 근거로 사용하지 않는다.
+
+
+## 2026-10-22 Qwen system-only 토큰 검사 수정
+
+- 최근 두 실제 실행은 검색어 입력·Enter 후3단계의 토큰 검사에서 중단했다. 원격 `/tokenize`는 user만200, system만500/tokenization_failed, feedback system만500, system+빈 user200/160토큰을 반환해 결정적 요청 구성 문제를 확인했다.
+- 수정 전 추가 회귀8건 실패·기존14건 통과를 확인했다. 수정 후 지침 단독 검사에만 빈 user를 추가하고 HTTP 오류의 상태/허용 코드만 보존한다. 원본/생성 메시지 불변, fixed 초과 차단, 민감 본문 비노출, 오류 캐시 금지와 추정값 우회 금지를 확인했다.
+- 관련 `tests/test_prompt_guard.py tests/test_qwen_tokenizer.py tests/test_u_fast.py tests/test_target_selection.py tests/test_model_json.py`: **111 passed, 6.82s**. 최초 제한 환경 실행은109 passed/2 failed였으며 Chromium 시작·fixture bind 권한 때문에 실패해 허용된 환경에서 재실행했다.
+- 실제 원격 토큰 계산 재생: 긴 기억 입력은 요약 응답을 모의하고216토큰으로 최종 검사 통과. 실제 생성 요청0회. 최근 실패 화면의 feedback 입력은10,438토큰이며 내부 지침 검사160토큰을 통과했다. 그러나 보호 조작 문맥이 요약 후에도9,849토큰으로 남아8,192한도 초과를 정확히 차단했다. 이는 이번 HTTP500 수정과 별개인 남은 한계이며 실제 전체 과업 성공으로 표시하지 않는다.
+- `compileall`, `scripts/check_repo.py`(0 problems), `git diff --check` 통과. 별도 lint/type-check 도구 설정 없음.
+- 수정 후 전체 `python3 -m pytest -q tests`: **682 passed, 407.27s**. Chromium·로컬 포트 사용이 가능한 허용 환경에서 직렬 수행했다.
+- 무료 Mock CLI 통합 (`runs/private/tokenizer-fixed-probe-mock`): run `20261022T010123-4cb328ec`, 종료 코드0, 독립 판정 success, 행동 30/30, 오류 {}. 종료 사유는 max_steps이며 실제 Qwen 자율 성공과 구분한다.
+
+
+## 2026-10-22 feedback 보호 문맥 초과 수정
+
+- 최신 run 20261022T014757-f41be58a는 Enter 이후3단계 전 feedback 보호 문맥10,371토큰으로 중단했다. stage별 역할 구분 없이 전체 controls/element_context를 보호한 문제를 새 회귀의 실패로 재현했다(1 failed/15 passed).
+- Fast feedback만 observation의 전체 조각 요약·병합을 허용한다. feedback_state·페르소나·직전 행동·실행 사실은 보호하고 decision/기본 단계에는 적용하지 않는다. 최종 관찰과 원본 run은 바꾸지 않는다.
+- 관련 tests/test_prompt_guard.py, test_qwen_tokenizer.py, test_u_fast.py, test_dom_context.py, test_target_selection.py: **72 passed, 11.68s**.
+- 실제 실패 관찰·페르소나·직전 행동/실행 결과·계획을 재생했다. 실제 원격 계수를 사용하고 요약/최종 피드백은 모의했다. 관찰 전체가9개 조각에 포함됐고 모든 발송 입력이 한도 안에 들며 최종1,141토큰을 확인했다. 실제 모델 생성/브라우저 행동0회. 로컬 결과: runs/private/feedback-preflight-replay-2026-10-22.json.
+- 이전 항목의 feedback 문맥 조정 미완료 표현은 당시 이력이다. 이번 입력 재생 통과와 실제 Qwen 요약 품질/자율 과업 성공은 구분한다.
+- 전체 `python3 -m pytest -q tests`: **686 passed, 486.18s**. `compileall`, `scripts/check_repo.py`, `git diff --check` 통과. 별도 lint/type-check 도구 설정 없음.
+- 무료 Mock CLI 통합: 임시 study의 max_steps=6, 원본 persona 경로를 지정했다. run `20261022T020316-80e8ecb3`, 독립 판정 failure, 행동 6/6, 오류 {}, 종료 사유 max_steps. 출력 `/private/tmp/uxagent-feedback-check-4g49i16b/runs/20261022T020316-80e8ecb3`. 실제 모델 생성 검증과 구분한다.
+- 같은 Mock을 기본30단계로 재검증: run `20261022T020349-32b2a86b`, CLI 종료 코드0, 독립 판정 success, 행동 30/30, 오류 {}, 종료 max_steps.

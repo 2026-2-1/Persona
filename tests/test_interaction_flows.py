@@ -32,15 +32,19 @@ class FlowFast:
         raise AssertionError(stage)
 
 
-def search_observation(*, value='', focused=True, url='https://shop.test'):
+def search_observation(*, value='', focused=True, url='https://shop.test',
+                       results_signature='main-before', suggestions_signature='suggestions-empty',
+                       loading=False):
     element = ElementInfo(id='search', role='textbox', name='상품 검색', value=value, focused=focused)
     return Observation(observation_id='obs', tab_id='tab-1', url=url, title='shop', html='<input>',
         input_elements=[element], interaction_state={'inputs':[{'id':'search','name':'상품 검색','value':value,
-            'focused':focused,'enabled':True,'search':True}], 'scroll_regions':[]})
+            'focused':focused,'enabled':True,'search':True}], 'scroll_regions':[],
+            'search_state': {'results_signature':results_signature,
+                             'suggestions_signature':suggestions_signature,'loading':loading}})
 
 
 @pytest.mark.asyncio
-async def test_search_click_continues_to_query_fill_then_submit_without_refocusing():
+async def test_search_click_fills_and_enters_on_the_same_targeted_action():
     flow, fast = InteractionFlow(), FlowFast()
     obs = search_observation()
     flow.remember(UAction(action='click', target='search', description='검색창 열기'), obs)
@@ -50,30 +54,67 @@ async def test_search_click_continues_to_query_fill_then_submit_without_refocusi
     assert fast.calls[0][0] == 'search_query'
     assert fill.actions[0].action == 'type'
     assert fill.actions[0].text == '러닝화'
-    assert fill.actions[0].enter is False
+    assert fill.actions[0].enter is True
     assert fill.actions[0].target == 'search'
     flow.remember(fill.actions[0], obs)
-
-    filled = search_observation(value='러닝화')
-    plan, submit, _ = await flow.propose(fast, object(), '러닝화', filled, 'persona', {'ok':True})
-    assert submit.actions[0].action == 'key_press'
-    assert submit.actions[0].key == 'Enter'
-    assert submit.actions[0].target == 'search'
     assert flow.search['phase'] == 'submitted'
+
+    submitted = search_observation(value='러닝화', results_signature='main-after')
+    flow.observe(submitted, fill.actions[0].model_dump(), {'ok':True})
+    assert flow.search is None
+    assert flow.context['search_transition']['signal'] == 'results_changed'
 
 
 @pytest.mark.asyncio
-async def test_decathlon_search_uses_visible_all_results_instead_of_enter():
+async def test_decathlon_search_enters_on_the_observed_input_even_without_result_button():
     flow, fast = InteractionFlow(), FlowFast(query='러닝화')
     opened = search_observation()
     flow.remember(UAction(action='click', target='search', description='검색창 열기'), opened)
-    await flow.propose(fast, object(), '러닝화', opened, 'persona', {'ok':True})
-    filled = search_observation(value='러닝화', url='https://www.decathlon.co.kr/')
-    from uxagent.schemas import ElementInfo
-    filled.clickable_elements = [ElementInfo(id='all-results', role='link', name='러닝화 다음에 대한 모든 결과 보기')]
-    _, submit, _ = await flow.propose(fast, object(), '러닝화', filled, 'persona', {'ok':True})
-    assert submit.actions[0].action == 'click'
-    assert submit.actions[0].target == 'all-results'
+    _, fill, _ = await flow.propose(fast, object(), '러닝화', opened, 'persona', {'ok':True})
+    assert fill.actions[0].action == 'type'
+    assert fill.actions[0].enter is True
+    assert fill.actions[0].target == 'search'
+
+
+@pytest.mark.asyncio
+async def test_search_submission_records_url_change_and_loading_as_distinct_signals():
+    flow = InteractionFlow()
+    baseline = search_observation()
+    flow.search = {'target':'search','name':'상품 검색','url':baseline.url,'tab':baseline.tab_id,
+                   'phase':'submitted','query':'러닝화',
+                   'baseline_results_signature':'main-before',
+                   'baseline_suggestions_signature':'suggestions-empty'}
+    flow.observe(search_observation(value='러닝화',url='https://shop.test/search?q=%EB%9F%AC%EB%8B%9D%ED%99%94'),
+                 {'type':'type'}, {'ok':True})
+    assert flow.context['search_transition']['signal'] == 'url_changed'
+    assert flow.search is None
+
+    flow = InteractionFlow()
+    flow.search = {'target':'search','name':'상품 검색','url':baseline.url,'tab':baseline.tab_id,
+                   'phase':'submitted','query':'러닝화',
+                   'baseline_results_signature':'main-before',
+                   'baseline_suggestions_signature':'suggestions-empty'}
+    flow.observe(search_observation(value='러닝화',loading=True), {'type':'type'}, {'ok':True})
+    assert flow.context['search_transition']['signal'] == 'loading'
+    assert flow.search['phase'] == 'loading'
+    assert await flow.propose(FlowFast(), object(), '러닝화',
+        search_observation(value='러닝화',loading=True), 'persona', {'ok':True}) is None
+    flow.observe(search_observation(value='러닝화'), {'type':'type'}, {'ok':True})
+    assert flow.context['search_transition'] == {
+        'signal':'loading_completed','url':'https://shop.test','result_area_changed':False}
+    assert flow.search is None
+
+
+def test_search_without_any_submission_signal_is_marked_unconfirmed():
+    flow = InteractionFlow()
+    observation = search_observation(value='러닝화')
+    flow.search = {'target':'search','name':'상품 검색','url':observation.url,'tab':observation.tab_id,
+                   'phase':'submitted','query':'러닝화',
+                   'baseline_results_signature':'main-before',
+                   'baseline_suggestions_signature':'suggestions-empty'}
+    flow.observe(observation, {'type':'type'}, {'ok':True})
+    assert flow.search['phase'] == 'unconfirmed'
+    assert flow.context['search_transition']['signal'] == 'unconfirmed'
 
 
 @pytest.mark.asyncio
@@ -148,3 +189,21 @@ async def test_scroll_moves_page_and_inner_regions_by_pixels_and_reports_progres
         assert result.interaction['moved'] is True
         assert result.interaction['direction']=='down'
         assert result.interaction['after']-result.interaction['before'] <= 400
+
+
+@pytest.mark.asyncio
+async def test_targeted_type_enter_submits_form_without_relying_on_page_focus():
+    async with BrowserSession(False, 800, 500) as browser:
+        await browser.context.route('https://shop.test/**', lambda route: route.fulfill(
+            body='<form action="/search"><input name="q" aria-label="상품 검색"></form>',
+            content_type='text/html'))
+        await browser.active.goto('https://shop.test/')
+        observation, _ = await observe(browser)
+        search = observation.input_elements[0]
+        assert observation.interaction_state['search_state']['loading'] is False
+        assert observation.interaction_state['search_state']['results_signature']
+        result = await ActionExecutor(browser, [], 1000, 0).execute(Action(
+            type='type', observation_id=observation.observation_id, tab_id=observation.tab_id,
+            target_id=search.id, text='러닝화', enter=True))
+        assert result.ok
+        assert result.url_after.startswith('https://shop.test/search')

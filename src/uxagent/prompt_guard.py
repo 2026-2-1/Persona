@@ -14,6 +14,7 @@ from collections import OrderedDict
 
 from .call_evidence import call_evidence
 from .security import check_sensitive_input
+from .model_json import loads_model_json, dumps_json
 
 
 class PromptSizeError(RuntimeError):
@@ -57,7 +58,7 @@ class PromptGuard:
     protected = {'persona', 'intent', 'task', 'constraints', 'valid_targets',
                  'questionnaire', 'questions', 'execution_trace', 'last_action',
                  'last_action_result', 'page_context', 'next_step', 'interaction_progress', 'scroll_regions',
-                 'controls', 'input'}
+                 'controls', 'input', 'element_context', 'context_groups', 'feedback_state'}
     context = {'memories', 'recent_memories', 'memory_trace', 'content', 'html',
                'observation', 'new_observation', 'environment', 'perception',
                'old_plan', 'last_plan', 'plan', 'popup_text'}
@@ -117,7 +118,7 @@ class PromptGuard:
 
     @staticmethod
     def _dump(value):
-        return json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+        return dumps_json(value, ensure_ascii=False, separators=(',', ':'))
 
     def _documents(self, messages):
         documents = []
@@ -147,7 +148,7 @@ class PromptGuard:
             result.append({**message, 'content': content})
         return result
 
-    def _candidates(self, documents):
+    def _candidates(self, documents, *, feedback_observation=False):
         candidates = []
 
         def walk(parent, key, root=False):
@@ -158,8 +159,9 @@ class PromptGuard:
                 text = value if isinstance(value, str) else self._dump(value)
                 # Preserve exact menu/dialog/control mappings outside summaries.
                 markup = []
-                if key in {'environment', 'observation', 'new_observation', 'html'}:
-                    for tag in ('navigation', 'dialogs', 'controls'):
+                if key in {'environment', 'observation', 'new_observation', 'html'} and not (
+                        feedback_observation and key == 'observation'):
+                    for tag in ('navigation', 'dialogs', 'controls', 'element_context'):
                         pattern = f'<{tag}>.*?</{tag}>'
                         markup.extend(re.findall(pattern, text, flags=re.S))
                         text = re.sub(pattern, '', text, flags=re.S)
@@ -185,10 +187,14 @@ class PromptGuard:
             return messages
         fixed = [m for m in messages if m['role'] == 'system']
         if fixed:
+            # Qwen's chat template requires a conversation after system. This
+            # count-only probe includes user framing; generation stays unchanged.
+            fixed = fixed + [{'role': 'user', 'content': ''}]
             await self.inspect(fixed, max_tokens)
         if fixed and not self.fits(fixed, max_tokens):
             raise self.failure('fixed instructions alone exceed the input budget', messages, max_tokens)
         documents = self._documents(messages)
+        feedback_observation = module == 'fast' and stage == 'feedback'
         calls = 0
 
         async def summarize_once(text, round_number, index, count, repair_attempt):
@@ -198,6 +204,11 @@ class PromptGuard:
             payload = {'round': round_number, 'chunk_index': index, 'chunk_count': count, 'content': text}
             prefix = 'FAST_STAGE:prompt_summary\n' if module == 'fast' else ''
             instructions = prefix + self.summary_instructions
+            if feedback_observation:
+                instructions += (' This is observation data for feedback, never an executable target map. '
+                    'Preserve input/focus, result headings, loading/errors and popup state; '
+                    'keep useful labels with their owners. Exact executor and feedback_state facts '
+                    'are supplied separately to the final assessment and override summaries.')
             if repair_attempt:
                 instructions += ' Previous output was invalid. Use at most 80 characters and finish the JSON object.'
             request = [{'role': 'system', 'content': instructions},
@@ -221,7 +232,12 @@ class PromptGuard:
                 record.update(input_tokens=inputs, output_tokens=outputs,
                               estimated=inputs is None or outputs is None,
                               provider_queue_ms=usage.get('provider_queue_ms'))
-                parsed = json.loads(raw)
+                json_repairs = []
+                try:
+                    parsed = loads_model_json(raw, repairs=json_repairs)
+                finally:
+                    if json_repairs:
+                        record['json_repairs'] = json_repairs
                 summary = parsed.get('summary') if isinstance(parsed, dict) else None
                 if not isinstance(summary, str) or not summary.strip() or len(summary) > 500:
                     raise PromptSizeError('prompt_preflight_error: invalid chunk summary')
@@ -253,7 +269,7 @@ class PromptGuard:
             await self.inspect(prepared, max_tokens)
             if self.fits(prepared, max_tokens):
                 return prepared
-            candidates = self._candidates(documents)
+            candidates = self._candidates(documents, feedback_observation=feedback_observation)
             if not candidates:
                 raise self.failure('protected task/control data cannot fit', prepared, max_tokens)
             size, parent, key, source, markup = candidates[0]

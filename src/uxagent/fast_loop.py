@@ -12,7 +12,9 @@ from importlib.resources import files
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
 from .call_evidence import call_evidence
 from .prompt_guard import prepare_model_messages, PromptSizeError, PromptGuard
-from .schemas import Action, AgentDecision, Finish, UPerception, UFeedback, UPlan, UActions, UTargetSelection
+from .model_json import loads_model_json, dumps_json, ProviderJSONError
+from .dom_context import model_context, context_markup
+from .schemas import Action, AgentDecision, Finish, UPerception, UFeedback, UPlan, UAction, UActions, UTargetSelection
 
 
 _ACTION_PROMPT = """Return one action proposal in the existing rationale_summary/action/finish response object. rationale_summary is a short plain string. finish is null or {\"claim\": \"completed\" or \"give_up\", \"summary\": string}; never false. Use the U action vocabulary: click, mouse_click, type, raw_type, scroll, hover, select, clear, key_press, goto_url, back, forward, refresh, new_tab, switch_tab, close_tab, or a finish claim. Use the exact semantic ID for a targeted action. For targeted legacy action objects, copy observation_id and tab_id from the current observation. select: target_id, option_value; type: target_id, text. key_press may omit target to send the key globally. A scroll uses direction (up, down, left, right) and amount. Do not add selectors, scripts, or fields that the chosen action does not accept. Tool failures remain failures; they do not become successful outcomes. A completed claim is not independently verified success."""
@@ -186,7 +188,7 @@ class FastLoop:
         """Keep visible text and controls without the U parser's oversized IDs."""
         html = observation.html
         if self._provider_name() != "gpu" or (not force and len(html) <= _GPU_FULL_HTML_LIMIT):
-            return html, {}, {}
+            return html + context_markup(observation), {}, {}
         ids = {}
         originals = {}
 
@@ -276,6 +278,7 @@ class FastLoop:
                 alias(region['id'])
         compact = ("<page>" + self._dialog_context(observation, alias) + navigation + "<visible_text>" + escape(visible_text) +
                    "</visible_text><controls>" + ("\n" if group_text else "").join(controls) + "</controls></page>")
+        compact += context_markup(observation, ids, set(ids), include_names=False)
         return compact, ids, originals
 
     async def perceive_page(self, observation):
@@ -337,9 +340,23 @@ class FastLoop:
 
     async def feedback(self, persona, last_action, last_plan, observation, persona_mode="persona", *, last_action_result=None):
         model_html, _, _ = self._model_html(observation)
+        try:
+            previous = json.loads(last_action) if isinstance(last_action, str) else last_action
+        except (TypeError, ValueError):
+            previous = None
+        target = (previous.get('target_id') or previous.get('target')) if isinstance(previous, dict) else None
+        state = observation.interaction_state
+        popup = state.get('popup')
+        # Keep immediate, observed action evidence exact even when the full page
+        # is summarized. Feedback does not dispatch actions or need every target.
+        feedback_state = {'url': observation.url, 'title': observation.title,
+            'error': observation.error, 'search_state': state.get('search_state'),
+            'popup': {key: popup.get(key) for key in ('name', 'modal')} if popup else None,
+            'inputs': [{key: entry.get(key) for key in ('id', 'name', 'value', 'focused', 'enabled')}
+                       for entry in state.get('inputs', []) if entry.get('focused') or entry.get('id') == target]}
         payload = {"persona": self._u_persona(persona, persona_mode), "last_action": last_action,
                    "last_plan": last_plan, "observation": model_html,
-                   "last_action_result": last_action_result}
+                   "last_action_result": last_action_result, 'feedback_state': feedback_state}
         payload['interaction_progress'] = self.interaction_context
         result = await self._generate("feedback", self._u_prompt("feedback"), payload,
                                       response_model=UFeedback)
@@ -359,6 +376,13 @@ class FastLoop:
             context = {'inputs': [{**item, 'id': aliases.get(item['id'], item['id'])} for item in state.get('inputs', [])],
                        'scroll_regions': [{**item, 'id': aliases.get(item['id'], item['id'])} for item in state.get('scroll_regions', [])],
                        'popup': {key: popup.get(key) for key in ('name', 'modal')} if popup else None}
+            input_context = model_context(observation, aliases, [entry.id for entry in observation.input_elements]
+                + [region['id'] for region in state.get('scroll_regions', []) if region.get('context')])
+            if input_context:
+                context['element_context'] = input_context
+                # Shared groups live in element_context, not in each input row.
+                for item in context['inputs']:
+                    item.pop('context', None)
             for tag in ('navigation', 'dialogs'):
                 match = re.search(f'<{tag}>.*?</{tag}>', model_html, flags=re.S)
                 if match:
@@ -488,6 +512,8 @@ class FastLoop:
     async def _select_target_section(self, payload, observation, aliases):
         catalog = {}
         regions = self._control_regions(observation.html)
+        context_groups = {group.id: group for group in observation.context_groups}
+        scope_labels = {}
         for kind, entries in (('clickable', observation.clickable_elements), ('input', observation.input_elements),
                               ('select', observation.select_elements)):
             for entry in entries:
@@ -496,6 +522,11 @@ class FastLoop:
                     'focused': entry.focused, 'enabled': entry.enabled, 'in_viewport': entry.in_viewport,
                     **({'value': entry.value} if entry.value is not None else {}),
                     **({'options': entry.options} if entry.options else {})}
+                owners = [context_groups[key] for key in entry.context.group_ids if key in context_groups]
+                if owners:
+                    scope = owners[-1].id
+                    catalog[entry.id]['region'] = scope
+                    scope_labels[scope] = ' > '.join(group.name or group.kind for group in owners[-3:]) + f' ({scope})'
         for entry, path in self._menu_paths(observation.html, observation.hoverable_elements, observation.clickable_elements):
             item = catalog.setdefault(entry.id, {'id': aliases[entry.id], 'kind': 'clickable',
                                                 'role': entry.role, 'name': entry.name})
@@ -503,7 +534,8 @@ class FastLoop:
         groups = {}
         for item in catalog.values():
             label = item.get('path', '').rsplit(' > ', 1)[0] or (
-                item.get('region', '메뉴') + (' / 입력·선택' if item['kind'] in {'input', 'select'} else ' / ' + item['role']))
+                scope_labels.get(item.get('region'), item.get('region', '메뉴'))
+                + (' / 입력·선택' if item['kind'] in {'input', 'select'} else ' / ' + item['role']))
             groups.setdefault(label, []).append(item)
         nodes = []
         for label, entries in groups.items():
@@ -529,6 +561,8 @@ class FastLoop:
                 result['environment'] = '<page>' + (visible.group() if visible else '') + '<controls>' + ''.join(
                     f'<control id="{item["id"]}">{escape(json.dumps(item, ensure_ascii=False))}</control>'
                     for item in selected) + '</controls></page>'
+                reverse = {alias: target for target, alias in aliases.items()}
+                result['environment'] += context_markup(observation, aliases, [reverse[item['id']] for item in selected])
                 if await self._action_fits(self._action_protected(result)):
                     return result
                 if len(selected) == 1:
@@ -548,8 +582,12 @@ class FastLoop:
                            for i in range(0, len(nodes), width)]
             offered = {f'g{i}': node for i, node in enumerate(options)}
             selection_payload = {key: payload[key] for key in ('persona', 'intent', 'next_step', 'last_action_result') if key in payload}
-            selection_payload['groups'] = [{'group_id': group_id, 'label': node['label'], 'count': len(node['items']),
-                'examples': [item['name'][:100] for item in node['items'][:3]]} for group_id, node in offered.items()]
+            def preview(text, limit):
+                return text if len(text) <= limit else text[:limit // 2] + '…' + text[-(limit // 2 - 1):]
+            selection_payload['groups'] = [{'group_id': group_id, 'label': preview(node['label'], 60),
+                'label_is_preview': len(node['label']) > 60, 'count': len(node['items']),
+                'examples': [preview(item['name'], 32) for item in node['items'][:3]],
+                'examples_are_previews': True} for group_id, node in offered.items()]
             for attempt in range(2):
                 choice = await self._generate('target_selection', selector, selection_payload, response_model=UTargetSelection)
                 if choice['group_id'] in offered:
@@ -671,23 +709,9 @@ class FastLoop:
         }
 
     @staticmethod
-    def _parse_gpu_chunk_response(response):
-        """Repair only known, complete Qwen chunk suffixes; leave other errors visible."""
-        cleaned = response.rstrip().rstrip("`").rstrip()
-        try:
-            result = json.loads(cleaned)
-        except json.JSONDecodeError:
-            if not re.match(r'^\s*\{\s*"observations"\s*:\s*\[', cleaned):
-                raise
-            if cleaned.endswith('"}]'):
-                # Qwen closed the object before its observations array.
-                candidate = cleaned[:-2] + "]}"
-            elif cleaned.endswith('"}'):
-                # Qwen omitted the array's closing bracket.
-                candidate = cleaned[:-1] + "]}"
-            else:
-                raise
-            result = json.loads(candidate)
+    def _parse_gpu_chunk_response(response, *, repairs=None):
+        """Use the common syntax checker before observation schema validation."""
+        result = loads_model_json(response, repairs=repairs, perception_chunk=True)
         # A complete single observation has the same meaning in a one-item
         # array. Preserve its exact content; schema validation still rejects
         # other types and the caller still rejects empty observations.
@@ -785,17 +809,65 @@ class FastLoop:
         return original if FastLoop._schema_accepts(schema, original, root) else template
 
     @classmethod
+    def _action_repair_template(cls, original):
+        """Describe legal formats; the model still chooses the corrected action."""
+        required, allowed = UAction.argument_contract()
+        schema = UAction.model_json_schema()
+        properties = schema['properties']
+
+        def form(name, raw):
+            result = {'action': name, 'description': ''}
+            for key in sorted(required.get(name, set())):
+                blank = cls._schema_template(properties[key], schema)
+                result[key] = None if isinstance(blank, (int, float, bool)) else blank
+            for key, value in raw.items():
+                if key in {'description'} | allowed[name] and cls._schema_accepts(properties[key], value, schema):
+                    result[key] = value
+            return result
+
+        actions, diagnostics = [], []
+        for index, raw in enumerate(original.get('actions', []) if isinstance(original.get('actions'), list) else []):
+            if not isinstance(raw, dict) or not isinstance(raw.get('action'), str) or raw['action'] not in allowed:
+                return None, ''
+            name = raw['action']
+            supplied = set(raw) - {'action', 'description'}
+            corrected_form = form(name, raw)
+            actions.append(corrected_form)
+            details = {'index': index, 'action': name,
+                       'required_fields': sorted({'action', 'description'} | required.get(name, set())),
+                       'allowed_fields': sorted({'action', 'description'} | allowed[name]),
+                       'unexpected_fields': sorted(supplied - allowed[name]),
+                       'missing_fields': sorted(key for key in required.get(name, set()) if raw.get(key) is None)}
+            if name == 'raw_type' and supplied & {'target', 'enter'}:
+                details['alternative_type_format'] = form('type', raw)
+            diagnostics.append(details)
+        if not actions:
+            return None, ''
+        instructions = '행동별 양식 및 인자 진단:\n' + json.dumps(diagnostics, ensure_ascii=False, indent=2) + '\n'
+        if any('alternative_type_format' in item for item in diagnostics):
+            instructions += ('raw_type은 현재 포커스된 입력에 text만 보냅니다. target/enter는 허용되지 않습니다. '
+                '대상을 지정하거나 Enter를 함께 보내려는 의도라면 type 대안 양식을 선택하세요. '
+                'target을 단순 삭제해 포커스된 다른 곳에 입력하지 마세요. ')
+        instructions += '아래 템플릿은 초안입니다. 의도에 맞게 행동을 다시 선택하고 그 행동의 허용 필드만 반환하세요.\n'
+        return {'actions': actions}, instructions
+
+    @classmethod
     def _repair_request(cls, stage, response, response_model, error, payload):
         template = None
+        action_guidance = ''
         if response_model is not None:
             schema = response_model.model_json_schema()
             template = cls._schema_template(schema)
             try:
-                original = json.loads(response)
+                original = loads_model_json(response, allow_enter_key=response_model is UActions)
             except (TypeError, json.JSONDecodeError):
                 original = None
             if original is not None:
                 template = cls._merge_repair_template(template, original, schema, schema)
+                if response_model is UActions and isinstance(original, dict):
+                    action_template, action_guidance = cls._action_repair_template(original)
+                    if action_template is not None:
+                        template = action_template
         elif stage in {'perception', 'plan'}:
             template = {stage: ''}
         elif stage == 'decision' and isinstance(payload, dict):
@@ -808,15 +880,16 @@ class FastLoop:
         if template is None:
             template = {'response': ''}
         return (f"{stage} 응답이 형식 검증에 실패했습니다: {error}.\n"
-                "아래 JSON 템플릿을 그대로 완성해 다시 출력하세요. 원본 응답에 있던 유효한 선택과 인자는 유지하고, "
+                "아래 JSON 템플릿을 참고하여 응답을 다시 완성하세요. 원본 응답에 있던 유효한 선택과 인자는 유지하고, "
                 "빈 문자열이나 빈 값은 올바른 값으로 채우세요. 필수 필드를 생략하지 말고 설명 필드는 짧게 작성하세요.\n"
+                + action_guidance +
                 "완성할 JSON 템플릿:\n"
                 + json.dumps(template, ensure_ascii=False, indent=2))
 
     async def _generate(self, stage, instructions, payload, *, response_model=None, image_path=None):
         system = f"FAST_STAGE:{stage}\n{instructions} Return valid JSON only."
         messages = [{"role": "system", "content": system},
-                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+                    {"role": "user", "content": dumps_json(payload, ensure_ascii=False)}]
         repaired = False
         transient_retries = 0
         fallback_reason = payload.get("fallback_reason") if isinstance(payload, dict) else None
@@ -860,12 +933,14 @@ class FastLoop:
                     record['provider_queue_ms'] = usage['provider_queue_ms']
                 if 'prompt_guard' in usage:
                     record['prompt_guard'] = usage['prompt_guard']
+                json_repairs = []
                 try:
                     if (stage == "perception" and self._provider_name() == "gpu"
                             and isinstance(payload, dict) and "chunk_index" in payload):
-                        result = self._parse_gpu_chunk_response(response)
+                        result = self._parse_gpu_chunk_response(response, repairs=json_repairs)
                     else:
-                        result = json.loads(response)
+                        result = loads_model_json(response, repairs=json_repairs,
+                                                  allow_enter_key=response_model is UActions)
                     if not isinstance(result, dict):
                         raise ValueError("stage response must be a JSON object")
                     if response_model is None:
@@ -876,6 +951,10 @@ class FastLoop:
                     record["error"] = "model_output_error"
                     raise
                 finally:
+                    if json_repairs:
+                        record['json_repairs'] = json_repairs
+                        if 'enter_boolean_key' in json_repairs:
+                            record['syntax_repair'] = 'enter_boolean_key'
                     if self.call_log:
                         self.call_log(record)
                 return result
@@ -905,6 +984,8 @@ class FastLoop:
                             **call_evidence(stage, messages, payload, response)})
                 message = str(exc)
                 if isinstance(exc, PromptSizeError):
+                    raise
+                if isinstance(exc, ProviderJSONError):
                     raise
                 if message.startswith(('popup_vision_', 'popup_image_')):
                     raise

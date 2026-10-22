@@ -148,6 +148,23 @@ const parse = () => {
   })();
 
 
+  const nearbyInputLabel = el => {
+    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return '';
+    const parent = el.parentElement;
+    const onlyField = parent && parent.querySelectorAll('input,textarea,select').length === 1;
+    const candidates = [el.previousElementSibling, ...(onlyField ? [el.nextElementSibling] : [])];
+    for (const candidate of candidates) {
+      if (!candidate || !isVisible(candidate) || candidate.matches('input,textarea,select,button,a') ||
+          candidate.querySelector('input,textarea,select,button,a')) continue;
+      const text = (candidate.textContent || '').trim().replace(/\s+/g, ' ');
+      if (!text || text.length > 60) continue;
+      if (/^min\.?$/i.test(text)) return text + ' (최소값)';
+      if (/^max\.?$/i.test(text)) return text + ' (최대값)';
+      return text;
+    }
+    return '';
+  };
+
   /* ==================================================================== */
   function automaticStripElement(original, parentName = '', parentIsClickable = false) {
     if (!original || original.nodeType !== 1) return null;
@@ -159,7 +176,8 @@ const parse = () => {
     copyAllowed(original, clone);
     const accessibleName = original.getAttribute('aria-label') ||
       (original.labels ? Array.from(original.labels).map(label => label.textContent.trim()).filter(Boolean).join(' ') : '') ||
-      (tag === 'input' && original.closest('[data-cy="search-bar-desktop"]') ? '상품 검색' : '');
+      (tag === 'input' && original.closest('[data-cy="search-bar-desktop"]') ? '상품 검색' : '') ||
+      (!original.getAttribute('placeholder') && !original.getAttribute('title') ? nearbyInputLabel(original) : '');
     if (accessibleName) clone.setAttribute('parser-accessible-name', accessibleName);
     if (tag === 'input' && ['checkbox', 'radio'].includes((original.type || '').toLowerCase())) {
       clone.checked = original.checked;

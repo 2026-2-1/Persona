@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -74,6 +75,15 @@ class SurveyProvider:
             raise self.error
         return self.response, {"provider": "gpu", "model": self.model,
                                "input_tokens": 32, "output_tokens": 18}
+
+
+def test_survey_common_json_checker_preserves_original_response_and_validates_answers(tmp_path):
+    run = _make_run(tmp_path / 'run')
+    raw = SurveyProvider().response[:-1] + ',}'
+    result = asyncio.run(create_survey(run, QUESTIONNAIRE, provider=SurveyProvider(raw)))
+    assert result['status'] == 'completed'
+    call = json.loads((run / 'llm_calls.jsonl').read_text().splitlines()[-1])
+    assert call['response'] == raw and call['json_repairs'] == ['trailing_comma']
 
 
 @pytest.mark.asyncio

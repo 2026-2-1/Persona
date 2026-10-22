@@ -212,3 +212,8 @@ AI StudyConfig.run_timeout_seconds는 양수 또는null이다. 기본null은 전
 7. 조각 요약이 JSON/내용 검증에 실패하면 그 조각만1회 더 짧게 다시 요청한다. 모든 시도와 repair_attempt를 기록한다. 전송 장애·예산·취소는 이 JSON 복구와 구분한다. 최종 비수렴/고정 데이터 초과는 PromptSizeError로 중단하고 입력 토큰/한도/영역별 바이트 크기를 남긴다. 내용·비밀번호를 진단 문자열에 싣지 않는다. 실행기 오류 코드는 model_input_error, 토큰 서비스 연결 장애는 model_connection_error로 분리한다.
 
 2026-10-21 상호작용 후속(검증 대기): Observation.interaction_state/ElementInfo.in_viewport/ActionResult.interaction을 기본값과 함께 추가한다. 검색·팝업 연결은 일반 Fast 전체 재계획 사이에서 실제 관찰을 소비한다. search_query/popup_decision 호출은 로컬 llm_calls에 별도 stage로 남고, 연결 행동은 기존 decision/steps에 남는다. scroll amount는 양수 픽셀로 해석하며 선택적 target으로 내부 영역을 지정한다. U의 기존 방향키 반복과 다른 사용자 요청 변경이다. 상세한 출처 구분과 이미지 미지원 경계는 [상호작용 흐름](tasks/interaction-flows.md)을 따른다.
+
+
+## 공통 DOM 문맥 (2026-10-22)
+
+스키마 기준은 `schemas.py`다. ElementInfo.context는 이름 출처·explicit/nearby/unknown 상태·공유 group_ids·속성·설명·오류·관계·비활성 옵션을 담는다. Observation.context_groups는 kind/name/name_source/parent_id를 가진 공유 그룹 정의다. 두 필드는 기본 빈 값으로 구버전 관찰을 읽는다. Observation.context_only_elements는 비활성 요소 등 관찰 전용이며 실행 registry에 등록하지 않는다. 그룹 ID와 관찰 전용 ID는 행동 target이 아니다. 명시적 라벨과 구조적 추정을 구별하고, 모델 입력에서 선택한 대상의 그룹 참조와 정의를 함께 보존한다. 팝업 입력은 dialog 위 조상과 배경 관계를 제외한다. [상세](tasks/dom-context.md).

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError
 
 from .llm import BudgetManager, ClaudeProvider, GeminiProvider, OpenAIProvider, LocalQwenProvider, estimate_cost_usd
 from .model_catalog import catalog_payload, resolve_model
+from .model_json import loads_model_json, dumps_json
 from .security import AUTH_PARAMETER, check_sensitive_input
 
 
@@ -158,7 +159,7 @@ class SetupGuide:
             key_name = {"live": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}[actual_provider]
             if not os.environ.get(key_name, "").strip():
                 raise ValueError("setup_guide_key_required")
-        messages = [{"role": "system", "content": SYSTEM + _trusted_model_facts(provider, selected_model)}] + safe_history + [{"role": "user", "content": json.dumps({"message": message[:1000], "context": safe_context}, ensure_ascii=False)}]
+        messages = [{"role": "system", "content": SYSTEM + _trusted_model_facts(provider, selected_model)}] + safe_history + [{"role": "user", "content": dumps_json({"message": message[:1000], "context": safe_context}, ensure_ascii=False)}]
         # UTF-8 byte length upper-bounds normal tokenization; unknown usage retains reservation.
         reservation = sum(len(m["content"].encode("utf-8")) + 20 for m in messages) + 1000
         self._budget.reserve(reservation)
@@ -178,7 +179,7 @@ class SetupGuide:
                 if not isinstance(raw, str) or len(raw) > 15000:
                     raise ValueError("invalid")
                 _check_sensitive(raw)
-                advice = Advice.model_validate_json(raw)
+                advice = Advice.model_validate(loads_model_json(raw))
                 _check_sensitive(advice.model_dump())
                 decoded = json.dumps(advice.model_dump(), ensure_ascii=False)
                 if re.search(r"(?:querySelector|xpath|css_selector|<script|playwright\.|evaluator_success|success_criteria)", raw + decoded, re.I):

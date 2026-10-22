@@ -1,5 +1,13 @@
 # #83 U Fast 판단 전환
 
+## 2026-10-22 행동별 양식과 인자 오류 재요청
+
+초기 행동 프롬프트는 지원하는17개 행동의 JSON 예시와 선택 필드, raw_type/type 차이를 명시한다. 예시는 UAction으로 검증하며 기존2400자 미만 제한을 유지한다. raw_type은 현재 포커스 입력의 text/description만 허용하고, 대상을 지정하거나 Enter까지 보내려면 type을 선택하도록 안내한다.
+
+UAction.argument_contract의 필수/허용 인자 집합을 스키마 검증과 재요청에 공유한다. 재요청은 해당 행동의 허용 필드만 넣은 빈칸 템플릿과 required_fields/allowed_fields/unexpected_fields/missing_fields를 제공한다. 원본에 target/enter가 붙은 raw_type이면 유효한 원래 대상·텍스트·Enter를 보존한 type 대안도 제시한다. 템플릿은 실행 행동이 아니며 모델이 다시 선택해야 한다. 코드는 대상 삭제나 행동 변환을 자동 집행하지 않는다. 필요한 좌표가 없으면0으로 채우지 않고 null로 남긴다.
+
+기존 최대1회 재요청·JSON/스키마 검사·usage/원문 로그·예산/취소 계약을 유지한다. 두 번째도 invalid면 제안/실행으로 전달하지 않는다. 실제 실패 근거는 `20261021T142323-1302c49e`에서 두 번 반복된 raw_type+target이다. 검증 결과는 verification.md를 따른다.
+
 ## 2026-10-20 실제 행동 실패 피드백 후속
 
 사용자 요청으로 실제 실행기의 ActionResult를 다음 feedback·plan·decision에 별도 last_action_result로 전달한다. 마지막 제안 대신 실제 실행되는 첫 제안이 last_action이며 계획·행동에도 결과와 함께 제공한다. 현재 메뉴/팝업은 계획의 page_context에도 제공해 이전 계획이 열린 상위 메뉴를 반복 지시하지 않게 한다. 제안 기억은 기존처럼 모두 생성 기록으로 남고, 실행 결과는 steps에 보존한다. 결과가 없으면 성공으로 추정하지 않으며 실패한 논리 단계를 (next)로 무조건 넘기라는 지시를 제거했다. U 원본의 입력에 실행 사실을 추가한 차이다. evaluator 답이나 실행 허가 게이트를 모델에 추가한 것은 아니다.

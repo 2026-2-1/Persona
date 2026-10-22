@@ -1,6 +1,8 @@
 # 문서 안내
 
-- [모델 연결·JSON 오류 운영 매뉴얼](model-json-operations.md): 증상별 대응·자동 복구·중단 기준·필수 회귀 검사.
+- [공통 DOM 요소 문맥](tasks/dom-context.md): 전체 컨트롤의 이름·소속·상태·관계와 실제 13개 사이트 검증.
+
+- [모델 연결·JSON 오류 운영 매뉴얼](model-json-operations.md): 공통 JSON 문법 검사·교정 범위·경로별 연결·오류 대응·중단 기준·필수 회귀 검사.
 
 - [#85 U 기억 검색](tasks/85-u-memory.md)
 - [#86 U DOM parser 화면 관찰](tasks/86-u-observation.md)

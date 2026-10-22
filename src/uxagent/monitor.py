@@ -24,6 +24,7 @@ from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
 from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
+from .model_json import loads_model_json, loads_json, dumps_json
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -334,10 +335,11 @@ class Dashboard:
         async def verify():
             if provider == "jev":
                 await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
-                await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+                raw, _ = await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
             else:
                 implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else LocalQwenProvider() if provider == "gpu" else GeminiProvider()
-                await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+                raw, _ = await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+            loads_model_json(raw)
         asyncio.run(verify())
 
     def ensure_gpu_connection(self):
@@ -599,7 +601,7 @@ def make_handler(dashboard: Dashboard):
         server_version = "UXAgentDashboard/1.0"
 
         def _send(self, status, body, content_type="application/json; charset=utf-8"):
-            payload = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
+            payload = body if isinstance(body, bytes) else dumps_json(body, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
@@ -673,7 +675,7 @@ def make_handler(dashboard: Dashboard):
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 0 or length > 16384:
                     return self._send(413, {"error": "request_too_large"})
-                payload = json.loads(self.rfile.read(length) or b"{}")
+                payload = loads_json(self.rfile.read(length) or b"{}")
                 if not isinstance(payload, dict):
                     raise ValueError("요청 형식이 올바르지 않습니다")
                 if path.startswith("/api/reviews/"):

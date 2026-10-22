@@ -18,6 +18,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .model_json import loads_json
+
 
 class GpuSessionConfig(BaseModel):
     model_config = ConfigDict(extra='forbid', hide_input_in_errors=True)
@@ -147,12 +149,12 @@ class GpuSession:
         LocalQwenProvider().health(url=f'http://127.0.0.1:{self.config.local_port}/v1/chat/completions')
         if self.config.tokenizer_enabled:
             with urllib.request.urlopen(f'http://127.0.0.1:{self.config.tokenizer_local_port}/health', timeout=2) as response:
-                data = json.loads(response.read())
+                data = loads_json(response.read())
             if data.get('status') != 'ok' or data.get('model') != 'persona-qwen' or data.get('input_token_limit') != 8192:
                 raise ValueError('Qwen 토큰 계산 서비스의 상태·모델·한도가 다릅니다')
         if self.config.embedding_model:
             with urllib.request.urlopen(f'http://127.0.0.1:{self.config.embedding_local_port}/health', timeout=2) as response:
-                data = json.loads(response.read())
+                data = loads_json(response.read())
             if (data.get('status') != 'ok' or data.get('model') != self.config.embedding_model
                     or not str(data.get('device', '')).startswith('cuda')):
                 raise ValueError('GPU 임베딩 health의 상태·모델·장치가 설정과 다릅니다')
@@ -339,7 +341,7 @@ class GpuSession:
                 raise RuntimeError('GPU 모델 서버가 준비되기 전에 Slurm 작업이 종료됐습니다.')
             try:
                 with urllib.request.urlopen(url, timeout=2) as response:
-                    data = json.loads(response.read())
+                    data = loads_json(response.read())
                 if data.get('status') == 'ok' and data.get('model') == 'persona-qwen':
                     return
             except (OSError, ValueError):
@@ -357,14 +359,14 @@ class GpuSession:
                 raise RuntimeError('임베딩 준비 전에 Slurm 작업이 종료됐습니다. 원격 .persona-gpu 로그를 확인하세요.')
             try:
                 with urllib.request.urlopen(base + '/health', timeout=2) as response:
-                    health = json.loads(response.read())
+                    health = loads_json(response.read())
                 if health.get('model') != self.config.embedding_model or not str(health.get('device', '')).startswith('cuda'):
                     raise RuntimeError('임베딩 서버의 실제 모델/GPU가 설정과 다릅니다.')
                 request = urllib.request.Request(base + '/v1/embeddings',
                     data=json.dumps({'model':self.config.embedding_model, 'input':['연결 확인']}).encode(),
                     headers={'Content-Type':'application/json'})
                 with urllib.request.urlopen(request, timeout=120) as response:
-                    result = json.loads(response.read())
+                    result = loads_json(response.read())
                 if result.get('model') != self.config.embedding_model or len(result['data']) != 1:
                     raise ValueError('embedding probe model/count mismatch')
                 dimension = health.get('dimension')

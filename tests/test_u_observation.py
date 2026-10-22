@@ -57,6 +57,31 @@ async def test_decathlon_search_control_is_named_for_its_function_not_promotion(
 
 
 @pytest.mark.asyncio
+async def test_numeric_min_max_labels_survive_observation_and_gpu_control_compression():
+    from uxagent.fast_loop import FastLoop
+    from uxagent.llm import LocalQwenProvider, BudgetManager
+
+    markup = '''<main><h2>가격</h2><div><span>Min</span><input id=lower type=number value=20900></div>
+      <div><span>Max</span><input id=upper type=number value=269000></div>
+      <input aria-label="명시된 입력 이름" placeholder="다른 이름">
+      <input placeholder="이메일"></main>'''
+    async with BrowserSession(False) as browser:
+        await open_markup(browser, markup)
+        obs, registry = await observe(browser)
+        minimum = next(item for item in obs.input_elements if item.value == '20900')
+        maximum = next(item for item in obs.input_elements if item.value == '269000')
+        assert minimum.name == 'Min (최소값)'
+        assert maximum.name == 'Max (최대값)'
+        assert await registry.targets[maximum.id].locator.get_attribute('id') == 'upper'
+        assert {item.name for item in obs.input_elements} >= {'명시된 입력 이름', '이메일'}
+        assert {item['name'] for item in obs.interaction_state['inputs']} >= {'Min (최소값)', 'Max (최대값)'}
+        fast = FastLoop(LocalQwenProvider(), BudgetManager(None, None), 'persona-qwen', .2, 512)
+        html, aliases, _ = fast._model_html(obs, force=True)
+        assert f'id="{aliases[minimum.id]}"' in html and 'Min (최소값)' in html
+        assert f'id="{aliases[maximum.id]}"' in html and 'Max (최대값)' in html
+
+
+@pytest.mark.asyncio
 async def test_icon_only_dialog_dismiss_control_is_preserved_and_executes():
     from uxagent.actions import ActionExecutor
     from uxagent.schemas import Action

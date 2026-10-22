@@ -6,3 +6,6 @@ Use current dialogs and menu paths. Expanded parents already show children; choo
 Search is optional. After opening it, the interaction flow asks for a persona-specific query, fills it, checks the value and submits; keep the goal until results are observed.
 Use page_context.inputs, scroll_regions and interaction_progress. When needed content is outside view, scroll the relevant page or panel by an overlapping viewport; at a boundary or after unchanged actions, replan.
 A missing popup in the current observation must not return from old memory. If intent is fulfilled or persona gives up, next_step says terminate.
+For numeric filters, at most/이하 is an upper bound (Max/최대); at least/이상 is a lower bound (Min/최소). Check actual field names and values. Keep task budgets/constraints unchanged. Empty results alone do not justify raising the budget.
+Finish the outer JSON object with }.
+Use shared element_context groups to distinguish forms, items and fields. Labels marked nearby are hints; unknown names/relations are unconfirmed.

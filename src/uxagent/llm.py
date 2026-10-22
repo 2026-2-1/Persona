@@ -6,6 +6,7 @@ import base64
 from pathlib import Path
 from collections import deque
 from urllib.parse import urlsplit
+from .model_json import loads_transport_json, dumps_json
 
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
@@ -105,7 +106,7 @@ class JevProvider:
         key = os.environ.get("TYPESAFE_API_KEY")
         if not key:
             raise RuntimeError("TYPESAFE_API_KEY is required")
-        body = json.dumps({"model": self.model, "state": state, "questions": {
+        body = dumps_json({"model": self.model, "state": state, "questions": {
             "next_action": {"type": "choice", "instructions": "Which single browser action should be taken next? Choose the action that best advances the user's task using only this observed page state.",
                             "criteria": {c["id"]: c["description"] for c in candidates}}
         }}, ensure_ascii=False).encode()
@@ -113,7 +114,7 @@ class JevProvider:
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=45) as response:
-                data = json.loads(response.read())
+                data = loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"provider_http_{exc.code}") from None
         except urllib.error.URLError as exc:
@@ -147,11 +148,11 @@ class GeminiProvider:
             "responseMimeType": "application/json"}}
         if system:
             body_data["systemInstruction"] = {"parts": [{"text": "\n".join(system)}]}
-        body = json.dumps(body_data, ensure_ascii=False).encode()
+        body = dumps_json(body_data, ensure_ascii=False).encode()
         req = urllib.request.Request(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             data=body, headers={"x-goog-api-key": key, "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=60) as response: data = json.loads(response.read())
+            with urllib.request.urlopen(req, timeout=60) as response: data = loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f"provider_http_{exc.code}") from None
         except urllib.error.URLError as exc:
@@ -179,11 +180,11 @@ class ClaudeProvider:
         if system:
             body["system"] = "\n".join(system)
         request = urllib.request.Request("https://api.anthropic.com/v1/messages",
-            data=json.dumps(body, ensure_ascii=False).encode(),
+            data=dumps_json(body, ensure_ascii=False).encode(),
             headers={"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
-                data = json.loads(response.read())
+                data = loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             if exc.code == 529:
                 raise RuntimeError("provider_transient:provider_http_529") from None
@@ -411,10 +412,10 @@ class OpenAIProvider:
     def _complete(self, messages, model, temperature, max_tokens):
         key = os.environ.get("OPENAI_API_KEY")
         if not key: raise RuntimeError("OPENAI_API_KEY is required for --provider live")
-        body = json.dumps({"model":model,"messages":messages,"temperature":temperature,"max_tokens":max_tokens,"response_format":{"type":"json_object"}}).encode()
+        body = dumps_json({"model":model,"messages":messages,"temperature":temperature,"max_tokens":max_tokens,"response_format":{"type":"json_object"}}).encode()
         req=urllib.request.Request("https://api.openai.com/v1/chat/completions",data=body,headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=60) as response: data=json.loads(response.read())
+            with urllib.request.urlopen(req, timeout=60) as response: data=loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             detail=exc.read().decode("utf-8","replace")[:400]
             raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
@@ -429,10 +430,10 @@ class OpenAIProvider:
     def _embed(self, texts, model):
         key=os.environ.get("OPENAI_API_KEY")
         if not key:raise RuntimeError("OPENAI_API_KEY is required for embeddings")
-        body=json.dumps({"model":model,"input":texts,"encoding_format":"float"}).encode()
+        body=dumps_json({"model":model,"input":texts,"encoding_format":"float"}).encode()
         req=urllib.request.Request("https://api.openai.com/v1/embeddings",data=body,headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"})
         try:
-            with urllib.request.urlopen(req,timeout=60) as response:data=json.loads(response.read())
+            with urllib.request.urlopen(req,timeout=60) as response:data=loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             detail=exc.read().decode("utf-8","replace")[:400]
             raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
@@ -551,7 +552,7 @@ class LocalQwenProvider:
     def health(self, *, url=None):
         url = self.endpoint(url).removesuffix('/v1/chat/completions') + '/health'
         with urllib.request.urlopen(url, timeout=2) as response:
-            data = json.loads(response.read())
+            data = loads_transport_json(response.read())
         if data.get('status') != 'ok' or data.get('model') != self.model:
             raise ValueError('GPU health의 상태 또는 모델명이 설정과 다릅니다')
         return data
@@ -563,13 +564,13 @@ class LocalQwenProvider:
             raise ValueError("GPU 서버 모델은 persona-qwen이어야 합니다")
         url = self.endpoint()
         self.prompt_guard.assert_fits(messages, max_tokens)
-        body = json.dumps({"model": model, "messages": messages, "temperature": temperature,
+        body = dumps_json({"model": model, "messages": messages, "temperature": temperature,
                            "max_tokens": max_tokens, "response_format": {"type": "json_object"}},
                           ensure_ascii=False).encode()
         request = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read())
+                data = loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:400]
             raise RuntimeError(f"provider_http_{exc.code}: {detail}") from exc
@@ -594,13 +595,13 @@ class LocalQwenProvider:
         attached[index]['content'] = [
             {'type': 'text', 'text': attached[index]['content']},
             {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(image_bytes).decode()}}]
-        body = json.dumps({'model': model, 'messages': attached, 'temperature': temperature,
+        body = dumps_json({'model': model, 'messages': attached, 'temperature': temperature,
                            'max_tokens': min(max_tokens, 512), 'response_format': {'type': 'json_object'}},
                           ensure_ascii=False).encode()
         request = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read())
+                data = loads_transport_json(response.read())
         except urllib.error.HTTPError as exc:
             # Do not log a server response that might echo the image payload.
             raise RuntimeError(f'popup_vision_http_{exc.code}: image request rejected') from None

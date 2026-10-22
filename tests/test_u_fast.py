@@ -437,6 +437,24 @@ async def test_executed_first_proposal_and_failure_reach_all_next_decision_stage
 
 
 @pytest.mark.asyncio
+async def test_feedback_snapshot_keeps_target_and_focus_values_without_other_control_inventory():
+    brain, obs, _, provider, *_ = setup()
+    obs.interaction_state = {'search_state':{'results_signature':'unchanged','loading':False},
+        'inputs':[{'id':'search','name':'검색','value':'러닝화','focused':False,'enabled':True},
+                  {'id':'focused','name':'현재 입력','value':'확인','focused':True,'enabled':True},
+                  {'id':'other','name':'무관한 입력','value':'not-in-exact-state','focused':False}],
+        'popup':{'name':'안내','modal':True,'text':'page data'}}
+    await brain.fast.feedback(brain.persona,json.dumps({'action':'key_press','target':'search','key':'Enter'}),
+                              '검색 결과 확인',obs,last_action_result={'ok':True})
+    payload = provider.calls[-1][1]
+    state = payload['feedback_state']
+    assert state['url'] == obs.url and state['search_state']['loading'] is False
+    assert [(e['id'],e['value']) for e in state['inputs']] == [('search','러닝화'),('focused','확인')]
+    assert state['popup'] == {'name':'안내','modal':True}
+    assert payload['last_action_result'] == {'ok':True}
+
+
+@pytest.mark.asyncio
 async def test_plan_receives_current_expanded_menu_not_only_old_plan():
     brain, obs, _, provider, *_ = setup()
     obs.html = ('<header><a>러닝 모두 보기</a><div parser-semantic-id="shoes">러닝화</div>'
@@ -527,6 +545,66 @@ async def test_invalid_action_retry_sends_blank_required_fields_for_qwen_to_comp
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('correction', ['type', 'raw_type', 'invalid'])
+async def test_raw_type_target_retry_explains_formats_and_requires_model_choice(correction):
+    brain, obs, retrieve, provider, _, _, _, calls, _ = setup()
+    original = provider.complete
+    attempts = 0
+    invalid = {'actions': [{'action': 'raw_type', 'target': 'search', 'text': '80000',
+                            'description': '최대 가격을 입력합니다.'}]}
+
+    async def complete(messages, *args):
+        nonlocal attempts
+        stage = messages[0]['content'].split('FAST_STAGE:', 1)[1].splitlines()[0]
+        if stage != 'decision':
+            return await original(messages, *args)
+        attempts += 1
+        if attempts == 1:
+            response = invalid
+        else:
+            repair = messages[-1]['content']
+            template = json.loads(repair.split('완성할 JSON 템플릿:\n', 1)[1])
+            assert template['actions'][0] == {'action': 'raw_type', 'description': '최대 가격을 입력합니다.',
+                                               'text': '80000'}
+            assert 'unexpected_fields' in repair and 'target' in repair
+            assert '"action": "type"' in repair and '"target": "search"' in repair
+            assert '포커스' in repair
+            assert messages[-2]['content'] == json.dumps(invalid, ensure_ascii=False)
+            if correction == 'invalid':
+                response = invalid
+            elif correction == 'type':
+                response = {'actions': [{**invalid['actions'][0], 'action': 'type'}]}
+            else:
+                response = {'actions': [{key: value for key, value in invalid['actions'][0].items() if key != 'target'}]}
+        return json.dumps(response, ensure_ascii=False), {
+            'provider': 'gpu', 'model': 'persona-qwen', 'input_tokens': 7, 'output_tokens': 3}
+
+    provider.complete = complete
+    if correction == 'invalid':
+        with pytest.raises(RuntimeError, match='unexpected arguments for raw_type'):
+            await brain.forward('최대 가격 입력', obs, 1, retrieve)
+    else:
+        decision, _ = await brain.forward('최대 가격 입력', obs, 1, retrieve)
+        assert decision.action.type == correction
+        assert decision.action.target_id == ('search' if correction == 'type' else None)
+        assert decision.action.text == '80000'
+    decision_calls = [c for c in calls if c['stage'] == 'decision']
+    assert attempts == len(decision_calls) == 2
+    assert decision_calls[0]['error'] == 'model_output_error'
+    assert bool(decision_calls[1].get('error')) == (correction == 'invalid')
+    assert brain.fast.budget.reserved_tokens == 0
+
+
+def test_action_retry_blanks_missing_numeric_arguments_instead_of_inventing_coordinates():
+    from uxagent.schemas import UActions
+
+    raw = {'actions': [{'action': 'mouse_click', 'at_y': 250, 'description': '클릭'}]}
+    request = FastLoop._repair_request('decision', json.dumps(raw), UActions, 'missing arguments', {})
+    template = json.loads(request.split('완성할 JSON 템플릿:\n', 1)[1])
+    assert template['actions'][0] == {'action': 'mouse_click', 'at_x': None, 'at_y': 250, 'description': '클릭'}
+
+
+@pytest.mark.asyncio
 async def test_malformed_qwen_action_retry_includes_schema_template_and_original_response():
     brain, obs, retrieve, provider, _, _, _, calls, _ = setup()
     original = provider.complete
@@ -557,6 +635,44 @@ async def test_malformed_qwen_action_retry_includes_schema_template_and_original
     assert decision.proposed_actions[0].description == "검색어를 입력한다."
     decision_calls = [call for call in calls if call["stage"] == "decision"]
     assert len(decision_calls) == 2 and decision_calls[0]["error"] == "model_output_error"
+
+
+@pytest.mark.asyncio
+async def test_qwen_enter_equals_is_checked_locally_before_action_execution():
+    brain, obs, retrieve, provider, _, _, _, calls, _ = setup()
+    original = provider.complete
+    attempts = 0
+    malformed = '{"actions":[{"action":"type","target":"search","text":"러닝화","enter=false"}]}'
+    malformed_with_description = ('{"actions":[{"action":"type","target":"search",'
+                                  '"text":"러닝화","enter=false","description":"검색어 입력"}]}')
+
+    async def complete(messages, *args):
+        nonlocal attempts
+        stage = messages[0]["content"].split("FAST_STAGE:", 1)[1].splitlines()[0]
+        if stage == "decision":
+            attempts += 1
+            if attempts == 1:
+                return malformed, {"provider": "gpu", "model": "persona-qwen",
+                                   "input_tokens": 7, "output_tokens": 3}
+            repair = messages[-1]["content"]
+            template = json.loads(repair.split("완성할 JSON 템플릿:\n", 1)[1])
+            assert template["actions"][0] == {"action": "type", "target": "search",
+                                               "text": "러닝화", "enter": False,
+                                               "description": ""}
+            return malformed_with_description, {"provider": "gpu", "model": "persona-qwen",
+                                                "input_tokens": 8, "output_tokens": 4}
+        return await original(messages, *args)
+
+    provider.complete = complete
+    decision, _ = await brain.forward("러닝화 찾기", obs, 1, retrieve)
+    assert attempts == 2
+    assert decision.action.type == "type" and decision.action.target_id == "search"
+    decision_calls = [call for call in calls if call["stage"] == "decision"]
+    assert decision_calls[0]["response"] == malformed
+    assert decision_calls[1]["response"] == malformed_with_description
+    assert decision_calls[0]["error"] == "model_output_error"
+    assert "error" not in decision_calls[1]
+    assert all(call["syntax_repair"] == "enter_boolean_key" for call in decision_calls)
 
 
 @pytest.mark.asyncio

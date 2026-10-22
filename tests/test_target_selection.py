@@ -8,6 +8,18 @@ from uxagent.schemas import ElementInfo, UPlan
 from test_u_fast import setup
 
 
+def test_action_prompt_has_schema_valid_examples_for_every_supported_action():
+    from typing import get_args
+    from uxagent.schemas import UAction
+
+    examples = [json.loads(line) for line in FastLoop._u_prompt('action').splitlines() if line.startswith('{')]
+    for example in examples:
+        UAction.model_validate(example)
+    assert {item['action'] for item in examples} == set(get_args(UAction.model_fields['action'].annotation))
+    raw = next(item for item in examples if item['action'] == 'raw_type')
+    assert set(raw) == {'action', 'text', 'description'}
+
+
 @pytest.mark.asyncio
 async def test_many_targets_are_chosen_hierarchically_before_executing_one_original_id():
     _, obs, *_ = setup()

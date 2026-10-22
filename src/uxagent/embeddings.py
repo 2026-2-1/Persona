@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
+
+from .model_json import loads_json, dumps_json
 
 
 class LocalEmbeddingProvider:
@@ -25,11 +26,11 @@ class LocalEmbeddingProvider:
 
     def _embed(self, texts, model):
         request = urllib.request.Request(self.url,
-            data=json.dumps({'model': model, 'input': texts}, ensure_ascii=False).encode(),
+            data=dumps_json({'model': model, 'input': texts}, ensure_ascii=False).encode(),
             headers={'Content-Type': 'application/json'})
         try:
             with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read())
+                data = loads_json(response.read())
         except urllib.error.HTTPError as exc:
             raise RuntimeError(f'embedding_http_{exc.code}') from None
         except (urllib.error.URLError, TimeoutError, ConnectionError):

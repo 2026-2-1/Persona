@@ -16,6 +16,7 @@ from .llm import (BudgetExceeded, BudgetManager, ClaudeProvider, GeminiProvider,
 from .security import check_sensitive_input
 from .call_evidence import call_evidence
 from .storage import write_json
+from .model_json import loads_model_json, dumps_json
 
 
 class SurveyQuestion(BaseModel):
@@ -157,9 +158,10 @@ def _provider(name: str):
         raise ValueError("unsupported survey provider") from None
 
 
-def _validate_response(raw: str, questionnaire: Questionnaire, *, execution_error_count=None) -> dict[str, Any]:
+def _validate_response(raw: str, questionnaire: Questionnaire, *, execution_error_count=None,
+                       json_repairs=None) -> dict[str, Any]:
     try:
-        parsed = json.loads(raw)
+        parsed = loads_model_json(raw, repairs=json_repairs)
     except (json.JSONDecodeError, TypeError):
         raise ValueError("invalid_json") from None
     response = SurveyResponse.model_validate(parsed)
@@ -287,9 +289,9 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
     if error is None:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(_questionnaire_payload(form), ensure_ascii=False)
-             + "\n" + json.dumps(trace, ensure_ascii=False)
-             + "\n" + json.dumps({'execution_trace': execution}, ensure_ascii=False)},
+            {"role": "user", "content": dumps_json(_questionnaire_payload(form), ensure_ascii=False)
+             + "\n" + dumps_json(trace, ensure_ascii=False)
+             + "\n" + dumps_json({'execution_trace': execution}, ensure_ascii=False)},
         ]
         try:
             check_sensitive_input([message["content"] for message in messages])
@@ -363,10 +365,11 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                 usage = {"provider": actual_provider, "model": actual_model,
                          "input_tokens": input_tokens, "output_tokens": output_tokens,
                          "estimated_cost_usd": cost}
+                json_repairs = []
                 try:
                     check_sensitive_input(raw_response)
                     parsed_response = _validate_response(raw_response, form,
-                        execution_error_count=execution['error_count'])
+                        execution_error_count=execution['error_count'], json_repairs=json_repairs)
                 except Exception as exc:
                     if isinstance(exc, ValueError) and str(exc) == "sensitive_input_rejected":
                         raw_response = "[redacted: sensitive model output]"
@@ -383,6 +386,8 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                     "estimated": actual_tokens is None,
                     "estimated_cost_usd": cost,
                 }
+                if json_repairs:
+                    call_record['json_repairs'] = json_repairs
                 call_record.update(call_evidence("questionnaire", messages,
                                                  {"memories": trace}, raw_response))
                 if prompt_guard_info is not None:

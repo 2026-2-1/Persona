@@ -174,6 +174,27 @@ class Persona(StrictModel):
         return value
 
 
+class ContextGroup(StrictModel):
+    id: str
+    kind: str
+    name: str = ''
+    name_source: str = 'unknown'
+    parent_id: str | None = None
+
+
+class ElementContext(StrictModel):
+    name_source: str = 'unknown'
+    label_status: Literal['explicit', 'nearby', 'unknown'] = 'unknown'
+    group_ids: list[str] = Field(default_factory=list)
+    attributes: dict[str, str] = Field(default_factory=dict)
+    descriptions: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    nearby_text: list[str] = Field(default_factory=list)
+    relations: dict[str, list[str]] = Field(default_factory=dict)
+    unresolved_relations: list[str] = Field(default_factory=list)
+    option_states: list[dict[str, str]] = Field(default_factory=list)
+
+
 class ElementInfo(StrictModel):
     id: str
     role: str
@@ -185,6 +206,7 @@ class ElementInfo(StrictModel):
     in_viewport: bool = True
     href: str | None = None
     options: list[dict[str, str]] = Field(default_factory=list)
+    context: ElementContext = Field(default_factory=ElementContext)
 
 
 class TabInfo(StrictModel):
@@ -222,6 +244,8 @@ class Observation(StrictModel):
     error: dict[str, Any] | None = None
     capture: CaptureInfo = Field(default_factory=CaptureInfo)
     interaction_state: dict[str, Any] = Field(default_factory=dict)
+    context_groups: list[ContextGroup] = Field(default_factory=list)
+    context_only_elements: list[ElementInfo] = Field(default_factory=list)
 
 
 class Action(StrictModel):
@@ -349,8 +373,9 @@ class UAction(StrictModel):
     direction: Literal["up", "down", "left", "right"] | None = None
     amount: int | None = Field(default=None, strict=True)
 
-    @model_validator(mode="after")
-    def validate_arguments(self):
+    @staticmethod
+    def argument_contract():
+        """Shared required/allowed fields for validation and repair prompts."""
         required = {"click": {"target"}, "type": {"target", "text"}, "hover": {"target"},
                     "select": {"target", "value"}, "clear": {"target"}, "key_press": {"key"},
                     "goto_url": {"url"}, "switch_tab": {"tab_id"},
@@ -359,6 +384,11 @@ class UAction(StrictModel):
         allowed = {**required, "type": {"target", "text", "enter"}, "scroll": {"direction", "amount", "target"},
                    "key_press": {"key", "target"}, "terminate": {"answer"}, "back": set(),
                    "forward": set(), "refresh": set(), "new_tab": {"url"}}
+        return required, allowed
+
+    @model_validator(mode="after")
+    def validate_arguments(self):
+        required, allowed = self.argument_contract()
         fields = {"target", "text", "enter", "value", "key", "url", "tab_id", "answer",
                   "at_x", "at_y", "direction", "amount"}
         supplied = {name for name in fields if getattr(self, name) is not None}

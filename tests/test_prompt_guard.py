@@ -188,6 +188,101 @@ async def test_counter_outage_does_not_silently_switch_to_an_estimate():
 
 
 @pytest.mark.asyncio
+async def test_long_input_checks_fixed_instructions_with_empty_user_for_qwen_template():
+    from uxagent.prompt_guard import PromptGuard
+    seen = []
+
+    class Counter:
+        def count(self, messages):
+            seen.append(messages)
+            if all(m['role'] == 'system' for m in messages):
+                raise RuntimeError('prompt_tokenizer_unavailable: HTTP 500 tokenization_failed')
+            return {'prompt_tokens': 10000 if any(len(m['content']) > 2000 for m in messages) else 200,
+                    'tokenizer_fingerprint': 'same-model'}
+
+    guard = PromptGuard(Counter())
+    messages = [{'role': 'system', 'content': 'Keep all task facts.'},
+                {'role': 'user', 'content': json.dumps({'memories': ['관찰 ' * 1000]})}]
+    original = json.loads(json.dumps(messages))
+
+    async def summarize(*args):
+        return '{"summary":"관찰 핵심"}', {'input_tokens': 1, 'output_tokens': 1}
+
+    prepared = await guard.prepare(messages, 'persona-qwen', 512, send=summarize,
+                                   budget=BudgetManager(None, None))
+    assert [messages[0], {'role': 'user', 'content': ''}] in seen
+    assert prepared[0] == messages[0] and messages == original
+    assert all(m['content'] for m in prepared)  # probe never enters generation input
+    assert guard.fits(prepared, 512)
+
+
+@pytest.mark.asyncio
+async def test_oversized_fixed_instructions_still_stop_without_summary_dispatch():
+    from uxagent.prompt_guard import PromptGuard
+
+    class Counter:
+        def count(self, messages):
+            assert any(m['role'] == 'user' for m in messages)
+            return {'prompt_tokens': 9000, 'tokenizer_fingerprint': 'same-model'}
+
+    async def send(*args):
+        pytest.fail('oversized system instructions must not dispatch summaries')
+
+    guard = PromptGuard(Counter())
+    with pytest.raises(PromptSizeError, match='fixed instructions alone'):
+        await guard.prepare([{'role': 'system', 'content': 'too long'},
+                             {'role': 'user', 'content': 'task'}], 'persona-qwen', 512,
+                            send=send, budget=BudgetManager(None, None))
+
+
+@pytest.mark.asyncio
+async def test_feedback_summarizes_all_observation_chunks_but_preserves_execution_facts():
+    provider = LocalQwenProvider()
+    markers = [f'control-{i:04d}' for i in range(160)]
+    controls = '<controls>' + ''.join(f'<control id="{key}">{key} 상품 담기 설명</control>' for key in markers) + '</controls>'
+    context = '<element_context>{"groups":[' + ','.join(
+        json.dumps({'id':f'g{i}', 'name':f'상품 {i}'}, ensure_ascii=False) for i in range(160)) + ']}</element_context>'
+    facts = {'url': 'https://shop.test/', 'inputs': [{'id':'search', 'value':'러닝화', 'focused':True}]}
+    payload = {'persona':{'intent':'러닝화 탐색'}, 'last_action':'Enter',
+               'last_action_result':{'ok':True,'interaction':{'search_outcome':'unconfirmed'}},
+               'feedback_state':facts, 'observation':controls + context}
+    messages = [{'role':'system','content':'FAST_STAGE:feedback\nAssess facts.'},
+                {'role':'user','content':json.dumps(payload,ensure_ascii=False)}]
+    original = messages[1]['content']
+    chunks, records = [], []
+
+    async def send(request, *args):
+        assert provider.prompt_guard.fits(request, 256)
+        chunks.append(json.loads(request[1]['content'])['content'])
+        return '{"summary":"화면 상품과 검색 상태를 관찰했습니다."}', {'input_tokens':1,'output_tokens':1}
+
+    provider._enqueue = send
+    prepared = await provider.prepare_messages(messages,'persona-qwen',512,budget=BudgetManager(None,None),
+                                               module='fast',stage='feedback',call_log=records.append)
+    reduced = json.loads(prepared[1]['content'])
+    assert all(key in ''.join(chunks) for key in markers)
+    for key in ('persona','last_action','last_action_result','feedback_state'):
+        assert reduced[key] == payload[key]
+    assert 'Generated context summary' in reduced['observation']
+    assert messages[1]['content'] == original and provider.prompt_guard.fits(prepared,512)
+    assert all(r['parent_stage']=='feedback' for r in records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('module,stage',[('fast','decision'),('provider','completion')])
+async def test_feedback_relaxation_never_applies_to_action_or_unspecified_stage(module,stage):
+    provider = LocalQwenProvider()
+    async def send(*args):
+        pytest.fail('protected control mappings must not be summarized')
+    provider._enqueue = send
+    messages = [{'role':'system','content':'Select a target.'}, {'role':'user','content':json.dumps({
+        'observation':'<controls>' + '대상 이름 ' * 6000 + '</controls>'})}]
+    with pytest.raises(PromptSizeError, match='protected task/control data cannot fit'):
+        await provider.prepare_messages(messages,'persona-qwen',512,budget=BudgetManager(None,None),
+                                        module=module,stage=stage)
+
+
+@pytest.mark.asyncio
 async def test_oversized_protected_data_diagnostic_reports_sizes_without_content():
     provider = LocalQwenProvider()
     with pytest.raises(PromptSizeError) as error:

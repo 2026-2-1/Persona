@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from .schemas import Persona
 from .storage import write_json
+from .model_json import loads_model_json, dumps_json
 
 
 def _quota(weights: dict[str,float], count: int):
@@ -73,14 +74,14 @@ def generate_personas(config_path: str | Path, output_dir=".", provider_name="mo
                     if usage["requests"]>=max_requests or usage["tokens"]+reservation>max_tokens:
                         failure="generation_budget_exceeded";break
                     usage["requests"]+=1;usage["tokens"]+=reservation;reserved_estimate=True
-                    response,reported=asyncio.run(provider.complete([{"role":"system","content":"Generate a varied but plausible fictional study persona. Output only JSON matching the requested fields."},{"role":"user","content":json.dumps(prompt,ensure_ascii=False)}],model,0.4,900))
+                    response,reported=asyncio.run(provider.complete([{"role":"system","content":"Generate a varied but plausible fictional study persona. Output only JSON matching the requested fields."},{"role":"user","content":dumps_json(prompt,ensure_ascii=False)}],model,0.4,900))
                     if "input_tokens" in reported and "output_tokens" in reported:
                         input_tokens=reported["input_tokens"] or 0;output_tokens=reported["output_tokens"] or 0
                         usage["input_tokens"]+=input_tokens;usage["output_tokens"]+=output_tokens
                         usage["tokens"]+=input_tokens+output_tokens-reservation
                     else:usage["estimated"]=True
                     reserved_estimate=False
-                    generated_values=json.loads(response)
+                    generated_values=loads_model_json(response)
                     generated_values["persona_id"]=f"p{i:03d}"
                     if generated_values.get("digital_familiarity")!=attrs.get("digital_familiarity",example.digital_familiarity):raise ValueError("assigned attribute changed")
                     if {**generated_values.get("constraints",{}),**cfg.get("fixed_constraints",{})}!=generated_values.get("constraints",{}):raise ValueError("fixed constraints changed")

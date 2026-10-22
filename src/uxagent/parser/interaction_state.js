@@ -28,6 +28,29 @@
     search:el.type==='search' || Boolean(el.closest('[role=search],[data-cy=search-bar-desktop]')) ||
       /검색|search/i.test([label(el),el.name,el.id,el.getAttribute('data-cy')].join(' '))
   }));
+  const hashText = value => {
+    let hash = 2166136261;
+    for (let i=0; i<value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  };
+  const searchInput = inputNodes.find(el => inputs.some(info =>
+    info.id === el.getAttribute('parser-semantic-id') && info.search));
+  const main = document.querySelector('main,[role=main]') || document.body;
+  const resultText = (main.innerText || '').replace(/\s+/g, ' ').trim();
+  const searchRoot = searchInput && (searchInput.closest('[role=search],[data-cy="search-bar-desktop"]') ||
+    searchInput.parentElement?.parentElement);
+  const suggestionNodes = [...document.querySelectorAll('[role=listbox],[role=option],[role=status],[role=alert],[aria-live]')]
+    .filter(el => shown(el) && !main.contains(el));
+  if (searchRoot?.parentElement) suggestionNodes.push(...[...searchRoot.parentElement.children]
+    .filter(el => el !== searchRoot && shown(el) && !main.contains(el)));
+  const suggestionText = [...new Set(suggestionNodes)].map(el => (el.innerText || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean).join('\n').slice(0, 12000);
+  const loadingNodes = [...document.querySelectorAll(
+    '[aria-busy="true"],[role=progressbar],[data-cy*="loading"],[class*="loading"],[class*="spinner"]')]
+    .filter(shown);
+  const search_state = {results_signature:hashText(resultText),
+    suggestions_signature:hashText(suggestionText), loading:loadingNodes.length > 0,
+    loading_count:loadingNodes.length};
   const explicit = [...document.querySelectorAll('[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]')].filter(shown);
   const closePattern = /^(close|닫기|팝업 닫기|창 닫기|×|✕|✖)$/i;
   const inferred = [...document.querySelectorAll('div,section,aside')].filter(el=> {
@@ -69,6 +92,6 @@
       clip:{x:Math.max(0,r.left),y:Math.max(0,r.top),width:Math.max(1,Math.min(innerWidth,r.right)-Math.max(0,r.left)),
             height:Math.max(1,Math.min(innerHeight,r.bottom)-Math.max(0,r.top))}};
   }
-  return {viewport:{width:innerWidth,height:innerHeight}, scroll_regions, inputs, popup,
+  return {viewport:{width:innerWidth,height:innerHeight}, scroll_regions, inputs, popup, search_state,
     visible_target_ids:[...document.querySelectorAll('[parser-semantic-id]')].filter(shown).map(e=>e.getAttribute('parser-semantic-id'))};
 }

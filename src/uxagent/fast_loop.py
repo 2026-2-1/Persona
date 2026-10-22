@@ -237,6 +237,7 @@ class FastLoop:
         action_controls = {}
         for kind, entries in (("clickable", observation.clickable_elements),
                               ("input", observation.input_elements),
+                              ("hover", observation.hoverable_elements),
                               ("select", observation.select_elements)):
             for entry in entries:
                 if group_text:
@@ -253,11 +254,13 @@ class FastLoop:
             attrs += f' focused="{str(entry.focused).lower()}" enabled="{str(entry.enabled).lower()}" in_viewport="{str(entry.in_viewport).lower()}"'
             if entry.checked is not None:
                 attrs += f' checked="{str(entry.checked).lower()}"'
+            if entry.href is not None:
+                attrs += f' href="{escape(entry.href, quote=True)}"'
             label = escape(' '.join(entry.name.split()))
-            if entry.options:
-                label += ' ' + escape(json.dumps(entry.options, ensure_ascii=False))
+            options = ''.join(f'<option value="{escape(option["value"], quote=True)}">'
+                              f'{escape(option["label"])}</option>' for option in entry.options)
             value = f' value="{escape(entry.value, quote=True)}"' if entry.value is not None else ''
-            controls.append(f'<control {attrs}{value}>{label}</control>')
+            controls.append(f'<control {attrs}{value}>{label}{options}</control>')
         if group_text:
             for entry in perception_controls.values():
                 value = f' value="{escape(entry.value, quote=True)}"' if entry.value is not None else ''

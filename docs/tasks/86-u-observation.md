@@ -20,6 +20,7 @@
 - U `clickable_elements` 문자열 ID와 input/select 객체를 로컬 `ElementInfo` 계약에 매핑한다. Fast의 U payload에는 유효 target ID를 사용한다. 2026-10-20 후속 수정에서 U의 입력/선택 후보 목록 결함을 교정해 실제 input/select 목록을 전달한다.
 - 한국어는 U JavaScript `\w` 기반 slug에서 ASCII 단어 문자가 없어 `item`, `item1`처럼 번호가 붙을 수 있다. ID는 실행 중 최신 관찰에만 유효하며 사람이 읽는 표시 이름은 접근 가능한 label/aria-label/placeholder/text를 보존한다.
 - 비밀번호 입력의 값 속성은 관찰 HTML에서 제외하고 구조화된 요소 값은 `[redacted]`로 표시한다. 보안상 필요한 이 차이는 U 동작을 그대로 복제하지 않는다.
+- 2026-10-19 후속: HTML `type`은 대소문자 구분 없이 비교한다. `password`/`PASSWORD`/`PassWord` 및 런타임 입력값을 합성 Chromium 회귀로 검사하며 원래 페이지의 입력값은 변경하지 않는다.
 - 기존 max text/elements 값은 더는 조용한 절단 기준이 아니다. `CaptureInfo.observed_text_chars`, `observed_element_count`, 두 configured limit과 `limits_exceeded`에 남는다. Qwen 컨텍스트 초과는 모델 요청 오류로 드러나며 일부 관찰을 U와 같다고 가장하지 않는다.
 - 실제 공개 데카트론에서 이 한도 오류가 확인되어 GPU Qwen의 큰 화면 **모델 입력**만 보이는 문구와 조작 대상 목록으로 압축한다. 원본 observation와 registry는 그대로 저장하고, 모델용 ID는 실행 전 원본으로 복원한다. 다른 제공자는 U HTML 입력을 유지한다. 압축된 Qwen 관찰은 U 전체 HTML 설명과 동일하지 않다.
 - init-script는 hover 이벤트 대상 표시와 XHR/fetch 추적에 한정한다. 브라우저 context/viewport/headed 옵션, 탭·JSON/PNG·세션 종료 경계는 기존 Python/Playwright 구현이다. U의 지속 브라우저 세션·수동 로그인·녹화·Flask/Vue는 포함하지 않는다.

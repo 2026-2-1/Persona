@@ -25,6 +25,8 @@ from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
 from .model_json import loads_model_json, loads_json, dumps_json
+from .call_evidence import public_call_record
+from .result_views import survey_view, wonder_view
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -69,12 +71,6 @@ def _jsonl_file(path: Path):
     except OSError:
         pass
     return rows
-
-
-def _public_call_record(record):
-    """Keep raw prompts/results confined to the local run directory."""
-    return {key: value for key, value in record.items()
-            if key not in {"request", "response", "retrieve_result", "evidence_redacted"}}
 
 
 class Dashboard:
@@ -250,8 +246,6 @@ class Dashboard:
         memories = brain['memories']
         memory_changes = brain['memory_changes']
         wonder_draws = brain['wonder_draws']
-        stored_stage_ids = {entry.get("source_stage_record_id") for entry in memories
-                            if entry.get("kind") == "wonder"}
         observations = {}
         obs_dir = folder / "observations"
         if obs_dir.is_dir():
@@ -266,22 +260,14 @@ class Dashboard:
             "config": _json_file(folder / "config.json", {}),
             "summary": _json_file(folder / "summary.json"),
             "final_evaluation": _json_file(folder / "final_evaluation.json"),
+            "survey": survey_view(folder),
             "steps": _jsonl_file(folder / "steps.jsonl"),
-            "calls": [_public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
+            "calls": [public_call_record(row) for row in _jsonl_file(folder / "llm_calls.jsonl")],
             "brain_stages": stages,
             "brain_tasks": tasks,
             "memories": memories,
             "memory_changes": memory_changes,
-            "wonder": {
-                "draws": wonder_draws,
-                "thoughts": [{"task_id": record.get("task_id"),
-                              "record_id": record.get("record_id"),
-                              "text": record.get("text"),
-                              "stored": record.get("record_id") in stored_stage_ids,
-                              "source_type": "generated_assumption"}
-                             for record in stages if record.get("stage") == "wonder"],
-                "probability_unit": "started_slow_task",
-            },
+            "wonder": wonder_view(_json_file(folder / "run.json", {}), stages, memories, wonder_draws),
             "observations": observations,
         }
         from .metrics import run_metrics
@@ -600,13 +586,15 @@ def make_handler(dashboard: Dashboard):
     class Handler(BaseHTTPRequestHandler):
         server_version = "UXAgentDashboard/1.0"
 
-        def _send(self, status, body, content_type="application/json; charset=utf-8"):
+        def _send(self, status, body, content_type="application/json; charset=utf-8", *, filename=None):
             payload = body if isinstance(body, bytes) else dumps_json(body, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            if filename:
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.end_headers()
             self.wfile.write(payload)
 
@@ -634,7 +622,8 @@ def make_handler(dashboard: Dashboard):
                 kind=parse_qs(urlsplit(self.path).query).get("format",["json"])[0]
                 types={"json":"application/json","csv":"text/csv","md":"text/markdown","html":"text/html"}
                 if kind not in types: return self._send(400,{"error":"unsupported_format"})
-                return self._send(200,export_report(detail,kind).encode("utf-8"),types[kind]+"; charset=utf-8")
+                run_id=unquote(path.removeprefix("/api/export/"))
+                return self._send(200,export_report(detail,kind).encode("utf-8"),types[kind]+"; charset=utf-8", filename=f"{run_id}.{kind}")
             if path.startswith("/api/run/"):
                 detail = dashboard.run_detail(unquote(path.removeprefix("/api/run/")))
                 return self._send(200, detail) if detail else self._send(404, {"error": "run_not_found"})

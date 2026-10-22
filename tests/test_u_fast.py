@@ -270,6 +270,55 @@ def test_perception_removes_duplicate_control_markup_without_losing_labels_or_va
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["hover", "select"])
+async def test_gpu_large_page_preserves_action_targets_options_and_state(kind):
+    from xml.etree import ElementTree
+    from uxagent.schemas import UPlan
+
+    brain, obs, _, provider, _, _, _, _, _ = setup()
+    target = kind + "." + "opaque_path_" * 30
+    option_value = 'SKU_size_0007&"regular'
+    entry = ElementInfo(id=target, role="menu" if kind == "hover" else "combobox",
+                        name='카테고리 & 사이즈', enabled=False, focused=True, checked=True,
+                        value="old-size", href="https://shop.test/?a=1&b=2",
+                        options=[{"value": option_value, "label": "230 <일반>"}] if kind == "select" else [])
+    obs.html = "<main>" + "<p>상품 설명</p>" * 900 + f'<div parser-semantic-id="{target}">카테고리</div></main>'
+    original_html = obs.html
+    original_entry = entry.model_dump()
+    obs.clickable_elements = obs.input_elements = []
+    obs.hoverable_elements = [entry] if kind == "hover" else []
+    obs.select_elements = [entry] if kind == "select" else []
+
+    async def complete(messages, model, temperature, max_tokens):
+        payload = json.loads(messages[1]["content"])
+        assert target not in payload["environment"]
+        controls = ElementTree.fromstring(payload["environment"]).findall(f"./controls/control[@kind='{kind}']")
+        assert len(controls) == 1, "The action target must survive the GPU projection"
+        control = controls[0]
+        assert control.text == entry.name and control.get("role") == entry.role
+        assert control.get("enabled") == "false" and control.get("focused") == "true"
+        assert control.get("checked") == "true" and control.get("href") == entry.href
+        proposal = {"action": kind, "target": control.get("id"), "description": "합성 조작"}
+        if kind == "select":
+            options = control.findall("option")
+            assert [(option.get("value"), option.text) for option in options] == [(option_value, "230 <일반>")]
+            assert control.get("value") == "old-size"
+            proposal["value"] = options[0].get("value")
+        return json.dumps({"actions": [proposal]}), {"provider": "gpu", "model": model,
+                                                   "input_tokens": 7, "output_tokens": 3}
+
+    provider.complete = complete
+    result = await brain.fast.act(brain.persona, "합성 과업", obs, [],
+                                 UPlan(plan="조작", rationale="합성", next_step="메뉴 또는 옵션 선택"))
+    action, _ = brain.fast.adapt_action(result.actions[0], obs)
+    assert action.type == kind and action.target_id == target
+    if kind == "select":
+        assert action.option_value == option_value
+    assert obs.html == original_html
+    assert entry.model_dump() == original_entry
+
+
+@pytest.mark.asyncio
 async def test_gpu_large_page_perception_reads_every_chunk_and_merges_until_one():
     brain, obs, _, provider, _, _, _, calls, _ = setup()
     markers = [f"상품{i:03d}" for i in range(300)]

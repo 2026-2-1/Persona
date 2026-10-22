@@ -4,6 +4,7 @@ import html, json
 from collections import Counter
 from pathlib import Path
 from .survey import create_survey
+from .call_evidence import public_call_record
 
 
 def read_jsonl(path):
@@ -39,7 +40,7 @@ def create_review(run_dir):
             p=run/"observations"/f"{obs}.png"
             if p.exists():imgs.append(f'<a href="observations/{html.escape(obs)}.png"><img loading="lazy" alt="{html.escape(obs)}" src="observations/{html.escape(obs)}.png"></a><a href="observations/{html.escape(obs)}.json">observation JSON</a>')
         parts.append(f"<article><h3>Step {s.get('step_id')}</h3><p><b>Decision</b> {html.escape(str(s.get('decision') or ''))}</p><p><b>Action</b> {html.escape(str(s.get('action') or 'finish'))}</p><p><b>Result</b> {html.escape(str(s.get('result') or s.get('error') or ''))}</p><p><b>Verification</b> {html.escape(str(s.get('verification')))}</p><p><b>Reflection</b> {html.escape(json.dumps(reflections,ensure_ascii=False))}</p><div class='images'>{''.join(imgs)}</div></article>")
-    header=f"<h1>UXAgent run {html.escape(summary['run_id'])}</h1><p>Termination: {html.escape(summary['termination_reason'])} · Verification: {html.escape(summary['verification'])}</p><pre>{html.escape(json.dumps({'config':config,'persona':persona,'summary':summary,'llm_calls':calls},ensure_ascii=False,indent=2))}</pre>"
+    header=f"<h1>UXAgent run {html.escape(summary['run_id'])}</h1><p>Termination: {html.escape(summary['termination_reason'])} · Verification: {html.escape(summary['verification'])}</p><pre>{html.escape(json.dumps({'config':config,'persona':persona,'summary':summary,'llm_calls':[public_call_record(call) for call in calls]},ensure_ascii=False,indent=2))}</pre>"
     body="".join(parts)+"<h2>Issue candidates</h2><pre>"+html.escape(json.dumps(issues,ensure_ascii=False,indent=2))+"</pre>"
     document="<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width'><title>UXAgent review</title><style>body{font:15px system-ui;max-width:1100px;margin:2rem auto;color:#202124}article{border:1px solid #ddd;padding:1rem;margin:1rem 0;border-radius:8px}.images{display:flex;gap:1rem}.images img{width:min(45vw,480px);border:1px solid #bbb}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f5f5;padding:1rem}</style>"+header+body
     (run/"review.html").write_text(document,encoding="utf-8")

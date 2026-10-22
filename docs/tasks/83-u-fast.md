@@ -75,6 +75,8 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 
 ## 원본 링크
 
+2026-10-19 후속: GPU 큰 화면의 feedback/act projection은 hover 전용 대상을 포함하고 각 조작 요소의 role·이름·현재 값·enabled/checked/focused·href와 select option의 실제 value/label을 보존한다. 모든 대상은 같은 짧은 ID 복원표를 사용하며 원래 observation/ElementInfo는 수정하지 않는다. U의 기존 valid_targets 구성 정책은 바꾸지 않는다.
+
 - [AgentPolicy.forward](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/main/model.py#L139-L196)
 - [perceive/feedback](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L69-L134)
 - [plan/act](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L248-L355)

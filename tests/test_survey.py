@@ -298,6 +298,53 @@ def test_provider_error_logs_attempt_without_leaking_exception_text(tmp_path):
     assert json.loads((folder / "summary.json").read_text())["llm_request_count"] == 3
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["provider_error", "invalid_json", "invalid_model_response",
+                                     "budget_exceeded", "sensitive_input_rejected", "empty_memory_trace"])
+async def test_failed_survey_retry_removes_previous_success_and_can_recover(tmp_path, failure):
+    from uxagent.result_views import survey_view
+
+    folder = _make_run(tmp_path / failure)
+    memories = (folder / "memory.jsonl").read_bytes()
+    assert (await create_survey(folder, QUESTIONNAIRE, provider=SurveyProvider()))["status"] == "completed"
+    assert json.loads((folder / "survey.json").read_text())[1]["response"]["answer"] == "가격 필터 위치가 어려웠다."
+    provider, questionnaire = SurveyProvider(), QUESTIONNAIRE
+    if failure == "provider_error":
+        provider.error = RuntimeError("synthetic_provider_failure")
+    elif failure == "invalid_json":
+        provider.response = "not json"
+    elif failure == "invalid_model_response":
+        response = json.loads(provider.response)
+        response["answers"][0]["value"] = "not an option"
+        provider.response = json.dumps(response)
+    elif failure == "budget_exceeded":
+        summary = json.loads((folder / "summary.json").read_text())
+        summary["budget"]["max_requests"] = summary["budget"]["requests"]
+        (folder / "summary.json").write_text(json.dumps(summary))
+    elif failure == "sensitive_input_rejected":
+        questionnaire = {**QUESTIONNAIRE, "title": "password=synthetic-only"}
+    else:
+        (folder / "memory.jsonl").write_text("")
+    failed = await create_survey(folder, questionnaire, provider=provider)
+    assert failed["status"] == failure
+    assert not (folder / "survey.json").exists(), "A failed retry must invalidate the old success projection"
+    assert json.loads((folder / "survey_result.json").read_text())["status"] == failure
+    assert json.loads((folder / "summary.json").read_text())["survey"]["status"] == failure
+    assert survey_view(folder)["status"] == failure and survey_view(folder)["answers"] == []
+
+    (folder / "memory.jsonl").write_bytes(memories)
+    summary = json.loads((folder / "summary.json").read_text())
+    summary["budget"]["max_requests"] = 20
+    (folder / "summary.json").write_text(json.dumps(summary))
+    provider = SurveyProvider()
+    response = json.loads(provider.response)
+    response["answers"][1]["value"] = "재시도 후 새 답변"
+    provider.response = json.dumps(response)
+    assert (await create_survey(folder, QUESTIONNAIRE, provider=provider))["status"] == "completed"
+    assert json.loads((folder / "survey.json").read_text())[1]["response"]["answer"] == "재시도 후 새 답변"
+    assert survey_view(folder)["answers"][1]["answer"] == "재시도 후 새 답변"
+
+
 def test_survey_budget_exhaustion_is_recorded_without_provider_call(tmp_path):
     import asyncio
     folder = _make_run(tmp_path / "budget", budget={"requests": 20, "max_requests": 20})

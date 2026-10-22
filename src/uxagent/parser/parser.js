@@ -233,7 +233,7 @@ const parse = () => {
     }
 
     if (tag === 'input' || tag === 'textarea' || original.hasAttribute('contenteditable')) {
-      const t = original.getAttribute('type') || 'text';
+      const t = (original.getAttribute('type') || 'text').toLowerCase();
       const inputIsDisabled = original.disabled || original.readOnly || t === 'password';
       if (!inputIsDisabled && !thisName) {
         const base = slug((original.getAttribute('placeholder') ||
@@ -343,7 +343,7 @@ const parse = () => {
         id: el.getAttribute('parser-semantic-id'),
         enabled: el.getAttribute('parser-input-disabled') === 'false' && !el.hasAttribute('disabled'),
         type: el.getAttribute('type') || (el.tagName.toLowerCase() === 'textarea' ? 'textarea' : 'contenteditable'),
-        value: el.getAttribute('type') === 'password' ? '[redacted]' : (el.getAttribute('value') || el.textContent),
+        value: (el.getAttribute('type') || '').toLowerCase() === 'password' ? '[redacted]' : (el.getAttribute('value') || el.textContent),
         canEdit: el.getAttribute('parser-can-edit') === 'true',
         isFocused: el.getAttribute('parser-is-focused') === 'true'
       })),

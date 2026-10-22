@@ -4,6 +4,9 @@
 
 - [모델 연결·JSON 오류 운영 매뉴얼](model-json-operations.md): 공통 JSON 문법 검사·교정 범위·경로별 연결·오류 대응·중단 기준·필수 회귀 검사.
 
+- [2026-10-19 검토 5건 수정·기존 PR 관계](handoffs/2026-10-19-review-fixes.md)
+
+- [2026-10-18 D/U 통합 검증·남은 선행 조건](handoffs/2026-10-18-d-u-integration.md)
 - [#85 U 기억 검색](tasks/85-u-memory.md)
 - [#86 U DOM parser 화면 관찰](tasks/86-u-observation.md)
 - [#87 U 행동 집합·접근 정책](tasks/87-u-actions.md)

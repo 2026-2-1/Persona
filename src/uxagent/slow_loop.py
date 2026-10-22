@@ -17,6 +17,7 @@ from .prompt_guard import prepare_model_messages
 from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord, UReflection, UWonder, UImportance
 from .fast_loop import FastLoop
 from .setup_guide import _check_sensitive
+from .security import check_sensitive_input
 
 
 class _SlowModelIO:
@@ -570,6 +571,8 @@ class ContinuousSlowLoop(_SlowModelIO):
             raise
 
     def _u_record(self, item, seq, entries, response):
+        # Validate the whole response before either stage or memory persistence.
+        check_sensitive_input(response)
         record = BrainStageRecord(record_id=f"stage-{item['kind']}-{uuid.uuid4().hex}",
             task_id=item["task_id"], run_id=self.memory.run_id, stage=item["kind"],
             observation_id=item["observation_id"], snapshot_seq=seq,

@@ -1,5 +1,11 @@
 # 2026-10-19 코드 검토 5건 수정과 PR 정리
 
+## 병합 후 현재 상태
+
+#101은 `prototype` `9095b3c`에 일반 merge로 병합됐다. #95~#99도 포함돼 병합 처리됐고 6개 원격 브랜치는 삭제했다. 준비 과정에서 password·설문 재시도·취소·GPU 조작 정보 수정을 선행 PR에 반영했으며, 최종 tree는 준비한 #101 `fe94fe3`과 같다. #100은 #101로 대체 종료했다. [병합 후 CI](https://github.com/2026-2-1/Persona/actions/runs/39208715049)는 Ubuntu 574 passed, Windows 569 passed/5 skipped와 doctor·Mock 통과다. 승인 1명과 기존 보호 조건은 유지한다.
+
+아래는 최초 수정 브랜치 작성 시점의 기준·검사·PR 관계다. 아래의 “후속에만 있음”, “원본 head 유지”, “CI 확인 예정”은 준비 당시 기록이며 현재 병합 상태를 뜻하지 않는다. 현재 재현·제한은 [최종 prototype 검증](2026-10-19-prototype-verification.md)을 따른다.
+
 ## 기준과 범위
 
 - prototype: `0fad8e59163e8e9559fb1b80562cfce3c6527b05`.

@@ -1,5 +1,16 @@
 # 검증 기록
 
+## 2026-10-19 prototype 병합 후 재검증
+
+- 실제 통합 커밋: `9095b3c7896d7080a39d59fb6492251491139fb6`. #101 일반 merge에 선행 #95~#99와 D 보완·5건 수정이 포함됐고 6개 원격 브랜치를 삭제했다. 최종 tree는 준비한 #101 `fe94fe3`과 같다.
+- [병합 후 원격 CI](https://github.com/2026-2-1/Persona/actions/runs/39208715049): Ubuntu/Python 3.11 **574 passed**, Windows/Python 3.13 **569 passed, POSIX SSH/agent 5 skipped**. 양쪽 repo 검사·doctor·Mock도 통과했다. 아래 최초 수정 시점의 브라우저/CI 미실행 기록과 구분한다.
+- 이번 macOS/Python 3.13.13/Playwright 1.55.0 doctor: Chromium available, study_errors 없음. 실제 Chromium/HTTP의 검토 폼·출력·비교·Brain·U 결과·조회 실패 집중 검사는 **54 passed in 66.99s**. 원격 전체 검사와 중복되므로 합산하지 않는다.
+- 새 무료 Mock `20261019T074221-958ea877`: 독립 success / 종료 max_steps, 30행동, 기록 30/30(100%), Slow worker 시작 1회와 종료 active/pending 0. 기본 과업과 한도는 유지하고 fixture 포트·persona 경로만 격리했다. 무지연/무제한 Mock의 3,599 Slow 순환·7,470 호출 로그는 실제 모델 성능/과금 수치가 아니다. embedding은 not_configured다.
+- 실제 앱 내 브라우저에서 합성 U 후보의 최종 평가 `obs-final`, AI 자기보고 설문, Wonder 생각 2개/빈 응답 1회/각 저장 여부를 확인했다. `prototype-qa` 별칭의 deferred 판정·특수문자/줄바꿈 메모를 저장하고, 새로고침 뒤 같은 실행을 재선택해 현재 버전 이력 1건 유지를 확인했다. 독립 failure는 변하지 않았다.
+- 같은 수동 저장 카드의 JSON/CSV/Markdown/HTML 응답에서 ID·근거 버전·판정·별칭·메모, 설문·최종 관찰을 파싱해 대조했다. HTML 메모는 escape되며 로컬 호출 전문 marker는 제외됐다. 네 형식 attachment 헤더도 정상이다. 구형 Brain의 상태·점수·제거 원본은 API로 대조했다.
+- 네 형식 실제 다운로드는 위 Chromium 회귀에서 통과했다. 앱 내 브라우저 다운로드 도구는 응답 지연/요소 변경 오류로 저장 경로를 확정하지 못했으므로 수동 인앱 다운로드 성공으로 기록하지 않는다.
+- 이번 변경은 README·현재 상태·로드맵·검증/재현 안내의 최신화다. 실제 Qwen 생성/과업·공개 사이트·유료 API·기업/인간 데이터는 사용하지 않았다. 팀원의 독립 재현은 #36의 남은 조건이다. [전체 검증·재현·남은 범위](handoffs/2026-10-19-prototype-verification.md).
+
 ## 2026-10-19 코드 검토 5건 후속 수정
 
 - 기준: 최신 #99 `f121aaf` + #100 `ae18a8f`, 동기화 `dc2a473`. 실제 GPU·유료 API·공개 사이트를 호출하지 않았다.

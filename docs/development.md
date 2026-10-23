@@ -10,7 +10,7 @@
 4. 대시보드의 GPU 서버 제공자를 선택하고 **연결 확인**을 누른다. 키 입력은 없다. CLI는 `python3 -m uxagent run --study configs/study-decathlon-live.json --provider gpu --headless`처럼 실행한다. 이 공개 사이트 설정은 검색 결과와 상세 일부만 독립 판정한다.
 5. Slurm 할당이 끝나거나 SSH 터널이 닫히면 이후 모델 요청은 실패한다. 앱의 연결 확인은 원격 할당이나 터널을 자동 시작하지 않는다.
 
-기본 합성 fixture는 로컬 8000번 포트를 사용한다. 합성 fixture와 GPU 모델을 함께 실행할 때는 터널을 로컬 8001번 등으로 열고 `PERSONA_QWEN_API_URL`을 같은 포트로 지정한다. 원격 서버의 포트는 계속 8000번이다. Qwen 채팅 제공자 자체 embed는 미지원이다. 분리 GPU 임베딩은 위 자동 시작 문서의 별도 환경/설정을 사용하며 실제 원격 검증과 비용은 미확인이다.
+기본 합성 fixture는 로컬 8000번 포트를 사용한다. 합성 fixture와 GPU 모델을 함께 실행할 때는 터널을 로컬 8001번 등으로 열고 `PERSONA_QWEN_API_URL`을 같은 포트로 지정한다. 원격 서버의 포트는 계속 8000번이다. Qwen 채팅 제공자 자체 embed는 미지원이다. 분리 GPU 임베딩은 위 자동 시작 문서의 별도 환경/설정을 사용한다. 2026-10-18 CUDA 벡터 probe와 작업 반환을 확인했으며 현재 통합 코드의 실제 과업·검색 품질·비용 검증은 별도다.
 
 ## 원격 GPU 임베딩의 SSH 인증
 
@@ -18,7 +18,7 @@
 
 서버 정책이 공개 키 인증을 허용한다면 암호로 보호한 전용 SSH 키를 만들고 로컬 ssh-agent에 등록해 반복 인증을 줄일 수 있다. 공개 키만 각 인증 대상 서버에 등록하며 개인 키는 로컬에 둔다. 기존 키를 덮어쓰거나 서버 인증 설정을 임의 변경하지 않는다. ProxyJump로 로그인 서버를 경유할 수 있으며 agent forwarding을 켤 필요는 없다.
 
-다음은 **자리표시자를 바꿔 사용하는 예시**다. 임베딩 포트8002와 모델 서버의 존재는 아직 확인하지 않았으며 이 명령을 실행했다고 임베딩 기능이 생기는 것은 아니다.
+다음은 **자리표시자를 바꿔 사용하는 수동 포트 전달 예시**다. 각자의 채팅·분리 임베딩 서버 경로와 포트가 실제 준비됐는지 먼저 확인한다. 이 명령 자체가 원격 서버를 설치하거나 시작하지는 않는다.
 
 ```sh
 ssh -N -o ExitOnForwardFailure=yes \
@@ -28,7 +28,7 @@ ssh -N -o ExitOnForwardFailure=yes \
   GPU_USER@GPU_HOST
 ```
 
-원격 채팅8000은 로컬8001, 원격 임베딩8002는 로컬8002로 전달하는 예다. 실제 원격 주소·포트와 API 경로는 서버 구성 확인 후 설정한다. SSH 인증 뒤에도 Slurm 할당·서버 프로세스·터널을 유지해야 한다. 앱에서 SSH 로그인이나 원격 서버 설치를 자동 실행하지 않는다.
+원격 채팅8000은 로컬8001, 원격 임베딩8002는 로컬8002로 전달하는 예다. 실제 원격 주소·포트와 API 경로는 서버 구성 확인 후 설정한다. 이 수동 경로에서는 Slurm 할당·서버 프로세스·터널을 유지해야 한다. 비공개 설정을 사용하는 dashboard 자동 모드는 [GPU 수명주기](tasks/gpu-dashboard-lifecycle.md)에 따라 SSH·할당·서버 시작·반환을 수행한다. 최초 원격 환경 설치는 별도다.
 
 근거: [OpenSSH ssh의 -J/-L/-N](https://man.openbsd.org/ssh), [ssh-keygen](https://man.openbsd.org/ssh-keygen), [ssh-agent](https://man.openbsd.org/ssh-agent).
 
@@ -85,4 +85,4 @@ scripts/check_repo.py는 선택한 Git 파일의 민감 경로·일부 credentia
 .venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-reset.json --defect reset
 ```
 
-대시보드의 `API 없는 과업 점검`은 별도 API 연결 없이 기록·개선 보드·내보내기로 이어진다. [사용법](offline-scenarios.md)에 네 합성 과업과 실제 공개 부분 검증을 구분한다. live config는 CI 기본 검사가 아니며 상품/사이트 변경 때문에 결과를 보장하지 않는다. `summary.json`의 판정·체크·종료 사유를 확인하고 실제 결과를 verification.md에 기록한다. CLI 종료 코드 0이 과업 성공을 뜻하지 않는다.
+대시보드의 `API 없는 과업 점검`은 별도 API 연결 없이 기록·개선 보드·내보내기로 이어진다. [사용법](offline-scenarios.md)에 네 합성 과업과 실제 공개 부분 검증을 구분한다. live config는 CI 기본 검사가 아니며 상품/사이트 변경 때문에 결과를 보장하지 않는다. `summary.json`의 판정·체크·종료 사유를 확인하고 실제 결과를 verification.md에 기록한다. `scenario` 명령의 종료 코드 0만으로 모든 체크 통과를 단정하지 않는다. AI `run` 명령의 성공 종료 코드는 최종 독립 verification을 따른다.

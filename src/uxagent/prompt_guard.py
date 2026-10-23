@@ -76,7 +76,8 @@ class PromptGuard:
         for message in messages:
             text = message['content']
             ascii_count = sum(ord(c) < 128 for c in text)
-            total += 16 + (ascii_count + 1) // 2 + len(text.encode('utf-8')) - ascii_count
+            # Qwen uses about one token per Hangul character, not one per UTF-8 byte.
+            total += 16 + (ascii_count + 1) // 2 + len(text) - ascii_count
         return total
 
     def fits(self, messages, max_tokens):
@@ -283,6 +284,9 @@ class PromptGuard:
             available = self.input_limit - fixed_info['margin_tokens'] - min(max_tokens, 512) - fixed_size
             target_bytes = max(500, min(2400, available - 128))
             round_number = 0
+            # Start with large slices to keep summary calls few; halve when a
+            # slice does not fit, down to the previous fixed 3500-byte size.
+            chunk_bytes = 10000
             while len(source.encode('utf-8')) > target_bytes:
                 round_number += 1
                 if round_number > 12:
@@ -290,12 +294,19 @@ class PromptGuard:
                 chunks, start, size_bytes = [], 0, 0
                 for index, char in enumerate(source):
                     n = len(char.encode('utf-8'))
-                    if size_bytes + n > 3500:
+                    if size_bytes + n > chunk_bytes:
                         chunks.append(source[start:index]); start, size_bytes = index, 0
                     size_bytes += n
                 chunks.append(source[start:])
-                reduced = '\n'.join([await summarize(chunk, round_number, index, len(chunks))
-                                     for index, chunk in enumerate(chunks, 1)])
+                try:
+                    reduced = '\n'.join([await summarize(chunk, round_number, index, len(chunks))
+                                         for index, chunk in enumerate(chunks, 1)])
+                except PromptSizeError as exc:
+                    if chunk_bytes <= 3500 or 'safe input budget' not in str(exc):
+                        raise
+                    chunk_bytes = max(3500, chunk_bytes // 2)
+                    round_number -= 1
+                    continue
                 if len(reduced.encode('utf-8')) >= len(source.encode('utf-8')):
                     raise PromptSizeError('prompt_preflight_error: summaries did not shrink')
                 source = reduced

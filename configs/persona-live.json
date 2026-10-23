@@ -1,0 +1,8 @@
+{
+  "persona_id": "p002",
+  "background": "주 3회 달리기를 하는 직장인이며 새 러닝화를 찾고 있다.",
+  "digital_familiarity": "보통",
+  "preferences": ["가격을 먼저 확인", "가벼운 신발 선호"],
+  "constraints": {"budget_krw": 80000},
+  "intent": "8만원 이하 러닝화의 상세 정보에서 상품명과 가격을 확인한다."
+}

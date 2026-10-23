@@ -52,7 +52,9 @@ class Brain:
                 self.fast, self.persona, intent, observation, self.persona_mode, self.last_action_result))
             if continuation is not None:
                 plan, proposed, perception = continuation
-                self.current_plan = plan
+                # A popup or search step is a detour; keep the task plan for feedback and replanning.
+                if self.current_plan is None:
+                    self.current_plan = plan
                 self.current_plan_id, self.current_plan_version = f'plan-{uuid.uuid4().hex}', 1
                 record = self._u_record('decision', observation,
                     'Interaction continuation: ' + proposed.actions[0].description, [], proposed)

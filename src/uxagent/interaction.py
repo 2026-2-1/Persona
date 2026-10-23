@@ -200,9 +200,7 @@ class InteractionFlow:
         if popup_context:
             payload['popup']['element_context'] = popup_context
         image_path = None
-        if not popup['text_available']:
-            if not popup.get('screenshot_path') or fast.artifact_root is None:
-                raise RuntimeError('popup_image_unavailable: popup text and cropped image are unavailable')
+        if not popup['text_available'] and popup.get('screenshot_path') and fast.artifact_root is not None:
             image_path = fast.artifact_root / popup['screenshot_path']
             # Image-only content; coordinate controls remain usable in the crop.
             payload['popup'].pop('popup_text')
@@ -216,8 +214,19 @@ class InteractionFlow:
             'ignore is allowed only for a nonmodal popup that does not obstruct the intended interaction. '
             'Do not claim it closed until the following observation. Repeated unchanged attempts require another approach.')
         for attempt in range(2):
-            choice = PopupChoice.model_validate(await fast._generate('popup_decision', instructions, payload,
-                response_model=PopupChoice, image_path=image_path))
+            try:
+                response = await fast._generate('popup_decision', instructions, payload,
+                    response_model=PopupChoice, image_path=image_path)
+            except RuntimeError as exc:
+                if image_path is None or not str(exc).startswith('popup_vision_unavailable'):
+                    raise
+                # Without an image-capable endpoint, decide from the observed popup controls only.
+                image_path = None
+                payload['popup'].pop('image_coordinates')
+                payload['popup']['popup_text'] = None
+                response = await fast._generate('popup_decision', instructions, payload,
+                    response_model=PopupChoice, image_path=None)
+            choice = PopupChoice.model_validate(response)
             action = choice.action
             valid = choice.choice != 'ignore' or not popup['modal']
             if action:

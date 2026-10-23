@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 from .fast_loop import FastLoop
 from .llm import BudgetExceeded
-from .schemas import BrainTaskEvent, BrainStageRecord, AgentDecision
+from .interaction import InteractionFlow
+from .schemas import BrainTaskEvent, BrainStageRecord, AgentDecision, ActionResult
 
 
 class Brain:
@@ -28,6 +29,8 @@ class Brain:
         self.stage_writer = stage_writer
         self.current_plan = None
         self.last_action = None
+        self.last_action_result = None
+        self.interactions = InteractionFlow()
         self.slow_started = False
         self.current_observation_id = None
         self.current_plan_id = None
@@ -42,6 +45,20 @@ class Brain:
         """U Fast flow. Record IDs describe results; they do not authorize generation."""
         self.current_observation_id = observation.observation_id
         self.current_plan_id = self.current_plan_version = None
+        self.interactions.observe(observation, self.last_action, self.last_action_result)
+        self.fast.interaction_context = self.interactions.context
+        if self.interactions.needs_handling(observation):
+            continuation = await self._u_call('decision', observation, [], lambda: self.interactions.propose(
+                self.fast, self.persona, intent, observation, self.persona_mode, self.last_action_result))
+            if continuation is not None:
+                plan, proposed, perception = continuation
+                self.current_plan = plan
+                self.current_plan_id, self.current_plan_version = f'plan-{uuid.uuid4().hex}', 1
+                record = self._u_record('decision', observation,
+                    'Interaction continuation: ' + proposed.actions[0].description, [], proposed)
+                return self._commit_proposal(proposed, observation, step_id, plan, perception, record)
+            task_id = self.fast_inflight.pop('decision')
+            self._fast_event('decision', task_id, 'completed')
 
         async def perceive():
             result = await self._u_call("perception", observation, [],
@@ -57,7 +74,7 @@ class Brain:
         async def feedback():
             result = await self._u_call("feedback", observation, [], lambda: self.fast.feedback(
                 self.persona, json.dumps(self.last_action, ensure_ascii=False), self.current_plan.plan,
-                observation, self.persona_mode))
+                observation, self.persona_mode, last_action_result=self.last_action_result))
             record = self._u_record("feedback", observation, "\n".join(result.thoughts) or "[]", [], result)
             for thought in result.thoughts:
                 self._u_memory("thought", thought, step_id, observation, record)
@@ -82,7 +99,8 @@ class Brain:
 
         plan_memories = await retrieve(intent, "fast_plan")
         plan = await self._u_call("plan", observation, plan_memories, lambda: self.fast.make_plan(
-            self.persona, intent, plan_memories, self.memory.timestamp, self.current_plan, self.persona_mode))
+            self.persona, intent, plan_memories, self.memory.timestamp, self.current_plan, self.persona_mode,
+            last_action_result=self.last_action_result, last_action=self.last_action, observation=observation))
         self.current_plan_id, self.current_plan_version = f"plan-{uuid.uuid4().hex}", 1
         plan_record = self._u_record("plan", observation, plan.plan, plan_memories, plan)
         self.current_plan = plan
@@ -91,19 +109,32 @@ class Brain:
 
         action_memories = await retrieve(plan.next_step, "fast_decision")
         proposed = await self._u_call("decision", observation, action_memories, lambda: self.fast.act(
-            self.persona, intent, observation, action_memories, plan, self.persona_mode))
+            self.persona, intent, observation, action_memories, plan, self.persona_mode,
+            last_action_result=self.last_action_result, last_action=self.last_action))
         action_record = self._u_record("decision", observation,
             "\n".join(action.description for action in proposed.actions), action_memories, proposed)
+        return self._commit_proposal(proposed, observation, step_id, plan, perception, action_record)
+
+    def _commit_proposal(self, proposed, observation, step_id, plan, perception, action_record):
+        popup_stop = self.interactions.last_popup and proposed.actions[0].action == 'terminate'
+        self.interactions.remember(proposed.actions[0], observation)
         for action in proposed.actions:
             self._u_memory("action", action.description, step_id, observation, action_record,
                            raw_action=action.model_dump(exclude_none=True))
         # U records all proposals and executes only the first one.
-        self.last_action = proposed.actions[-1].model_dump(exclude_none=True)
+        self.last_action = proposed.actions[0].model_dump(exclude_none=True)
+        self.last_action_result = None  # A proposal has no execution outcome yet.
         action, finish = self.fast.adapt_action(proposed.actions[0], observation)
+        if finish and popup_stop:
+            finish.claim = 'give_up'
         self.memory.timestamp += 1
         return AgentDecision(decision_id=f"d-{uuid.uuid4().hex[:10]}", perception=perception,
             plan=plan.plan, rationale_summary=proposed.actions[0].description, action=action,
             finish=finish, proposed_actions=proposed.actions, next_step=plan.next_step), action_record.source_memory_ids
+
+    def record_action_result(self, result: ActionResult):
+        """Attach an executor fact to the first proposal actually attempted."""
+        self.last_action_result = result.model_dump(mode='json')
 
     async def _u_call(self, stage, observation, memories, call):
         task_id = self._start_fast(stage, observation.observation_id, memories)

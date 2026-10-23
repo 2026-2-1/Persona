@@ -96,6 +96,7 @@ async def test_executor_uses_semantic_dom_target_without_observation_capability_
 async def test_executor_supports_unrestricted_key_input_coordinates_scroll_and_clear():
     async with BrowserSession(False) as browser:
         await _start(browser, """<input id='field' parser-semantic-id='field' autofocus>
+            <div style='width:3000px;height:200px'>wide page</div>
             <button style='position:absolute;left:30px;top:40px' onclick="document.body.dataset.clicked='yes'">go</button>
             <script>document.addEventListener('keydown',e=>document.body.dataset.keys=(document.body.dataset.keys||'')+e.key)</script>""")
         executor = ActionExecutor(browser, [])
@@ -105,10 +106,11 @@ async def test_executor_supports_unrestricted_key_input_coordinates_scroll_and_c
         assert await browser.active.locator("#field").input_value() == "typed"
         assert (await executor.execute(action("clear", target_id="field"))).ok
         assert await browser.active.locator("#field").input_value() == ""
-        assert (await executor.execute(action("scroll", scroll_direction="right", scroll_amount=2))).ok
-        assert (await browser.active.locator("body").get_attribute("data-keys")).endswith("ArrowRight" * 6)
         assert (await executor.execute(action("mouse_click", at_x=40, at_y=50))).ok
         assert await browser.active.locator("body").get_attribute("data-clicked") == "yes"
+        scroll = await executor.execute(action("scroll", scroll_direction="right", scroll_amount=200))
+        assert scroll.ok and scroll.interaction["moved"]
+        assert scroll.interaction["direction"] == "right"
 
 
 @pytest.mark.asyncio

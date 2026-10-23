@@ -24,6 +24,7 @@ from .candidate_reviews import ReviewStore, ReviewError, overlay_reviews
 from .trace import build_step_trace
 from .storage import write_json
 from .brain_trace import load_brain_trace
+from .model_json import loads_model_json, loads_json, dumps_json
 from .call_evidence import public_call_record
 from .result_views import survey_view, wonder_view
 
@@ -84,6 +85,9 @@ class Dashboard:
         self.guide_busy = False
         self.connection_models = {}
         self.gpu_embedding_model = None
+        self.gpu_session = None
+        self.gpu_connection = {'status': 'not_connected', 'message': 'GPU 연결을 확인하세요.'}
+        self.gpu_lock = threading.RLock()
         # start_job returns _job_state while holding this lock, so it must be reentrant.
         self.job_lock = threading.RLock()
 
@@ -223,10 +227,12 @@ class Dashboard:
             "model_catalog": catalog_payload(),
             "guide_busy": self.guide_busy,
             "connection_models": dict(self.connection_models),
+            "gpu_connection": dict(self.gpu_connection),
             "persona_defaults": {"count": persona_config.get("count", 6), "background": example.background},
             "providers": {"jev": bool(os.environ.get("TYPESAFE_API_KEY") and os.environ.get("GEMINI_API_KEY")),
                           "gemini": bool(os.environ.get("GEMINI_API_KEY")), "live": bool(os.environ.get("OPENAI_API_KEY")), "claude": bool(os.environ.get("ANTHROPIC_API_KEY")),
-                          "gpu": self.connection_models.get("gpu") == "persona-qwen"},
+                          "gpu": (self.connection_models.get("gpu") == "persona-qwen"
+                                  and self.gpu_connection['status'] == 'connected')},
         }
 
     def run_detail(self, run_id):
@@ -310,14 +316,39 @@ class Dashboard:
     def _verify_connection(self, provider, model=None):
         from .llm import OpenAIProvider, GeminiProvider, JevProvider, ClaudeProvider, LocalQwenProvider
         selected_model = resolve_model(provider, model)
+        if provider == 'gpu':
+            self.ensure_gpu_connection()
         async def verify():
             if provider == "jev":
                 await JevProvider().choose({"message":"Connection check"},[{"id":"ok","description":"connection check"}])
-                await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+                raw, _ = await GeminiProvider().complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
             else:
                 implementation = OpenAIProvider() if provider == "live" else ClaudeProvider() if provider == "claude" else LocalQwenProvider() if provider == "gpu" else GeminiProvider()
-                await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+                raw, _ = await implementation.complete([{"role":"user","content":"Return JSON: {\"ok\":true}"}],model=selected_model,max_tokens=32)
+            loads_model_json(raw)
         asyncio.run(verify())
+
+    def ensure_gpu_connection(self):
+        from .llm import LocalQwenProvider
+        with self.gpu_lock:
+            try:
+                if self.gpu_session:
+                    self.gpu_session.ensure_ready()
+                LocalQwenProvider().health()
+            except Exception as exc:
+                detail = str(exc) if isinstance(exc, RuntimeError) else 'GPU 서버·SSH 터널이 응답하지 않습니다.'
+                self.gpu_connection = {'status': 'disconnected', 'message': f'GPU 연결 확인 실패: {detail}'}
+                raise ValueError(self.gpu_connection['message']) from None
+            self.gpu_connection = {'status': 'connected', 'message': 'GPU 서버 연결 확인 완료.'}
+
+    def maintain_gpu_connection(self, stop):
+        # Health checks do not generate model output or consume model tokens.
+        while not stop.wait(5):
+            if self.gpu_session or 'gpu' in self.connection_models:
+                try:
+                    self.ensure_gpu_connection()
+                except ValueError:
+                    pass  # state exposes the failure; later checks can recover.
 
     def connect(self, provider, api_key, fallback_key=None, model=None):
         if provider not in {"live","gemini","jev","claude","gpu"}: raise ValueError("지원하지 않는 연결입니다")
@@ -341,10 +372,14 @@ class Dashboard:
                 for name,value in previous.items():
                     if value is None: os.environ.pop(name,None)
                     else: os.environ[name]=value
+                if provider == 'gpu':
+                    self.gpu_connection = {'status': 'disconnected', 'message': 'GPU 서버 연결 확인에 실패했습니다.'}
                 raise ValueError("연결 확인에 실패했습니다. GPU 서버·SSH 터널 또는 API 설정을 확인하세요." if provider == "gpu" else "연결 확인에 실패했습니다. 키·API 사용 권한·결제 설정·네트워크를 확인하세요.") from None
             if provider in {"gemini","jev"}:
                 self.connection_models.pop("gemini",None); self.connection_models.pop("jev",None)
             self.connection_models[provider] = selected_model
+            if provider == 'gpu':
+                self.gpu_connection = {'status': 'connected', 'message': 'GPU 서버 연결 확인 완료.'}
             if provider=="jev": self.connection_models["gemini"]=selected_model
         return {"provider":provider,"model":selected_model,"configured":True,"validated":True,"message":"GPU 서버 연결 확인 완료." if provider == "gpu" else "연결 확인 완료. 이 서버 세션에서만 키를 보관합니다. 확인 요청은 API 사용량에 포함됩니다."}
 
@@ -454,6 +489,10 @@ class Dashboard:
             if any(not os.environ.get(name) for name in required):
                 raise ValueError(f"{provider} 실행에 필요한 API 키가 .env에 없습니다")
             validate_provider_configuration(provider, config)
+            if provider == 'gpu':
+                # Refuse before creating run files or opening any browser when
+                # the tunnel/model is gone, even if an earlier check succeeded.
+                self.ensure_gpu_connection()
         with self.job_lock:
             if self.guide_busy or (self.job and self.job["process"].poll() is None):
                 raise RuntimeError("another dashboard job or guide request is already running")
@@ -504,7 +543,21 @@ class Dashboard:
                 study.update({"study_id": f"dashboard-{job_id}", "start_url": start_url,
                               "allowed_origins": [origin], "task": task, "persona_file": str(example_path), "provider_model": snapshot_model})
                 if not fixture:
-                    study["evaluator_id"] = "unverified-external-site"
+                    # Preserve an explicitly configured profile for its own
+                    # site/task; otherwise match only an exact registered task.
+                    same_profile = (config.evaluation_profile_file and
+                        normalize_origin(config.start_url) == origin and
+                        ' '.join(config.task.split()) == ' '.join(task.split()))
+                    if not same_profile:
+                        preset, _, preset_path = load_study(ROOT / 'configs/study-decathlon-live.json')
+                        if (origin in preset.allowed_origins and
+                                ' '.join(task.split()) == ' '.join(preset.task.split())):
+                            study.update(evaluator_id=preset.evaluator_id,
+                                evaluation_profile_file=str((preset_path.parent / preset.evaluation_profile_file).resolve()),
+                                evaluation_expectations=preset.evaluation_expectations)
+                        else:
+                            study.update(evaluator_id='unverified-external-site',
+                                evaluation_profile_file=None, evaluation_expectations=None)
                     study["action_timeout_ms"] = max(study["action_timeout_ms"], 15000)
                 StudyConfig.model_validate(study)
                 study_path = job_dir / f"{job_id}-study.json"
@@ -534,7 +587,7 @@ def make_handler(dashboard: Dashboard):
         server_version = "UXAgentDashboard/1.0"
 
         def _send(self, status, body, content_type="application/json; charset=utf-8", *, filename=None):
-            payload = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
+            payload = body if isinstance(body, bytes) else dumps_json(body, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(payload)))
@@ -611,7 +664,7 @@ def make_handler(dashboard: Dashboard):
                 length = int(self.headers.get("Content-Length", "0"))
                 if length < 0 or length > 16384:
                     return self._send(413, {"error": "request_too_large"})
-                payload = json.loads(self.rfile.read(length) or b"{}")
+                payload = loads_json(self.rfile.read(length) or b"{}")
                 if not isinstance(payload, dict):
                     raise ValueError("요청 형식이 올바르지 않습니다")
                 if path.startswith("/api/reviews/"):
@@ -644,6 +697,8 @@ def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", st
     dashboard = Dashboard(runs_dir, personas_dir, study)
     server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(dashboard))
     gpu = None
+    gpu_stop = threading.Event()
+    gpu_monitor = None
     previous_sigterm = None
     try:
         if gpu_config:
@@ -657,13 +712,19 @@ def serve_dashboard(port=8765, runs_dir="runs", personas_dir="runs/personas", st
                     raise KeyboardInterrupt
                 signal.signal(signal.SIGTERM, terminate)
             gpu.start()
+            dashboard.gpu_session = gpu
             dashboard.gpu_embedding_model = config.embedding_model
             dashboard.connect('gpu', None, model='persona-qwen')
+        gpu_monitor = threading.Thread(target=dashboard.maintain_gpu_connection, args=(gpu_stop,), daemon=True)
+        gpu_monitor.start()
         print(f"UXAgent dashboard: http://127.0.0.1:{port}", flush=True)
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        gpu_stop.set()
+        if gpu_monitor:
+            gpu_monitor.join()
         try:
             if gpu and dashboard.job and dashboard.job['process'].poll() is None:
                 # Finish local run records before returning the model allocation.

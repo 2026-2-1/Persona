@@ -56,6 +56,9 @@ const parse = () => {
   };
 
   const isEmpty = (el) => {
+    // Stripping SVG must not strip an otherwise empty, named icon control.
+    if (el.hasAttribute('parser-clickable') ||
+        ['dialog', 'alertdialog'].includes(el.getAttribute('role'))) return false;
     if (el.hasAttribute('contenteditable')) return false;
     if (PRESERVE_EMPTY_TAGS.has(el.tagName.toLowerCase())) return false;
     for (const n of el.childNodes) {
@@ -110,6 +113,9 @@ const parse = () => {
   const flatten = (el) => {
     while (el.children.length === 1) {
       const child = el.children[0];
+      if ([el, child].some(node => node.hasAttribute('parser-clickable') ||
+          ['dialog', 'alertdialog'].includes(node.getAttribute('role')) ||
+          node.hasAttribute('aria-modal'))) break;
       const p = el.tagName.toLowerCase();
       const c = child.tagName.toLowerCase();
       if (p !== 'div' && c !== 'div') break;
@@ -142,6 +148,23 @@ const parse = () => {
   })();
 
 
+  const nearbyInputLabel = el => {
+    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return '';
+    const parent = el.parentElement;
+    const onlyField = parent && parent.querySelectorAll('input,textarea,select').length === 1;
+    const candidates = [el.previousElementSibling, ...(onlyField ? [el.nextElementSibling] : [])];
+    for (const candidate of candidates) {
+      if (!candidate || !isVisible(candidate) || candidate.matches('input,textarea,select,button,a') ||
+          candidate.querySelector('input,textarea,select,button,a')) continue;
+      const text = (candidate.textContent || '').trim().replace(/\s+/g, ' ');
+      if (!text || text.length > 60) continue;
+      if (/^min\.?$/i.test(text)) return text + ' (최소값)';
+      if (/^max\.?$/i.test(text)) return text + ' (최대값)';
+      return text;
+    }
+    return '';
+  };
+
   /* ==================================================================== */
   function automaticStripElement(original, parentName = '', parentIsClickable = false) {
     if (!original || original.nodeType !== 1) return null;
@@ -152,7 +175,9 @@ const parse = () => {
     let clone = document.createElement(original.tagName);
     copyAllowed(original, clone);
     const accessibleName = original.getAttribute('aria-label') ||
-      (original.labels ? Array.from(original.labels).map(label => label.textContent.trim()).filter(Boolean).join(' ') : '');
+      (original.labels ? Array.from(original.labels).map(label => label.textContent.trim()).filter(Boolean).join(' ') : '') ||
+      (tag === 'input' && original.closest('[data-cy="search-bar-desktop"]') ? '상품 검색' : '') ||
+      (!original.getAttribute('placeholder') && !original.getAttribute('title') ? nearbyInputLabel(original) : '');
     if (accessibleName) clone.setAttribute('parser-accessible-name', accessibleName);
     if (tag === 'input' && ['checkbox', 'radio'].includes((original.type || '').toLowerCase())) {
       clone.checked = original.checked;

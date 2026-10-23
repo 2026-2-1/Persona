@@ -58,6 +58,8 @@ HF_HUB_OFFLINE=0 .venv-persona-embedding/bin/python -c 'from sentence_transforme
 
 ## 소유권과 복구
 
+- 대시보드는 5초마다 채팅·임베딩 health를 확인하고 batch/compare 직전에도 검사한다. 소유 작업 ID·고유 이름·RUNNING·지정 노드를 확인한 뒤 없어진 SSH master/터널을 복구한다. 이 검사는 모델 생성을 하지 않으며 새 Slurm 작업을 만들지 않는다. 할당 만료·서버 종료·복구 실패는 `gpu_connection`과 `providers.gpu=false`로 드러내고 새 실행을 막는다. 종료 때 로그인 master가 끊겼으면 재인증해 소유 작업을 반환한다. [오류 대응·검증 매뉴얼](../model-json-operations.md)을 따른다.
+
 - 이름은 실행별 UUID다. 사용자 전체 작업이나 기존 수동 작업을 취소하지 않는다.
 - sbatch 응답을 잃으면 해당 사용자+고유 이름으로만 ID를 복구한다.
 - 로컬 `runs/private/gpu-session-state.json`은 배타적으로 생성한다. job ID·고유 이름과 임베딩 probe 메타데이터를 저장하고 실제 반환이 확인된 뒤 삭제한다.
@@ -112,3 +114,9 @@ python3 -m uxagent dashboard
 근거: [Apple Keychain 저장 API](https://developer.apple.com/documentation/security/seckeychainaddgenericpassword(_:_:_:_:_:_:_:_:)), [Keychain 조회 API](https://developer.apple.com/documentation/security/seckeychainfindgenericpassword(_:_:_:_:_:_:_:_:)), [OpenSSH SSH_ASKPASS_REQUIRE](https://man.openbsd.org/ssh).
 
 2026-10-18 실제 검증: macOS 키체인 자격증명과 비공개 설정으로 대시보드를 시작했다. Qwen `/health` HTTP200/status=ok/model=persona-qwen, sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2의 `cuda:0`·384차원 및 벡터 probe를 통과했고 Slurm 작업19357을 반환했다. 검증용 번들과 wrapper는 원격 사용자 홈·노드 임시 디스크에 두며 비밀번호·키체인 값은 출력하거나 저장소에 넣지 않았다. 생성형 Qwen 과업 성공은 검증하지 않았다.
+
+2026-10-20 실제 과업 예산: 공개 데카트론 등록 study는 실제394.70초 측정 후600초를 허용한다. 기본 대시보드에서 등록 과업을 GPU로 실행할 때만 데모의300초 대신 이 제한을 쓴다. 사용자 지정 study의 명시 시간 한도는 유지한다. 이는 실행 시간 설정이며 GPU 처리속도 향상으로 보고하지 않는다.
+
+## 2026-10-21 동일 채팅 토크나이저 서비스
+
+기본 tokenizer_enabled=true, tokenizer_local_port/remote_port=8003으로 CPU 보조 서비스를 추가한다. 기존 server_script의 모델 경로/이름을 AST로 읽고 같은 chat venv에서 실행하며 chat/embedding/토큰 계산의 어느 자식이 끝나도 소유 Slurm 작업을 정리한다. 추가 GPU는 요청하지 않는다. 준비 시 모델명/한도/fingerprint와 CPU 계산 probe를 확인하고 PERSONA_QWEN_TOKENIZER_URL을 실행기에 전달한다. health 감시·터널 복구·포트 충돌 검사와 종료 환경 복원에 포함한다. 토큰 계산 서비스가 필요한 수동 모드는 별도로 URL을 설정해야 하며 managed 기본과 구분한다.

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
+from .prompt_guard import prepare_model_messages
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -14,6 +16,7 @@ from .llm import (BudgetExceeded, BudgetManager, ClaudeProvider, GeminiProvider,
 from .security import check_sensitive_input
 from .call_evidence import call_evidence
 from .storage import write_json
+from .model_json import loads_model_json, dumps_json
 
 
 class SurveyQuestion(BaseModel):
@@ -62,6 +65,7 @@ class SurveyMeta(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     confidence_overall: StrictFloat = Field(ge=0, le=1)
+    execution_error_count: StrictInt | None = Field(default=None, ge=0)
 
 
 class SurveyResponse(BaseModel):
@@ -108,13 +112,41 @@ def _memory_trace(run: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         if timestamp is None:
             timestamp = seq
         trace.append({"timestamp": timestamp, "kind": row.get("kind", "unknown"),
-                      "importance": score, "content": content})
+                      "importance": score, "content": content,
+                      "content_status": row.get('content_status', 'unknown')})
         provenance.append({"memory_id": memory_id, "seq": seq, "kind": row.get("kind"),
                            "importance": score, "source_step_ids": row.get("source_step_ids", []),
                            "created_at": row.get("created_at")})
     return trace, {"scope": "full_run_trace", "count": len(trace),
                    "memory_ids": [row.get("memory_id") for row in provenance],
                    "memories": provenance}
+
+
+def _execution_trace(run: Path, summary: dict) -> dict:
+    """Tool facts only: never evaluator answers or model-proposed outcomes."""
+    path = run / 'steps.jsonl'
+    steps, failed = [], []
+    for row in _read_jsonl(path):
+        if type(row.get('step_id')) is not int or row['step_id'] < 1:
+            raise ValueError('execution step has no valid ID')
+        action, result = row.get('action'), row.get('result')
+        if not isinstance(result, dict):
+            if row.get('error'):
+                steps.append({'step_id': row.get('step_id'), 'execution_status': 'not_executed',
+                              'error': row['error']})
+            continue
+        if type(result.get('ok')) is not bool:
+            raise ValueError('execution result has no boolean outcome')
+        if not result['ok']:
+            failed.append(row.get('step_id'))
+        steps.append({'step_id': row.get('step_id'),
+            'action': {key: action[key] for key in ('type', 'target_id', 'text', 'option_value', 'key', 'url')
+                       if isinstance(action, dict) and action.get(key) is not None},
+            'ok': result['ok'], 'error': result.get('error'),
+            'url_before': result.get('url_before'), 'url_after': result.get('url_after')})
+    return {'available': path.exists(), 'steps': steps,
+            'error_count': len(failed) if path.exists() else None,
+            'failed_step_ids': failed, 'termination_reason': summary.get('termination_reason')}
 
 
 def _provider(name: str):
@@ -126,12 +158,15 @@ def _provider(name: str):
         raise ValueError("unsupported survey provider") from None
 
 
-def _validate_response(raw: str, questionnaire: Questionnaire) -> dict[str, Any]:
+def _validate_response(raw: str, questionnaire: Questionnaire, *, execution_error_count=None,
+                       json_repairs=None) -> dict[str, Any]:
     try:
-        parsed = json.loads(raw)
+        parsed = loads_model_json(raw, repairs=json_repairs)
     except (json.JSONDecodeError, TypeError):
         raise ValueError("invalid_json") from None
     response = SurveyResponse.model_validate(parsed)
+    if execution_error_count is not None and response.meta.execution_error_count != execution_error_count:
+        raise ValueError('execution_fact_mismatch')
     if response.questionnaire_id != questionnaire.questionnaire_id:
         raise ValueError("questionnaire_id_mismatch")
     if [answer.question_id for answer in response.answers] != [question.id for question in questionnaire.questions]:
@@ -219,6 +254,7 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                              "output_tokens": None, "estimated_cost_usd": None}
     trace: list[dict[str, Any]] = []
     trace_provenance: dict[str, Any] = {"scope": "full_run_trace", "count": 0, "memory_ids": [], "memories": []}
+    execution = {'available': False, 'steps': [], 'error_count': None, 'failed_step_ids': []}
 
     try:
         if questionnaire is None:
@@ -244,12 +280,18 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
             error = {"code": "memory_trace_error"}
         if error is None and not trace:
             error = {"code": "empty_memory_trace"}
+        if error is None:
+            try:
+                execution = _execution_trace(run, summary)
+            except Exception:
+                error = {'code': 'execution_trace_error'}
 
     if error is None:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(_questionnaire_payload(form), ensure_ascii=False)
-             + "\n" + json.dumps(trace, ensure_ascii=False)},
+            {"role": "user", "content": dumps_json(_questionnaire_payload(form), ensure_ascii=False)
+             + "\n" + dumps_json(trace, ensure_ascii=False)
+             + "\n" + dumps_json({'execution_trace': execution}, ensure_ascii=False)},
         ]
         try:
             check_sensitive_input([message["content"] for message in messages])
@@ -278,12 +320,17 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
         budget.requests = int(prior_budget.get("requests", summary.get("llm_request_count", 0)) or 0)
         budget.tokens = int(prior_budget.get("tokens", summary.get("llm_tokens", 0)) or 0)
         budget.reserved_tokens = int(prior_budget.get("reserved_tokens", 0) or 0)
-        reservation = config.get("max_output_tokens", 1200) + len(messages[1]["content"]) // 4
         try:
+            messages = await prepare_model_messages(provider, messages, actual_model,
+                config.get('max_output_tokens', 1200), budget=budget,
+                call_log=lambda record: _write_call(run, record), module='survey', stage='questionnaire')
+            reservation = config.get("max_output_tokens", 1200) + sum(len(message['content']) for message in messages) // 4
             budget.reserve(reservation)
         except BudgetExceeded as exc:
             error = {"code": "budget_exceeded", "reason": exc.reason_code,
-                     "requested_tokens": reservation}
+                     "requested_tokens": locals().get('reservation')}
+        except Exception as exc:
+            error = {'code': 'prompt_preparation_error', 'reason': type(exc).__name__}
         if error is None:
             call_attempted = True
             started = time.monotonic()
@@ -303,6 +350,7 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                 })
             else:
                 usage = dict(usage or {})
+                prompt_guard_info = usage.get('prompt_guard')
                 actual_provider = usage.get("provider") or provider_for_model(usage.get("model", actual_model), provider_name)
                 actual_model = usage.get("model", actual_model)
                 input_tokens, output_tokens = usage.get("input_tokens"), usage.get("output_tokens")
@@ -317,9 +365,11 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                 usage = {"provider": actual_provider, "model": actual_model,
                          "input_tokens": input_tokens, "output_tokens": output_tokens,
                          "estimated_cost_usd": cost}
+                json_repairs = []
                 try:
                     check_sensitive_input(raw_response)
-                    parsed_response = _validate_response(raw_response, form)
+                    parsed_response = _validate_response(raw_response, form,
+                        execution_error_count=execution['error_count'], json_repairs=json_repairs)
                 except Exception as exc:
                     if isinstance(exc, ValueError) and str(exc) == "sensitive_input_rejected":
                         raw_response = "[redacted: sensitive model output]"
@@ -328,7 +378,7 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                         error = {"code": "invalid_json" if str(exc) == "invalid_json" else "invalid_model_response",
                                  "reason": str(exc) if str(exc) in {"invalid_json", "questionnaire_id_mismatch",
                                                                       "answer_question_mismatch", "answer_option_invalid",
-                                                                      "text_answer_invalid"} else "schema_validation_failed"}
+                                                                      "text_answer_invalid", "execution_fact_mismatch"} else "schema_validation_failed"}
                 call_record = {
                     "module": "survey", "stage": "questionnaire", "provider": actual_provider,
                     "model": actual_model, "elapsed_ms": int((time.monotonic() - started) * 1000),
@@ -336,8 +386,12 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                     "estimated": actual_tokens is None,
                     "estimated_cost_usd": cost,
                 }
+                if json_repairs:
+                    call_record['json_repairs'] = json_repairs
                 call_record.update(call_evidence("questionnaire", messages,
                                                  {"memories": trace}, raw_response))
+                if prompt_guard_info is not None:
+                    call_record['prompt_guard'] = prompt_guard_info
                 if error:
                     call_record["error"] = ("invalid_json_response" if error["code"] == "invalid_json"
                                              else "model_output_error")
@@ -351,6 +405,11 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
         "questionnaire": (_questionnaire_payload(form) if "form" in locals() else
                           None if error and error["code"] == "sensitive_input_rejected" else questionnaire),
         "memory_trace": trace_provenance,
+        'grounding': {'execution_trace_available': execution['available'],
+                      'execution_error_count': execution['error_count'],
+                      'failed_step_ids': execution['failed_step_ids'],
+                      'execution_errors_validated': error is None and execution['available'],
+                      'subjective_answers': 'unverified_simulated_self_report'},
         "raw_response": raw_response, "parsed_response": parsed_response,
         "started_at": started_at, "finished_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -366,11 +425,12 @@ async def create_survey(run_dir: str | Path, questionnaire: Any | None = None, *
                                                                   for step in memory["source_step_ids"]})},
                          "provenance": {"provider": actual_provider, "model": actual_model,
                                         "memory_scope": trace_provenance["scope"],
-                                        "memory_ids": trace_provenance["memory_ids"]}})
+                                        "memory_ids": trace_provenance["memory_ids"]},
+                         'grounding': result['grounding']})
         write_json(run / "survey.json", rows)
-    else:
-        # This compatibility file represents the latest attempt, not past success.
-        (run / "survey.json").unlink(missing_ok=True)
+    elif (run / 'survey.json').exists():
+        # Preserve prior answers, but do not present them as the latest attempt.
+        (run / 'survey.json').replace(run / f'survey.previous-{uuid.uuid4().hex}.json')
     write_json(run / "survey_result.json", result)
     _update_summary(run, status=status, provider_name=actual_provider, model=actual_model, budget=budget)
     return result

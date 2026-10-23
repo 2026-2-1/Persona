@@ -1,15 +1,62 @@
 # 검증 기록
 
-## 2026-10-19 prototype 병합 후 재검증
+## 2026-10-21 입력 검사2차: 동일 토크나이저·구역 선택·제한된 복구
 
-- 실제 통합 커밋: `9095b3c7896d7080a39d59fb6492251491139fb6`. #101 일반 merge에 선행 #95~#99와 D 보완·5건 수정이 포함됐고 6개 원격 브랜치를 삭제했다. 최종 tree는 준비한 #101 `fe94fe3`과 같다.
-- [병합 후 원격 CI](https://github.com/2026-2-1/Persona/actions/runs/39208715049): Ubuntu/Python 3.11 **574 passed**, Windows/Python 3.13 **569 passed, POSIX SSH/agent 5 skipped**. 양쪽 repo 검사·doctor·Mock도 통과했다. 아래 최초 수정 시점의 브라우저/CI 미실행 기록과 구분한다.
-- 이번 macOS/Python 3.13.13/Playwright 1.55.0 doctor: Chromium available, study_errors 없음. 실제 Chromium/HTTP의 검토 폼·출력·비교·Brain·U 결과·조회 실패 집중 검사는 **54 passed in 66.99s**. 원격 전체 검사와 중복되므로 합산하지 않는다.
-- 새 무료 Mock `20261019T074221-958ea877`: 독립 success / 종료 max_steps, 30행동, 기록 30/30(100%), Slow worker 시작 1회와 종료 active/pending 0. 기본 과업과 한도는 유지하고 fixture 포트·persona 경로만 격리했다. 무지연/무제한 Mock의 3,599 Slow 순환·7,470 호출 로그는 실제 모델 성능/과금 수치가 아니다. embedding은 not_configured다.
-- 실제 앱 내 브라우저에서 합성 U 후보의 최종 평가 `obs-final`, AI 자기보고 설문, Wonder 생각 2개/빈 응답 1회/각 저장 여부를 확인했다. `prototype-qa` 별칭의 deferred 판정·특수문자/줄바꿈 메모를 저장하고, 새로고침 뒤 같은 실행을 재선택해 현재 버전 이력 1건 유지를 확인했다. 독립 failure는 변하지 않았다.
-- 같은 수동 저장 카드의 JSON/CSV/Markdown/HTML 응답에서 ID·근거 버전·판정·별칭·메모, 설문·최종 관찰을 파싱해 대조했다. HTML 메모는 escape되며 로컬 호출 전문 marker는 제외됐다. 네 형식 attachment 헤더도 정상이다. 구형 Brain의 상태·점수·제거 원본은 API로 대조했다.
-- 네 형식 실제 다운로드는 위 Chromium 회귀에서 통과했다. 앱 내 브라우저 다운로드 도구는 응답 지연/요소 변경 오류로 저장 경로를 확정하지 못했으므로 수동 인앱 다운로드 성공으로 기록하지 않는다.
-- 이번 변경은 README·현재 상태·로드맵·검증/재현 안내의 최신화다. 실제 Qwen 생성/과업·공개 사이트·유료 API·기업/인간 데이터는 사용하지 않았다. 팀원의 독립 재현은 #36의 남은 조건이다. [전체 검증·재현·남은 범위](handoffs/2026-10-19-prototype-verification.md).
+- 기준 실패20261021T031048-4faff60e: 첫decision에서 prompt_preflight_error: protected task/control data cannot fit,0행동/33910ms. 당시 긴 지침과 문자 추정이 보호 컨트롤을 과대 계산했다. 원본 run/설문을 수정하지 않았다.
+- CPU 토큰 계산 서비스·클라이언트가 없는 상태에서 새 검사3건은 모듈 미구현으로 수집 실패했다. 구현 후 초기 관련106건, 새 계수/보호 정보/500대상 선택15건, 통합127건, 최종 조각 JSON 복구/의미 구역 포함129건이 각각 통과했다. 초기 계층 선택 검사에서 가짜 동기 I/O를 async로 잘못 만든 시험 도구 오류1건을 고쳐 동기 transport로 확인했다.
+- 실제 관리 GPU를 정상 종료·기존 소유 할당 반환 확인 후 chat venv의 CPU 토큰 계산 서비스를 추가해 다시 시작했다. 원래 api_server.py 파일과 모델 설정은 바꾸지 않았다. 모델 경로/이름 상수는 AST로 읽고 같은 tokenizer/템플릿 옵션을 사용한다.
+- 저장된 동일 실패 화면의 실제 Qwen 행동 제안을 재검증했다. **사전 입력2863토큰 = 서버 usage2863토큰**, 출력36토큰,1생성 요청,2444ms, 유효한Close 클릭 제안이었다. 짧은 지침/중복 제거를 적용한 재구성 입력의 문자 추정6993과 달리 정확 계수에서 허용됐고 추가 요약 요청은0회였다. 브라우저 행동은0회이며 전체 과업 성공/처리 시간 비교로 일반화하지 않는다. 원본/재검사 호출은 비공개 runs/private에 분리했다. 입력 지침과 중복 표현을 수정했으므로 원래 실패한 요청 전문을 동일하게 재전송한 검사는 아니다.
+- 500대상 검사는 가짜 GPU 제공자에서 모든 대상 수가 구역 개요에 포함되고 여러 단계 선택 후24개 이하의 세부 대상으로 줄며 최종 제안이 원래 semantic ID로 복원됨을 확인했다. 실제 대형 메뉴의 선택 품질·전체 과업 성공률은 미검증이다. 명시 과업/실행 사실/선택 구역의 ID·이름·값·옵션은 요약하지 않는다.
+- Mock 통합은 전체 suite와 포트가 겹치지 않게 먼저 단독 실행했다.20261021T055943-a47985ca에서30행동/종료max_steps/독립success였다. 출력은 운영 runs 밖 임시 경로에 두었다.
+- compileall, 저장소 검사0 problems(새 코드/검사/매뉴얼 포함), git diff --check, doctor Chromium available/study_errors=[]를 확인했다. 최종 전체 suite는 **603 passed in362.32s**였다. Mock 통합과 직렬 수행해 포트 충돌 없이 모두 통과했다. 커밋·PR은 만들지 않았다. 최종 코드 반영을 위해 유휴 대시보드를 정상 종료/소유 GPU 반환 확인 후 다시 켰다.8765/8001/8002/8003이 모두HTTP200, GPU connected, Qwen persona-qwen, 임베딩cuda:0, 토큰 계산 한도8192를 확인하고 브라우저를 열었다.
+
+## 2026-10-21 Qwen 공통 전송 전 검사와 계층 요약
+
+- 기준 오류는20261020T141809-878faf84의 questionnaire 요청이다. system2577자+user27830자였다. 기존 화면 인식 분할이 설문 전체 기억에 적용되지 않았다. 원격 api_server.py를 기존 SSH master로 읽어 입력8192토큰/출력최대512토큰을 확인했다. 원격 서버 파일은 수정하지 않았다.
+- 준비 기능 미구현 상태에서 새 회귀3건이 실패했다. 구현 후 검사 범위를 다단계 병합/보호 정보 거부/행동 컨트롤·페르소나 보존/잘못된 요약 로그까지 확장해 prompt_guard7건을 통과했다. 설문 통합을 포함26건, GPU/Fast/Slow/설문 기존 관련82건도 통과했다. 실제 GPU 추론 요청은 수행하지 않았다.
+- 같은 실패 요청을 로컬 가짜 요약기로 재생한 결과30407→8627자,8요약 요청,최종 추정5407입력토큰이었다. 질문지와 실제 execution_trace는 원문 동일, budget requests8/reserved0이었다. 원본 run/설문은 덮어쓰지 않았다. 실제 Qwen 요약의 정확성·완전성·지연을 검증한 결과가 아니다.
+- Mock 통합20261021T025325-9d4de8ab:30행동/종료max_steps/독립success였다. 운영 runs 밖 임시 경로에 기록했다. 전체 회귀 결과와 후속 확인은 아래에 기록한다.
+
+- 전체 회귀는 **590 passed,1 failed in338.43s**였다. 실패1건은 test_runner_distinguishes_false_finish_and_repeated_state의 localhost:8000 Page.goto ERR_CONNECTION_RESET이었다. 같은 포트를 쓰는 Mock 통합과 병렬 실행해 fixture 수명이 겹쳤다. 별도 임시 summary에서도 browser_error/0행동을 확인했다. Mock 종료 후 해당 검사만 단독 재실행해 **1 passed in4.82s**였다. 전체를 한 번에591개 통과했다고 쓰지 않는다. 이후 실제 서버 포트를 공유하는 Mock 통합과 전체 suite는 직렬 수행해야 한다.
+- compileall, 저장소 검사0 problems, git diff --check를 통과했다. 새 guard/검사/기존 비공개 매뉴얼도 저장소 검사 대상에 포함해 확인한다. 이번 작업에서 실제 Qwen 추론·공개 사이트 자율 실행·커밋·PR은 수행하지 않았다. 이전 실제 run은 보존했다.
+
+## 2026-10-20 사용자 요청: AI 전체 실행 시간 제한 해제
+
+- StudyConfig의 run_timeout_seconds 기본값과 기본/데카트론/공개 데카트론 study를 null로 변경했다. runner는 null이면 전체 deadline을 설정하지 않으며 asyncio.timeout(None)을 사용한다. 대시보드의600초 예외는 제거했다. 양수를 명시한 사용자 study는 제한을 유지한다.
+- 기존 등록 과업의 시간 제한 기대값만 null로 맞췄다. 사용자 지시에 따라 테스트·라이브 과업 실행·검증 명령은 수행하지 않았다. 이전581/54건 통과 기록은 이번 변경을 검증한 결과가 아니다.
+
+## 2026-10-20 팝업·실행 피드백·설문·사후 평가·인식 지연 순차 수정
+
+- 기준 실패는20261020T121820-e98c2e82: 300초,4시도/1성공,action_timeout3건,unknown_evaluator. 원본 run/설문을 수정하지 않고 단계별 검증 사본은 운영 runs 밖의 임시 경로에 생성했다.
+- 1단계: 닫기 아이콘 누락과 큰 GPU 입력의 modal 문맥 누락 회귀2건이 수정 전 실패했다. 후33건 통과. 실제 공개 데카트론에서 role=button/aria-label=Close가 관찰·모델 입력에 남고 ActionExecutor로 닫기 및 후속 러닝 클릭이 성공했다.
+- 2단계: 실행 결과 누락/미실행 제안 오인 회귀2건이 수정 전 실패했다. runner 연결 검사까지 포함46건 통과. 실제 Qwen에 원래 실패한 클릭을 last_action_result로 전달하자 타임아웃 실패·URL 미변경으로 해석했다. 실행 허가 제한·평가 답을 추가하지 않았다.
+- 3단계: 생성 기억/실행 실패 분리·오류 수 누락/불일치·오래된 survey 노출 회귀5건이 수정 전 실패했다. 민감 실행 입력 회귀 포함17건 통과. 첫 실제 Qwen 재생은 주관식 reason 누락으로 올바르게 거부됐고, 필수 필드 지시 강화 후 오류3건과 검색어 입력 성공/검색 미제출을 구분한 유효 답변을 얻었다. 오류 수만 기계 검증하며 주관적 문장 전체를 사실로 인증하지 않는다.
+- 4단계: 등록 과업 평가기 연결과 홈페이지 미도달 회귀가 수정 전 실패했다. GPU/평가 관련37건 통과. 실제 홈페이지를 독립 평가하면 failure/detail_product_mismatch였다. 다른 사이트·다른 가격 목표는 등록된8만원 기준으로 평가하지 않는다.
+- 5단계: control XML 중복으로 같은 인식 조각이 불필요하게 나뉘는 회귀를 수정했다. 최종 Fast/관찰/runner/설문64건 통과. 동일 저장 화면에서 행동 입력3,161자·3조각에 비해 인식 입력1,364자·1조각이었다. 실제 인식 호출은3회8,595ms에서1회3.72초로 줄었고 유효한 관찰을 반환했다. 시간은 다른 시점/부하에서의 단일 측정이며 처리량·과업 성공률 비교가 아니다.
+- 6단계: 첫 자율 재실행은5행동 모두 도구상 성공했으나 이미 열린 러닝화 메뉴를 반복해300초에 종료됐다. 현재 메뉴의 하위 항목·열림 상태·모두 보기 링크를 계획에도 전달하도록 보완했다. 실제 Qwen 계획/행동과 ActionExecutor를 연결한 검사에서 러닝화모두 보기 선택 후 `/c/러닝/러닝화.html` 이동을 확인했다. 열림 상태는 관찰된 하위 경로로 추정하며 DOM의 aria-expanded 원문이라고 주장하지 않는다.
+- 7단계: 원격 api_server.py를 읽어 ThreadingHTTPServer의 generate가 단일 lock으로 직렬 실행됨을 확인했다. 제공자 인스턴스별 단일 요청 큐와 Fast 우선/최대3회 후 Slow 한 차례 배정을 추가했다. 우선순위·취소·진행 중 호출 중복 방지·Slow 기아 방지 회귀를 통과했다. 실제3요청도 Slow:first→Fast:plan→Slow:waiting 순서로 완료됐다. 여러 프로세스 간 전역 큐나 실행 중인 원격 추론 선점은 구현하지 않았다.
+- 후속 실제300초 검사 `20261020T133558-7d99656e`: 팝업 닫기→검색어 입력→검색 결과 이동→가격 필터 열기→80000 입력까지 **5시도/5성공**, 설문completed/오류수0 일치. 그러나6번째 판단 도중300.49초에 종료돼 독립 과업 판정은failure였다. 모델의 배열 대신 문자열 반환과 긴 feedback의512토큰 절단을 추가로 확인했다. 실패 기록을 성공으로 바꾸지 않는다.
+- 8단계: 단일 관찰 문자열의 내용 보존 변환 회귀가 수정 전 실패했다. GPU 조각 응답에서만 한 원소 배열로 감싸고 다른 타입/내부 JSON 오류/빈 관찰의 기존 거부를 유지했다. feedback은1~2개 짧은 문장으로 제한하도록 지시했다. 같은 실패 입력을 실제 Qwen에 재생하자1회5.18초/70출력토큰으로 유효한 피드백을 반환했다. 프롬프트 지시가 모든 미래 출력의 정확성을 보장하는 것은 아니다.
+- 전체 suite는 후속 단일 문자열 회귀 추가 직전 **580 passed in 344.05s**였다. 마지막 parser/feedback 보완 후 관련 **89 passed in 15.81s**. 후속 검사 최초 실행은 sandbox의 로컬 HTTP bind/Chromium 권한 제한으로10실패·3오류였고 같은 검사를 허용 환경에서 재실행해89건 모두 통과했다.
+- 최종 mock 통합 `20261020T133809-0aaa1b15`:30행동, 종료max_steps, 독립판정success, 설문completed/오류수0 일치. 실제 GPU/공개 사이트 성공의 근거로 사용하지 않는다. compileall, parser/dashboard node --check, doctor Chromium available/study_errors=[], 저장소 검사 및 diff 공백 검사도 확인했다.
+- 최종 전체 재검사는 **581 passed in 376.47s**. 이후 실제 평가 프로필 범위 회귀1건을 추가한 뒤 평가/GPU 관련 **40 passed in 12.26s**를 확인했다. 따라서581건은 마지막 프로필 변경 직전 전체 결과이고40건은 그 변경을 포함한 결과다.
+- 기본300초 제한을 유지한 별도600초 진단 `20261020T134547-3f5dc86a`: **394,702ms**,7행동 모두 성공,8번째 판단에서 모델terminate/agent_finished, 설문completed/실행오류0건 일치였다. 팝업 닫기→검색→최대가격80000 적용→상품 상세 도달 후 모델이 종료했다. 모델/전송/JSON 오류는 없었다. 기본300초 내 완료를 확인한 것은 아니다.
+- 9단계: 위 진단의 원래 독립 평가는unknown/basic_detail_evidence_unavailable_or_ambiguous였다. 별도 실제 BrowserSession 재검사에서 상품79,900원2곳과 함께 구매 합계109,700원이 기존 가격 선택자에 섞이는 것을 재현했다. 실제 관찰한 #product-summary-container 내부로 공개 프로필의 detail_price를 좁혔다. 합계 제외/실제 상품 가격 충돌unknown/상품 가격 부재unknown 회귀가 수정 전 실패했고 수정 후 통과했다. 동일 실제 상품 페이지를 새 브라우저에서 재검사해 **success/partial_detail_name_price_verified**, 상품명 `남성 러닝화 킵코어`, 가격79,900원을 확인했다. 원래run의unknown 기록은 덮어쓰지 않았다. 이 별도 재검사를 원래 자율 실행의 최종 판정이었던 것처럼 집계하지 않는다. 색상·사이즈·재고·픽업은 미검증이다.
+
+
+- 10단계: 실제394.70초 소요에 맞춰 등록된 공개 데카트론 study의 실행 제한을600초로 조정했다. 기본 대시보드의 데모 study에서 정확히 등록된 데카트론 과업으로 전환하고 provider=gpu인 경우만 이 예산을 채택한다. 다른 과업/사이트/제공자 및 별도 사용자 study의 명시 제한은 유지한다.600초 적용 회귀는 수정 전300초로 실패했고 사용자 study의123초 보존도 함께 검사했다. 수정 후 GPU 제공자·독립 평가·runner 관련 **54 passed in 30.37s**. 이는 지연 제거가 아니라 실행 예산 조정이며 기본300초 실측 실패를 소급해 성공으로 바꾸지 않는다.
+
+- 최종 대시보드를 정상 종료/소유 할당 반환 확인 후 재시작했다.8765 /api/state HTTP200/connected,8001 /health HTTP200/persona-qwen,8002 /health HTTP200/설정 임베딩 모델/cuda:0를 확인하고 브라우저를 열었다. 새 과업은 자동 시작하지 않았다. 커밋·PR은 만들지 않았다.
+
+## 2026-10-20 GPU 연결 복구·JSON 오류 분리·운영 매뉴얼
+
+- 실제 최초 증상: 작업19375는 RUNNING인데 로컬 채팅8001/임베딩8002와 SSH master가 모두 사라졌다. 기존 대시보드는 이전 연결 성공만 보고 연결됨으로 표시하고 실행을 허용했다. Fast가 전송 재시도 후 JSON 수정까지 시도해 `model_output_error: provider_transient:ConnectionRefusedError`로 남겼다.
+- 실패 재현7건을 먼저 확인했다. health 감시·실행 전 검사·소유 할당 터널 복구·로그인 master 재인증 반환·전송 오류의 JSON 수정 차단·runner 연결 오류 분리를 적용한 뒤 관련96건, 전체557건이 통과했다.
+- 실제 fault injection에서 단순 포트 bind가 종료된 TCP의 TIME_WAIT를 사용 중으로 판단해 복구가 지연되는 추가 문제를 발견했다. 살아 있는 listener 거부와 종료 직후 재사용을 구분하는 실제 TCP 테스트는 수정 전 실패했다. SO_REUSEADDR와 복구 시 OpenSSH의 ExitOnForwardFailure 검사 사용으로 수정 후 GPU·SSH 키·키체인 관련48건을 통과했다.
+- 최종 실제 작업19378의 login/compute SSH master만 유휴 상태에서 중단했다. 같은 작업ID·이름을 유지하며 **6.92초** 만에 복구됐고 Fast 생성3회 시도 중 세 번째에 유효한 UPerception JSON을 얻었다. JSON 수정 요청은0회였다. 후속 대시보드8765·Qwen8001·임베딩8002 health는 모두 HTTP200, 모델persona-qwen 및 임베딩cuda:0를 확인했다. 시작 시 별도384차원 벡터 probe도 통과했다. 기록은 비공개 runs/private에 보존한다. 실제 Decathlon 자율 과업은 이번 검사에서 수행하지 않았다.
+- 기존19375 반환,19376의 4시간 TIMEOUT,19377 정상 종료/반환을 확인했다. Slurm walltime 만료는 터널 단절과 구분하며 자동 새 할당을 무한 생성하지 않는다.
+- doctor는 최초 sandbox의 Chromium 권한 제한으로 실패했고 허용 환경에서 Chromium available/study_errors=[]로 통과했다. mock 통합은20261020T022716-a447361b에서 독립판정success·종료max_steps·30행동이었다. 대량 호출 로그는 대시보드 조회 부하를 피하기 위해 운영 runs 밖의 임시 경로로 이동하고 요약만 비공개로 보존했다.
+- [운영 매뉴얼](model-json-operations.md)에 증상별 대응·복구/중단 기준·JSON 교정 범위·검사 순서를 정리하고 AGENTS와 문서 진입점에 연결했다. 최종 전체 검사는 **558 passed in 344.50s**. compileall, dashboard/parser의 node --check, 저장소 검사0 problems, git diff --check도 통과했다. sandbox에서의 ssh-agent 검사 실패도 허용 환경의 관련48건 검사에서 통과했다. 커밋·PR은 만들지 않았다.
 
 ## 2026-10-19 코드 검토 5건 후속 수정
 
@@ -593,3 +640,160 @@ Slow 모델이 잘못된 JSON을 반환해 작업이 실패해도 응답의 입�
 - 회귀 테스트는 수정 전 실패를 확인한 뒤, 다중 조각·모든 원본 표식 포함·2차 합치기·원래 행동 ID 복원을 확인했다. 처음 sandbox 내 비브라우저 Fast 검사는 **14 passed, 2 deselected**였고 macOS 브라우저/소켓 접근을 허용한 Fast 전체 검사는 최종 코드에서 **16 passed**였다.
 - 현재 로컬 8001 GPU 포트는 연결되지 않아 실제 Qwen 다단계 응답, 누락 정도, 공개 데카트론 전체 과업 성공은 확인하지 않았다. 반복 요약은 정보의 완전 보존을 보장하지 않는다.
 - 최종 코드의 전체 `python3 -m pytest -q`: **536 passed in 390.11s** (승인된 로컬 브라우저/소켓 환경). `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check`도 통과했다. 실행 중인 GPU 서버에 대한 라이브 생성 호출은 포함하지 않았다.
+
+## 2026-10-19 Qwen 다중 관찰·대기 제거 후속
+
+- 공개 데카트론 p001~p005 실패 로그를 확인했다. 다섯 건 모두 1차 첫 조각의 `observations`가 비어 있지 않은 5개였고, 기존 정확히 1개 검사에서 중단됐다. 첫 모델 호출은 약 5.4초, 첫 화면 준비는 약 4~5초였다. 두 단계의 과거 실행에서는 행동 후 저장 화면과 다음 관찰 사이에 약 0.4초가 들었다.
+- 여러 관찰을 순서대로 결합하고, 조각 결과가 입력 한도 안에 모이면 마지막 합치기 모델 요청을 생략한다. 행동 직후 관찰을 다음 단계에서 재사용하고 최종 독립 평가용 화면은 새로 찍는다. 실제 Qwen 조각 응답에서 완전한 JSON 뒤에 백틱 하나가 붙는 사례를 확인해, 해당 경우만 로컬에서 읽는다. 원본 응답 근거는 유지한다.
+- 새 회귀 테스트는 수정 전 다중 관찰·중복 관찰 ID·후행 백틱에서 실패했고 수정 후 통과했다. Fast·runner·관찰·행동 집중 검사 **67 passed in 43.45s**, 백틱 변경 뒤 Fast·runner·호출 근거 검사 **30 passed in 19.72s**. 백틱 변경 전 전체 `python3 -m pytest -q`는 **537 passed in 364.71s**였다. 최종 변경 뒤 `compileall`, 저장소 검사(문제 0개), `git diff --check`도 통과했다.
+- 만료된 GPU 작업19369가 실제 Slurm에서 사라진 것을 ID/이름으로 확인하고 복구 상태를 정리한 뒤 새 대시보드 작업19370을 시작했다. 대시보드/채팅/임베딩 health는 모두 HTTP200, 모델은 `persona-qwen`, 임베딩은 CUDA였다.
+- 원본 실패 화면을 수정된 Qwen 인식에 다시 전달해 단일 최종 관찰 생성에 성공했다. 1,400자 조각은 실제 완료됐지만 형식 복구가 1~2회 필요한 실행이 있어 총 8~9회, 약 43~44초였다. 2,800자 조각은 실제 JSON 복구 후에도 실패했고, 2,000자 조각은 7회/약44초로 빨라지지 않아 1,400자 기준을 유지했다.
+- 비공개 한 단계 실사이트 run `runs/private/gpu-chunk-fix-smoke/20261019T050611-86578b80`은 Fast perception 9회(형식 복구2회), plan 1회, decision 1회, Slow 2회였다. 행동 시도/성공은 1/1, 종료는 `max_steps`, 독립 판정은 `unknown`이다. CLI 종료 코드1은 이 미확인 판정 때문이다. 전체 데카트론 과업 성공·응답의 세부 문구 완전성은 확인하지 않았다. 이 run은 후행 백틱 로컬 처리 전이며 그 변경 뒤에는 원본 실패 화면의 perception만 다시 검증했다.
+
+## 2026-10-19 Qwen 인식 입력의 규칙 기반 압축
+
+- 새 동작은 큰 Qwen 화면에서 기존 U 관찰 원본을 저장하고, 모델 입력에만 텍스트·이미지 alt/title·조작 대상 이름/값·짧은 ID를 사용한다. `article`/`li`/`section`/`tr` 단위를 줄바꿈으로 구분한다. 작은 화면·다른 제공자·feedback/decision 입력은 바꾸지 않는다.
+- 최근 실사이트 run `20261019T051634-9150e253`은 `model_output_error` 두 건이 각각 JSON 구문 오류였고 복구 호출로 통과했다. 첫 행동 1/1 성공 후 두 번째 행동은 없었다. Slow importance 25건과 Fast 인식이 같은 GPU에서 겹쳤으며 호출 시간이 계단식으로 길어져 경합이 강하게 의심된다. 원격 대기열은 직접 계측하지 않았다. 최종 `run_timeout`은 300.7초/독립 판정 `unknown`이다. 대시보드의 1.5초 상태 폴링은 실제 브라우저 행동이 아니다.
+- 저장된 이 run의 첫 화면에서 이전 parser 속성 제거 입력 8,876자·첫 단계 7조각과 새 규칙 입력 5,901자·5조각을 오프라인 계산으로 비교했다. 저장 화면 3개의 원본 HTML 텍스트 노드 139~149개 중 새 입력에서 누락된 문구는 0개였다. 이는 입력 보존 검사이며 모델 요약의 무손실 보장은 아니다. 인식·runner·호출 근거·관찰 집중 검사 **37 passed in 24.00s**, 최종 전체 `python3 -m pytest -q`는 **539 passed in 355.99s**. `compileall`, 저장소 검사(문제 0개), `git diff --check`도 통과했다. 조각 수는 호출 전 계산값이고 실제 모델 호출 수·벽시계 시간의 실측 결과는 아니다. 새 GPU 호출은 하지 않았으며 Slow GPU 경합·JSON 오류 감소는 미검증이다.
+
+## 2026-10-19 Qwen 조각 JSON 닫는 괄호 교정
+
+- 공개 데카트론 실행 `20261019T060505-f45a5550`은 첫 perception 조각에서 종료됐다. 원본 두 응답 모두 마지막을 `"}]`로 뒤집었고, 두 번째는 모델의 복구 요청에 대한 응답이었다. 각 응답의 output_tokens는 180이었다. 브라우저 행동 시도는 없었다.
+- 정확한 오류를 재현하는 회귀 테스트를 먼저 작성해 수정 전 실패를 확인했다. GPU 조각 응답에 한해서만 후행 백틱을 제거하고, `observations` 배열의 마지막 `"}]`를 `"]}`로 바꾼 JSON을 다시 파싱·UPerception 검증한다. 원본 호출 응답은 그대로 저장한다. 다른 문법 오류를 교정으로 오인하지 않는 테스트도 추가했다.
+- 저장된 실제 실패 응답 2개는 모두 수정된 파서와 UPerception 검증을 통과했다. 관련 `tests/test_u_fast.py`는 승인된 브라우저/소켓 환경에서 **21 passed**였다. 최초 제한 환경의 2개 실패는 Playwright/HTTP 서버 소켓 권한 거부였고, 허용 환경에서 통과했다.
+- 실행 중인 실제 GPU Qwen에 저장된 실패 조각 하나를 새 프롬프트로 요청했다. 원본 응답은 다시 JSON 닫는 괄호 역순이었지만, 모델 재호출 없이 **한 호출로 유효한 관찰**을 얻었다. 이는 첫 조각의 형식 검증이며 전체 페이지 인식·행동·과업 성공을 뜻하지 않는다.
+- 최종 전체 `python3 -m pytest -q`는 승인된 로컬 브라우저/소켓 환경에서 **541 passed in 363.05s**였다. `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check`도 통과했다.
+
+## 2026-10-19 대시보드 시간 초과와 취소 호출 분석
+
+- 최근 실행 `20261019T061831-7c48b172`는 300.454초에 `run_timeout`으로 끝났다. 행동 2건은 모두 실행 성공했고, 3단계는 모델 판단 중 시간 초과였다. 1단계 판단 50.931초, 2단계 판단 215.843초였다. 중요도 요청 34건 중 27건 완료·7건 취소, Fast feedback/perception 각 1건도 종료 시 취소됐다. perception JSON 오류 1건은 복구됐고 실행 종료 원인이 아니었다. 취소된 호출의 토큰·비용은 서버 응답이 없어 미확인이다.
+- GPU 중요도 요청을 한 번에 하나로 제한하는 테스트와, 시간 초과 취소를 대시보드에서 구분해 표시하는 테스트는 변경 전 실패·변경 후 통과했다. 관련 Slow/대시보드 집중 검사 **13 passed**였다. 최종 전체 `python3 -m pytest -q`는 허용된 브라우저/소켓 환경에서 **543 passed in 403.64s**. `compileall`, `node --check`, 저장소 검사(0 problems), `git diff --check`도 통과했다.
+- 원격 Qwen 서버 내부 대기열은 계측하지 않았고 변경 후 전체 데카트론 실행 시간·과업 성공은 다시 측정하지 않았다. 기존 대시보드와 GPU는 계속 실행 중이다.
+
+## 2026-10-19 Qwen 관찰 배열 닫는 괄호 누락
+
+- 공개 데카트론 실행 `20261019T142709-2db00a5b`은 첫 화면의 perception 4회 중 세 번째 조각과 복구 요청에서 모두 배열 `]`를 빠뜨린 응답을 받았다. 두 응답은 각각 122·121 출력 토큰이며, 실행은 1단계 `model_error`로 끝나 행동 시도는 없었다.
+- 새 접미부 회귀 테스트는 수정 전 실패, 후 통과했다. 기존 역순·후행 백틱 사례와 내부 문법 오류 거부를 함께 확인했다. 저장된 해당 실행의 원본 응답 4개를 새 파서로 재검증한 결과 모두 JSON 및 UPerception 계약을 통과했다. 전체 사이트 과업의 실제 재실행 결과는 아직 없다.
+- 변경 후 `python3 -m pytest -q tests/test_u_fast.py tests/test_runner_flow.py`는 허용된 브라우저/소켓 환경에서 **31 passed in 21.48s**. `compileall`, 저장소 검사(0 problems), `git diff --check`도 통과했다. 이번 접미부 변경 뒤 전체 테스트 묶음은 다시 실행하지 않았다.
+
+## 2026-10-20 데카트론 사이트 검색 경로
+
+- 최근 실행 `20261019T151741-cd0f0954`에서는 첫 계획이 `러닝` 메뉴 클릭이었고 이후 메뉴를 반복 클릭해 300초 시간 초과로 끝났다. 저장된 첫 관찰의 유일한 입력은 검색창이지만 이름이 판촉 placeholder로 기록됐다.
+- U 원본은 검색을 별도 행동으로 정의하지 않고 입력 `type`과 선택적 Enter를 사용한다. 우리 코드에는 U의 `valid_targets.inputs/selects`가 clickable을 재사용하는 결함도 남아 있었다. 실제 데카트론 DOM의 검색 입력은 `data-cy="search-bar-desktop"` 컨테이너 안에 있음을 확인했다.
+- 수정 전 회귀 2건이 실패했고 수정 후 관련 Fast/DOM **29 passed in 16.34s**였다. 실제 DOM 관찰은 첫 화면의 “상품 검색” 입력과 검색어 입력 뒤의 “다음에 대한 모든 결과 보기” 링크를 모두 찾았다.
+- 공개 데카트론에서 실제 `ActionExecutor`로 검색창 클릭 → `러닝화` 입력(`enter=False`) → “모든 결과 보기” 클릭을 실행했다. 세 행동 모두 `ok=True`였고 최종 URL이 `/search?query=러닝화`로 이동했다. 입력에 Enter를 붙이거나 검색창을 먼저 클릭하지 않으면 이 링크가 다음 관찰에 나타나지 않는 것도 확인했다. 이는 UI 경로 검증이며 Qwen이 같은 세 행동을 자율 선택했다는 증거는 아니다.
+- 최종 전체 `python3 -m pytest -q`: **545 passed in 379.63s**. `python3 -m compileall -q src/uxagent`, `node --check src/uxagent/parser/parser.js`, `python3 scripts/check_repo.py`(0 problems), `git diff --check` 통과. GPU Qwen health는 로컬 8001번에 연결되지 않아 자율 과업 재실행은 수행하지 않았다. 메뉴의 앞뒤 계층 문맥 제공은 이번 검색 수정 범위 밖에 있다.
+
+## 2026-10-20 검색 선택 자율화와 메뉴 계층 문맥 후속
+
+- 사용자 결정에 따라 계획의 검색 우선 지시와 `available_search_inputs` 필드를 제거했다. 데카트론 검색 입력의 “상품 검색” 표시, 실제 input/select 대상 목록, 검색을 선택한 경우의 3단계 행동 안내는 유지했다. 페르소나 JSON은 기존처럼 계획·행동 요청에 전달되며 검색 또는 메뉴를 고르는 규칙은 강제하지 않는다.
+- 저장된 데카트론 관찰에서 큰 GPU 화면의 평문/컨트롤 나열에는 두 “러닝화”의 소속이 드러나지 않았다. 수정 후 `<navigation>`에 `러닝 > 러닝화`와 `러닝 > 남성 > 러닝화`를 서로 다른 짧은 ID로 표시한다. 실제 3열 화면에서는 `러닝 > 남성 > 러닝화 > 로드러닝/조깅`과 이웃 `트레일러닝`을 포함한 모델 입력을 확인했다. 원본 observation JSON·semantic ID는 보존한다.
+- 메뉴 회귀 테스트는 첫 구현에서 세 번째 열의 `남성`이 누락돼 실패했고, 보이는 열의 순서를 사용한 수정 후 통과했다. 관련 `tests/test_u_fast.py tests/test_u_observation.py tests/test_runner_flow.py`는 최종 header 범위 parser 최적화까지 반영해 **39 passed in 25.33s**였다. 전체 `python3 -m pytest -q`는 **546 passed in 423.40s**였다. 전체 검사는 parser 최적화 직전에 시작됐으므로 최종 코드의 직접 검증은 뒤이은 관련 39건이다.
+- 실제 공개 데카트론에서 앱 `ActionExecutor`로 `러닝 → 남성 → 러닝화 → 로드러닝/조깅`을 순서대로 클릭했고 네 행동 모두 `ok=True`, 최종 카테고리 URL은 `/c/러닝/남성/러닝화/로드러닝-조깅.html`이었다. 이 검사는 고정 행동 경로이며 Qwen이 페르소나에 따라 이 경로를 자율 선택했다는 증거는 아니다. 로컬 GPU health 포트 8000/8001이 연결되지 않아 실제 Qwen 요청은 수행하지 않았다.
+- `python3 -m compileall -q src/uxagent`, `node --check src/uxagent/parser/parser.js`, `python3 scripts/check_repo.py`(0 problems), `git diff --check` 통과. 이번 후속 작업에서는 커밋·PR을 만들지 않았다.
+
+## 2026-10-21 상호작용 흐름 후속 검증
+
+- 검색 후속 판단/입력/제출, 텍스트·이미지 팝업 요청 범위와 modal 처리, 페이지/내부 영역 스크롤, Brain 이벤트, 기존 프롬프트/runner 회귀에 대해 집중 검사를 수행했다. 수정 중 발견한 브라우저 테스트의 페이지 스크롤 후 사라진 패널 기대, completed 이벤트의 reason_code 계약 위반을 고친 뒤 `tests/test_interaction_flows.py`, `test_u_observation.py`, `test_target_selection.py`, `test_u_fast.py`, `test_runner_flow.py`, `test_prompt_guard.py`를 포함한 집중 실행은 최종 일부 테스트 기대 수정 전 **101 passed, 1 failed**였고, 마지막 Jev 텍스트 입력 경로 테스트를 수정 뒤 따로 재실행해 **1 passed**했다. 앞선 최종 핵심 묶음은 **69 passed**였다.
+- 전체 `python3 -m pytest -q`는 **602 passed, 7 failed in 344.48s**였다. 실패는 대부분 변경된 계약과 어긋난 기존 테스트 fixture/기대였다(immutable FastLoop 더블, 상호작용 삽입으로 비연속이 된 timestamp, 방향키 스크롤 기대, 타깃 스크롤 거부, 빈 텍스트 입력에서 Jev 후보 선택 기대, 검색 흐름을 고려하지 않은 반복 provider). 기존 검증을 약화하지 않고 현재 동작에 맞게 해당 fixture/기대를 갱신했다. 전체 suite는 갱신 뒤 다시 실행하지 않았다. 갱신된 영향 테스트 묶음은 101개 통과 및 남은 Jev 검사 단독 통과로 확인했다.
+- `python3 -m compileall -q src/uxagent` 통과. 전체 suite의 브라우저 검사는 승인된 로컬 Chromium/fixture 환경에서 실행했다. 실제 GPU Qwen, Decathlon 사용자 과업, 이미지 모델 API는 호출하지 않았고 사진 전용 API도 구성되어 있지 않다.
+- 후속 검증 항목과 사진 경로의 제한은 [상호작용 흐름 작업 문서](tasks/interaction-flows.md)를 따른다.
+
+## 2026-10-21 UActions 수정 요청 템플릿
+
+- 최근 실제 run `20261021T101841-9331cd9b`를 확인했다. Qwen 첫 decision 응답의 `enter=false`는 JSON 문법 오류였고 수정 응답에서는 `enter:false`로 고쳤지만 필수 `description`은 빠져 있었다. `action_attempts=0`이며 action/result가 null이어서 실패는 Playwright 실행 전에 발생했다.
+- 재요청 메시지에 기대 JSON 템플릿을 넣도록 바꿨다. `response_model` JSON Schema의 필수 구조를 빈 템플릿으로 만들고, 기존 JSON을 읽을 수 있으면 유효한 action 선택·대상·텍스트·옵션을 유지한 채 빠진 필수 필드만 빈칸으로 남긴다. 수정 후에도 검증되지 않으면 기존처럼 한 번 뒤 중단한다. 원본·수정 응답과 usage 호출 로그는 기존처럼 각각 보존한다.
+- 최소 회귀는 누락 description 응답과 원 실행의 잘못된 `enter=false` JSON을 재현한다. 파싱 가능할 때 기존 action/type/target/text/enter를 유지한 빈 description을 만들고, 파싱 불가일 때 required schema 템플릿을 제시하며 원본 응답이 대화에 남는지 확인한다. `python3 -m pytest -q tests/test_u_fast.py tests/test_prompt_guard.py tests/test_target_selection.py`: **46 passed in 4.64s** (Chromium/fake HTTP 실행 포함). 실제 Qwen 요청, 실제 검색어 입력, 전체 pytest는 실행하지 않았다.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (**0 problems**) 및 `git diff --check` 통과.
+
+## 2026-10-21 검색 제출 포커스와 결과 판정
+
+- 실제 run `20261021T112804-6b33bb9d`에서 `type(러닝화, enter=false)` 뒤 다음 모델 판단에 약64초가 걸렸다. 다음 `key_press(Enter)`는 target_id가 없었고 실행 결과는 `ok=true`였으나 URL은 그대로였다. 이어 모델은 검색 결과가 아니라 `모든 스포츠` 링크를 눌렀고 세 번째 행동 뒤 JSON 제어 문자 오류로 종료됐다. 포커스는 Enter 전 관찰에서는 true였지만 키 전달 시점 값은 기록되지 않아 정확한 키 도달 위치는 확정할 수 없다.
+- 검색 상호작용에서 선택된 query를 `type+Enter` 하나로 같은 input locator에 보낸다. 일반 모델이 먼저 type만 제안한 경로도 다음 Enter를 동일 input에 포커스해 보낸다. 관찰 스크립트는 main 결과 영역·검색 제안 영역 fingerprint와 로딩 표시를 기록한다. URL/영역 변화는 결과 확인 근거이며, 로딩은 pending으로 기록하고 Enter를 재전송하지 않는다. 세 신호가 없으면 미확인으로 유지한다.
+- URL/결과 변화, 로딩 중/종료, 신호 없음, 제출 실패를 포함한 `tests/test_interaction_flows.py` 및 연계 Fast/runner/관찰/action/dashboard 회귀 **92 passed in 83.30s**. 전체 `python3 -m pytest -q tests`: **613 passed in 352.64s**. targeted Playwright 테스트는 submit form으로 이동하는 로컬 route만 사용했다.
+- `python3 -m compileall -q src/uxagent`, `python3 scripts/check_repo.py` (0 problems), `git diff --check` 통과. 실제 Qwen·Decathlon 사이트 재실행은 하지 않았다.
+
+## 2026-10-21 Qwen `enter=false` JSON 문법 교정
+
+- 실제 실행 `20261021T123650-e2648528`의 4번째 행동에서 Qwen은 `"enter=false"`를 JSON 키로 반환했다. 최초 응답에는 `description`도 없었고, 한 번의 수정 요청 뒤에는 설명이 생겼지만 같은 문법 오류가 남았다. 행동은 실행 전에 차단됐다.
+- 이 원본 표기와 누락 설명을 재현한 테스트는 수정 전 실패했다. `model_json.py` 추가 후 UActions 응답에서 해당 키 오타만 교정하고 기존 스키마 검증을 통과시키는 회귀를 확인했다. 정상 JSON의 설명 문자열과 다른 문법 오류는 교정하지 않는다. 호출 로그는 원본 응답과 교정 표시를 별도로 보존한다.
+- `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_prompt_guard.py tests/test_target_selection.py`: **51 passed in 4.73s**. 첫 sandbox 실행의 Chromium/로컬 HTTP 2건은 권한 때문에 실패했고, 허용 환경에서 동일 명령으로 재검사했다. `compileall`, 저장소 검사(0 problems), diff 공백 검사도 통과했다. 실제 Qwen·데카트론 전체 과업 재실행은 하지 않았다.
+
+## 2026-10-21 모델 JSON 문법 공통 검사 확장
+
+- `model_json.py`에 모델용 제한 교정과 엄격한 전송 JSON 검사를 분리했다. 코드블록/BOM, 후행 쉼표, True/False/None, 확인 가능한 키/구분자 오류, 문자열 제어 문자를 처리하고 기존 GPU 인식 suffix 교정을 한곳으로 옮겼다. 중복 키·NaN/Infinity/overflow·잘린 응답·복수 루트는 거부하며 교정은 최대32회다. 원래 필드·값을 추가하지 않고 문법 검사 뒤 기존 response model과 의미 검증을 유지한다.
+- Fast 모든 단계와 Slow/Wonder/중요도, 요약·설문·페르소나·설정 도우미·연결 확인을 연결했다. 호출 trace가 있는 경로에서는 원본 response와 `json_repairs`, usage를 함께 확인했다. API envelope가 깨진 경우는 ProviderJSONError이며 모델 수정 요청을 하지 않는다. API 전송은 엄격한 직렬화로 비표준 숫자를 차단한다.
+- 최종 집중 검사: `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_u_slow.py tests/test_survey.py tests/test_setup_guide.py tests/test_prompt_guard.py tests/test_target_selection.py tests/test_gpu_provider.py tests/test_provider_budget.py tests/test_local_embeddings.py tests/test_gpu_session.py tests/test_qwen_tokenizer.py tests/test_setup_guide_http.py tests/test_claude.py` → **241 passed in 13.99s**. 파서/각 단계/요약/페르소나/설정 직접 회귀만으로도 **41 passed**였다.
+- 전체 검사는 중간 코드에서 **654 passed / 1 failed in 368.10s**였다. 실패는 연결 확인에 불필요하게 추가했던 `ok=true` 필수 조건 때문에 기존 `{}` fixture가 거부된 것이었다. 이 조건을 제거하고 문법 검사만 유지했다. 해당 회귀 단독·`--lf` 재검사와 위 최종 집중241건은 통과했다. 최종 전체 suite를 다시 실행하지 않았으며 중간 전체 결과를 최종 전체 통과로 표시하지 않는다.
+- 기존 실행 `20261021T123650-e2648528`의 모델 응답43개를 원문 수정 없이 로컬 재생했다. 기존 json.loads에서 문법 오류였던9개 모두 공통 파서를 통과했다. 이는 문법 복구만의 결과다. 계획 배열/누락 description 등의 스키마 문제 해결이나 실제 행동 성공을 의미하지 않는다.
+- 대시보드의 이전 소유 GPU 세션 정리를 확인하고 수정 코드로 재시작했다. 실제 사이트/Qwen 자율 과업은 재실행하지 않았다. HTTP/GPU 준비 확인은 이 과업의 성공 판정과 구분한다.
+
+## 2026-10-22 행동별 양식과 인자 오류 재요청
+
+- 실제 `20261021T142323-1302c49e`에서 두 번 반환된 raw_type+target=s23+text=80000을 확인했다. 원인은 기존 공통 스키마 템플릿이 raw_type의 금지 인자 target도 보존한 것이었다. 재현 테스트2건은 수정 전 실패했다.
+- 행동 프롬프트는17개 지원 행동의 JSON 예시, 선택 필드와 raw_type/type 차이를 제공한다. 최종2375자로 기존2400자 미만 제한을 만족한다. 예시 전체를 UAction 스키마로 검증하고 지원 행동 목록과 일치하는지 확인한다.
+- UAction.argument_contract의 필수/허용 인자를 validator와 재요청에서 공유한다. 금지 인자를 제외한 행동별 초안, 인자 진단, raw_type의 대상/Enter 의도에 맞는 type 대안을 제공한다. 원래 대상·텍스트·설명과 가능한 Enter를 보존하며 실제 선택은 재응답한 모델이 결정한다. 좌표/탭 등 누락한 숫자를0으로 만들지 않고 null로 둔다.
+- `python3 -m pytest -q tests/test_u_fast.py tests/test_target_selection.py tests/test_u_actions.py tests/test_model_json.py tests/test_prompt_guard.py tests/test_interaction_flows.py tests/test_runner_flow.py`: **120 passed in 32.03s**. 최초 집중 실행은 프롬프트가2405자여서 길이 회귀1건이 실패했고, 최종 축약 후 통과했다. 마지막 예시/문구 조정 뒤 `tests/test_target_selection.py`도 **4 passed in 0.19s**로 재확인했다.
+- 모델이 type 또는 raw_type을 선택한 두 경로, 반복 invalid 응답 차단, 한 번의 재요청/원문/usage/예약 예산, 필수 설명과 좌표 누락, 실제 실행기 연계 및 prompt guard를 검사했다. `compileall`, 저장소 검사와 diff 공백 검사도 통과했다. 실제 Qwen 재요청/데카트론 전체 과업은 이번 변경 후 실행하지 않았고 전체 suite도 재실행하지 않았다.
+- 마지막으로 대안 선택 안내와 충돌하던 “템플릿을 그대로 완성” 문구를 “참고하여 완성”으로 정리한 뒤 재요청 관련7건도 통과했다.
+
+## 2026-10-22 Min/Max 입력 관찰과 마지막 객체 괄호 누락
+
+- `20261021T152740-3bda475a`의7번째 행동은 text=80000을 Min 대상에 입력했다. 직전 관찰의 두 숫자 입력은 이름이 input, 값은20900/269000이었다. 원본 HTML에는 각각 앞의 span에 Min/Max가 있었지만 입력 이름에 연결되지 않았다. 모델은 s22를 최대 가격 입력으로 설명했고, 이후 전역 Enter와 잘못된 범위 해석이 이어졌다.
+- 원인 회귀2건을 수정 전에 실패시켰다. 수정 후 Min/Max 이름·원래 locator ID 대응·interaction_state.inputs·강제 GPU 압축 입력 모두에 역할이 보존됨을 실제 로컬 Chromium에서 확인했다. 명시적 aria 이름과 이메일 placeholder도 유지했다. 계획/행동 지침은 이하=최대/상한, 이상=최소/하한으로 설명하며 예산을 임의 변경하지 않게 했다. 행동 지침2353자/계획1474자로 기존 제한 미만이다.
+- 실패한 plan 원본449자와388자를 다시 읽었다. 둘 다 문자열과 내부 구조는 완결됐고 마지막 바깥 `}` 하나만 없었다. 수정 후 `root_object_close` 규칙으로 JSON 및 UPlan 검증을 모두 통과했다. 기존 로그/실패 판정은 바꾸지 않았다. 이 재생은 모델의 잘못된 예산 해석을 정답으로 바꾸거나 실제 행동 성공을 증명하지 않는다.
+- `python3 -m pytest -q tests/test_model_json.py tests/test_u_fast.py tests/test_u_observation.py tests/test_target_selection.py tests/test_prompt_guard.py tests/test_survey.py tests/test_runner_flow.py`: **140 passed in 29.35s**. 완결 값의 마지막 객체 괄호 복구, 문자열 내 괄호/escape 보존, 잘린 숫자/문자열/중첩 거부, 추가 호출 없는 원문·usage·교정 로그를 함께 검사했다.
+- `compileall`, `node --check src/uxagent/parser/parser.js`, 저장소 검사(0 problems), diff 공백 검사 통과. 실제 Qwen/Decathlon 과업·전체 pytest는 이번 수정 후 재실행하지 않았다.
+
+
+## 2026-10-22 공통 DOM 요소 문맥 검증
+
+- 가격 전용 보완을 이름 출처·소속 그룹·제약·상태·관계의 공통 추출로 확장했다. 원본 semantic ID/실행 registry는 유지한다.
+- 구현 전 새 소속 그룹 테스트2건의 실패를 확인한 뒤 구현했다. 추가로 긴 한국어 그룹 이름의 구역 선택 입력 초과를 재현하고, 미리보기와 최종 전체 문맥을 분리해 해결했다.
+- 전체 `python3 -m pytest -q tests`: **672 passed, 2 failed, 376.54s**. usage partial 사례는 Chromium launch180초 timeout, wonder seed 사례는 UI 클릭30초 timeout이었다. 두 파일을 분리 재실행한 `tests/test_usage_coverage.py tests/test_wonder_seed_precision.py`: **15 passed, 22.72s**. 전체 검사가 처음부터 모두 통과했다고 표기하지 않는다.
+- 최종 관련 회귀 `tests/test_dom_context.py tests/test_u_observation.py tests/test_target_selection.py tests/test_interaction_flows.py tests/test_prompt_guard.py`: **38 passed, 15.55s**. 카드/폼/표 소속, 옵션 상태, 비활성 대상, 팝업 격리, 요약과 계층 선택 후 그룹 참조를 검사했다.
+- `compileall`(src 및 수집 스크립트), 새 JS의 `node --check`, `scripts/check_repo.py`, `git diff --check` 통과. 프로젝트에 별도 lint/type-check 도구 설정은 없다.
+- 실제 Chromium으로 공개15개 사이트를 읽어 **서로 다른13곳**의 DOM·스크린샷·모델 입력을 수집했다. 컨트롤2,525개, 공유 그룹1,428개, 명시적 라벨 대조150건, unknown 라벨206건이다. 통과 사이트의 관찰 오류는0건이다. W3C403 challenge와 GNU 네트워크 중단은 제외했다. 사이트별 결과와 한계는 [공통 DOM 문맥](tasks/dom-context.md)에 기록했다.
+- 실제 수집 명령: `python3 scripts/verify_dom_context_sites.py --output runs/private/dom-context-live-2026-10-22-verified`. 해당 폴더에 source.html/관찰/PNG/model-context/model-input/pipeline/result 및 report.md/json을 보관하며 Git 제외를 확인했다.
+- 실제 네트워크 검증은 페이지 읽기뿐이다. 실제 모델 요청·로그인·폼 제출·구매0회. Fast 입력 검사/대상 선택의 모델 응답은 모의했고 원격 tokenizer 없이 보수적 크기 검사를 사용했다. 실제 Qwen 의미 해석·과업 성공·속도 개선량을 입증하는 결과는 아니다.
+- 무료 Mock CLI 통합: `python3 -m uxagent run --study configs/study.json --provider mock --headless --output runs/private/dom-context-mock-2026-10-22` 종료 코드0. run `20261022T000021-b859892d`에서 최종 독립 판정 success(검색/필터/상세3항목 pass), 행동30/30 성공, 기록30/30, 오류0건을 확인했다. 모델 terminate가 아닌 max_steps30 종료이며 Brain incomplete를 유지한다. 모의 Slow는 즉시 응답 반복으로1,858회 순환·총 모의 모델 요청3,973회를 기록했으며 실제 GPU 지연/비용의 근거로 사용하지 않는다.
+
+
+## 2026-10-22 Qwen system-only 토큰 검사 수정
+
+- 최근 두 실제 실행은 검색어 입력·Enter 후3단계의 토큰 검사에서 중단했다. 원격 `/tokenize`는 user만200, system만500/tokenization_failed, feedback system만500, system+빈 user200/160토큰을 반환해 결정적 요청 구성 문제를 확인했다.
+- 수정 전 추가 회귀8건 실패·기존14건 통과를 확인했다. 수정 후 지침 단독 검사에만 빈 user를 추가하고 HTTP 오류의 상태/허용 코드만 보존한다. 원본/생성 메시지 불변, fixed 초과 차단, 민감 본문 비노출, 오류 캐시 금지와 추정값 우회 금지를 확인했다.
+- 관련 `tests/test_prompt_guard.py tests/test_qwen_tokenizer.py tests/test_u_fast.py tests/test_target_selection.py tests/test_model_json.py`: **111 passed, 6.82s**. 최초 제한 환경 실행은109 passed/2 failed였으며 Chromium 시작·fixture bind 권한 때문에 실패해 허용된 환경에서 재실행했다.
+- 실제 원격 토큰 계산 재생: 긴 기억 입력은 요약 응답을 모의하고216토큰으로 최종 검사 통과. 실제 생성 요청0회. 최근 실패 화면의 feedback 입력은10,438토큰이며 내부 지침 검사160토큰을 통과했다. 그러나 보호 조작 문맥이 요약 후에도9,849토큰으로 남아8,192한도 초과를 정확히 차단했다. 이는 이번 HTTP500 수정과 별개인 남은 한계이며 실제 전체 과업 성공으로 표시하지 않는다.
+- `compileall`, `scripts/check_repo.py`(0 problems), `git diff --check` 통과. 별도 lint/type-check 도구 설정 없음.
+- 수정 후 전체 `python3 -m pytest -q tests`: **682 passed, 407.27s**. Chromium·로컬 포트 사용이 가능한 허용 환경에서 직렬 수행했다.
+- 무료 Mock CLI 통합 (`runs/private/tokenizer-fixed-probe-mock`): run `20261022T010123-4cb328ec`, 종료 코드0, 독립 판정 success, 행동 30/30, 오류 {}. 종료 사유는 max_steps이며 실제 Qwen 자율 성공과 구분한다.
+
+
+## 2026-10-22 feedback 보호 문맥 초과 수정
+
+- 최신 run 20261022T014757-f41be58a는 Enter 이후3단계 전 feedback 보호 문맥10,371토큰으로 중단했다. stage별 역할 구분 없이 전체 controls/element_context를 보호한 문제를 새 회귀의 실패로 재현했다(1 failed/15 passed).
+- Fast feedback만 observation의 전체 조각 요약·병합을 허용한다. feedback_state·페르소나·직전 행동·실행 사실은 보호하고 decision/기본 단계에는 적용하지 않는다. 최종 관찰과 원본 run은 바꾸지 않는다.
+- 관련 tests/test_prompt_guard.py, test_qwen_tokenizer.py, test_u_fast.py, test_dom_context.py, test_target_selection.py: **72 passed, 11.68s**.
+- 실제 실패 관찰·페르소나·직전 행동/실행 결과·계획을 재생했다. 실제 원격 계수를 사용하고 요약/최종 피드백은 모의했다. 관찰 전체가9개 조각에 포함됐고 모든 발송 입력이 한도 안에 들며 최종1,141토큰을 확인했다. 실제 모델 생성/브라우저 행동0회. 로컬 결과: runs/private/feedback-preflight-replay-2026-10-22.json.
+- 이전 항목의 feedback 문맥 조정 미완료 표현은 당시 이력이다. 이번 입력 재생 통과와 실제 Qwen 요약 품질/자율 과업 성공은 구분한다.
+- 전체 `python3 -m pytest -q tests`: **686 passed, 486.18s**. `compileall`, `scripts/check_repo.py`, `git diff --check` 통과. 별도 lint/type-check 도구 설정 없음.
+- 무료 Mock CLI 통합: 임시 study의 max_steps=6, 원본 persona 경로를 지정했다. run `20261022T020316-80e8ecb3`, 독립 판정 failure, 행동 6/6, 오류 {}, 종료 사유 max_steps. 출력 `/private/tmp/uxagent-feedback-check-4g49i16b/runs/20261022T020316-80e8ecb3`. 실제 모델 생성 검증과 구분한다.
+- 같은 Mock을 기본30단계로 재검증: run `20261022T020349-32b2a86b`, CLI 종료 코드0, 독립 판정 success, 행동 30/30, 오류 {}, 종료 max_steps.
+
+
+## 2026-10-22 누적 수정 PR 준비·prototype 통합
+
+- 새 브랜치 fix/90-qwen-dom-json-preflight-20261022에 기존 미병합 오류 수정과 후속 JSON·공통 DOM·토큰/feedback 수정을 보존했다. 최신 prototype9095b3c를 merge해 D/U 검토 수정을 함께 유지한다.
+- 충돌 해결 시 GPU hover/select 옵션 값·href, 비밀번호/Slow 출력 보호, 취소 최종 기록, 설문 재시도 무효화, 최종 평가/설문 화면·다운로드와 취소 표시를 함께 확인했다. 관련8개 테스트 파일 **138 passed, 74.36s**.
+- 병합 후 전체 `python3 -m pytest -q tests`: **724 passed, 423.02s**. 병합 전686건과 구분한다.
+- compileall, JS 구문 검사, repo/staged 검사와 diff 공백 검사 통과. doctor는 제한 환경에서 Chromium 권한으로 실패했고 허용 환경에서 Chromium available/study_errors=[]로 통과했다.
+- prototype 대비77개 파일의 경로와 로컬 비밀 값 포함 여부를 검사했다. .env.example의 추가 값은 모두 빈 값이다. .env/인증정보/runs/비공개 비교 원자료는 포함하지 않는다. 실제 Qwen 요약 품질·전체 과업 성공, 대시보드 상태 조회 성능은 별도 후속이다.
+- 최종 무료 Mock CLI: run `20261022T040921-b13b644a`, 독립 판정 success, 행동 30/30, 오류0, 종료 max_steps. 임시 경로에 보관하며 실제 Qwen 과업 성공과 구분한다.
+- 최초 push의 원격 CI는 Ubuntu 성공/Windows 진행 중으로 확인했으며 최종 문서 커밋의 CI와 별도로 본다.
+
+## 2026-10-22 PR #103 Windows GPU 포트 검사 수정
+
+- PR #103 Windows 3.13의 push와 pull_request 필수 검사가 모두 같은 회귀에서 실패했다: 이미 listen 중인 포트에 `_check_ports()`가 `RuntimeError`를 내지 않았다. 두 로그 모두 **718 passed, 1 failed, 5 skipped**였다. Ubuntu 3.11 push/PR은 성공했다.
+- 원인은 Windows에서 `SO_REUSEADDR`를 설정한 bind가 점유된 listener 포트에도 성공할 수 있는 플랫폼 차이다. Windows probe에 `SO_EXCLUSIVEADDRUSE`를 설정했다.
+- 수정 후 타깃 테스트를 로컬에서 실행했으나 sandbox가 테스트 listener의 `127.0.0.1` bind를 `PermissionError`로 막아 테스트 본문에 도달하지 못했다. 따라서 로컬 재검증은 미완료이며, 수정 후 Windows CI 재실행 결과를 별도로 확인한다.

@@ -183,6 +183,9 @@ async def test_public_live_profile_partial_search_and_price_filter_dom_only():
         assert (await evaluate_decathlon(page, 'filters_price', expected, LIVE_PROFILE))['verification'] == 'failure'
         await page.set_content(public_search_fragment(name='신발', price=''))
         assert (await evaluate_decathlon(page, 'search', expected, LIVE_PROFILE))['verification'] == 'failure'
+
+
+
         await page.set_content(public_search_fragment(price=''))
         assert (await evaluate_decathlon(page, 'filters_price', expected, LIVE_PROFILE))['verification'] == 'unknown'
         await page.set_content(public_search_fragment() + '<div data-testid="producthit-tile-box" style="min-height:20px">불완전 상품</div>')
@@ -214,6 +217,25 @@ async def test_public_live_basic_detail_duplicate_consistency_and_declared_scope
         assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'unknown'
         await page.set_content(detail)
         assert (await evaluate_decathlon(page, 'detail_basic', {}, LIVE_PROFILE))['verification'] == 'unknown'
+
+
+@pytest.mark.asyncio
+async def test_configured_live_detail_price_excludes_bundle_total_but_rejects_product_conflict():
+    profile = json.loads((Path(__file__).parents[1] / 'configs/decathlon_live_profile.json').read_text())
+    price = '<span data-cy="item-current-price" class="vp-price-amount--large">79,900원</span>'
+    product = '<section id="product-summary-container"><h1>남성 러닝화 킵코어</h1>' + price + price + '</section>'
+    bundle = '<section data-testid="bundle-side-container">함께 구매 합계' + price.replace('79,900', '109,700') + '</section>'
+    expected = {'product_name_contains': '러닝화', 'max_price': 80000}
+    async with BrowserSession(headed=False) as browser:
+        page = browser.active
+        await page.set_content(product + bundle)
+        result = await evaluate_decathlon(page, 'detail_basic', expected, profile)
+        assert result['verification'] == 'success'
+        assert result['feature_checks'][0]['evidence']['price'] == 79900
+        await page.set_content(product.replace(price + price, price + price.replace('79,900', '89,900')) + bundle)
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, profile))['verification'] == 'unknown'
+        await page.set_content('<h1>남성 러닝화 킵코어</h1>' + bundle)
+        assert (await evaluate_decathlon(page, 'detail_basic', expected, profile))['verification'] == 'unknown'
 
 
 @pytest.mark.asyncio
@@ -267,3 +289,16 @@ async def test_public_live_basic_detail_accepts_matching_name_keyword_and_price(
         assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'
         await page.set_content(detail.replace('79,900원', '99,900원'))
         assert (await evaluate_decathlon(page, 'detail_basic', expected, LIVE_PROFILE))['verification'] == 'failure'
+
+
+@pytest.mark.asyncio
+async def test_known_homepage_without_product_details_is_incomplete_not_unconfigured():
+    async with BrowserSession(headed=False) as browser:
+        page = browser.active
+        await page.route('https://www.decathlon.co.kr/', lambda route: route.fulfill(
+            body='<main><input placeholder="상품 검색"><div role="dialog">광고 팝업</div></main>', content_type='text/html'))
+        await page.goto('https://www.decathlon.co.kr/')
+        result = await evaluate(page, 'decathlon-detail_basic-v1',
+            expectations={'product_name_contains': '러닝화', 'max_price': 80000}, profile=LIVE_PROFILE)
+        assert result['verification'] == 'failure'
+        assert result['reason'] == 'not_on_product_detail'

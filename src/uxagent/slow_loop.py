@@ -12,6 +12,8 @@ from importlib.resources import files
 
 from .llm import BudgetExceeded, estimate_cost_usd, provider_for_model
 from .call_evidence import call_evidence
+from .model_json import loads_model_json, dumps_json
+from .prompt_guard import prepare_model_messages
 from .schemas import BrainStageRecord, BrainTaskEvent, WonderDrawRecord, UReflection, UWonder, UImportance
 from .fast_loop import FastLoop
 from .setup_guide import _check_sensitive
@@ -39,8 +41,11 @@ class _SlowModelIO:
     async def _generate(self, item, system, payload, stage, *, response_model=None):
         messages = [
             {"role": "system", "content": system + " Return valid JSON only."},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            {"role": "user", "content": dumps_json(payload, ensure_ascii=False)},
         ]
+        messages = await prepare_model_messages(self.provider, messages, self.model,
+            self.output_tokens, budget=self.budget, call_log=self.call_log,
+            module='slow', stage=stage)
         reservation = self.output_tokens + sum(len(message["content"]) for message in messages) // 4
         started = time.monotonic()
         self.budget.reserve(reservation)
@@ -64,8 +69,13 @@ class _SlowModelIO:
                                "estimated_cost_usd": estimate_cost_usd(actual_provider, input_tokens,
                                                                         output_tokens, model=actual_model)}
             record.update(call_evidence(stage, messages, payload, result))
+            if 'provider_queue_ms' in usage:
+                record['provider_queue_ms'] = usage['provider_queue_ms']
+            if 'prompt_guard' in usage:
+                record['prompt_guard'] = usage['prompt_guard']
+            json_repairs = []
             try:
-                parsed = json.loads(result)
+                parsed = loads_model_json(result, repairs=json_repairs)
                 if not isinstance(parsed, dict):
                     raise ValueError("Slow Loop response must be a JSON object")
                 if response_model is not None:
@@ -74,6 +84,8 @@ class _SlowModelIO:
                 record["error"] = "model_output_error"
                 raise
             finally:
+                if json_repairs:
+                    record['json_repairs'] = json_repairs
                 if self.call_log:
                     self.call_log(record)
             return parsed
@@ -630,6 +642,15 @@ class ContinuousSlowLoop(_SlowModelIO):
 
                 await self._phase("importance", [entry], generate)
                 return result_holder[0]
+
+            # The local Qwen server shares one GPU with Fast. A whole batch of
+            # pending importance requests can queue ahead of the next browser
+            # decision, so keep at most one importance request in flight there.
+            if provider_for_model(self.model) == "gpu":
+                results = []
+                for entry in entries:
+                    results.append(await one(entry))
+                return results
 
             jobs = [asyncio.create_task(one(entry)) for entry in entries]
             try:

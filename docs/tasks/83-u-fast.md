@@ -1,5 +1,17 @@
 # #83 U Fast 판단 전환
 
+## 2026-10-22 행동별 양식과 인자 오류 재요청
+
+초기 행동 프롬프트는 지원하는17개 행동의 JSON 예시와 선택 필드, raw_type/type 차이를 명시한다. 예시는 UAction으로 검증하며 기존2400자 미만 제한을 유지한다. raw_type은 현재 포커스 입력의 text/description만 허용하고, 대상을 지정하거나 Enter까지 보내려면 type을 선택하도록 안내한다.
+
+UAction.argument_contract의 필수/허용 인자 집합을 스키마 검증과 재요청에 공유한다. 재요청은 해당 행동의 허용 필드만 넣은 빈칸 템플릿과 required_fields/allowed_fields/unexpected_fields/missing_fields를 제공한다. 원본에 target/enter가 붙은 raw_type이면 유효한 원래 대상·텍스트·Enter를 보존한 type 대안도 제시한다. 템플릿은 실행 행동이 아니며 모델이 다시 선택해야 한다. 코드는 대상 삭제나 행동 변환을 자동 집행하지 않는다. 필요한 좌표가 없으면0으로 채우지 않고 null로 남긴다.
+
+기존 최대1회 재요청·JSON/스키마 검사·usage/원문 로그·예산/취소 계약을 유지한다. 두 번째도 invalid면 제안/실행으로 전달하지 않는다. 실제 실패 근거는 `20261021T142323-1302c49e`에서 두 번 반복된 raw_type+target이다. 검증 결과는 verification.md를 따른다.
+
+## 2026-10-20 실제 행동 실패 피드백 후속
+
+사용자 요청으로 실제 실행기의 ActionResult를 다음 feedback·plan·decision에 별도 last_action_result로 전달한다. 마지막 제안 대신 실제 실행되는 첫 제안이 last_action이며 계획·행동에도 결과와 함께 제공한다. 현재 메뉴/팝업은 계획의 page_context에도 제공해 이전 계획이 열린 상위 메뉴를 반복 지시하지 않게 한다. 제안 기억은 기존처럼 모두 생성 기록으로 남고, 실행 결과는 steps에 보존한다. 결과가 없으면 성공으로 추정하지 않으며 실패한 논리 단계를 (next)로 무조건 넘기라는 지시를 제거했다. U 원본의 입력에 실행 사실을 추가한 차이다. evaluator 답이나 실행 허가 게이트를 모델에 추가한 것은 아니다.
+
 후속 #84 작업 브랜치는 아래의 최초 reflection 연결을 [U Slow 반복](84-u-slow.md)으로 교체한다. 이 문서의 #84 미구현 표기는 #83 작성 당시 범위다.
 
 이슈: [#83](https://github.com/2026-2-1/Persona/issues/83). Qwen 선행: [PR #91](https://github.com/2026-2-1/Persona/pull/91), `264bd985ce3bd1744d4e692af52efdc719e61b00`. 구현 브랜치는 `feat/83-u-transition-01`이다. prototype 병합이나 실제 GPU 과업 성공을 뜻하지 않는다.
@@ -35,7 +47,7 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 | 여러 observations | U처럼 첫 항목만 소비; 비거나 첫 문자열이 비면 명시적 오류, 관찰을 지어내지 않음 |
 | plan 재시도 | U의 무한 반복 대신 기존 1회 JSON 복구·전송 오류 재시도/예산/실행 시간 한도 유지. next_step을 문자열로 검증 |
 | 빈/복수 actions | 빈 배열은 기존 1회 JSON 복구 후 실패. 복수 배열은 U처럼 모두 제안 기억에 저장하고 첫 번째만 실행. 다음 feedback의 last_action은 U처럼 마지막 제안이므로 실제 실행과 다를 수 있음 |
-| act의 valid_targets 결함 | U 코드 그대로 inputs/selects도 clickable 목록으로 만든다. 올바른 목록으로 몰래 바꾸지 않았다. 실제 입력/선택 대상을 찾는 데 영향을 줄 수 있음 |
+| act의 valid_targets 결함 | #83 당시 U 코드 그대로 inputs/selects도 clickable 목록으로 만들었다. 2026-10-20 검색 경로 보완에서 실제 input/select 목록으로 교정했다. |
 | 동시 호출 한쪽 실패/취소 | U gather 흐름에 형제 task 취소·합류 정리를 추가. 실패 뒤 늦은 기억 쓰기·미정산 요청을 남기지 않음 |
 | 토큰 한도 | U perceive는 64,000을 요청하지만 현재 설정 max_output_tokens는 유지. 실제 Qwen의 문맥/출력 한도는 검증하지 않았고 큰 페이지의 관찰 완전성도 보장하지 않음 |
 | 기억 순위 점수 | 최근 기억·종류 가중치·질의 연결만 완료. 기존 점수/선택적 embedding 계산은 #85에서 dot-product·차례 최신성·중요도로 전환해야 함. GPU embed 미지원과 활성 64개 상한 유지 |
@@ -51,6 +63,16 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 
 2026-10-18 실제 공개 데카트론 첫 화면에서 위 토큰 한도 문제가 발생했다. Qwen 전용 큰 화면 경로는 원본 관찰 기록을 유지하면서 feedback/행동 모델 입력만 보이는 텍스트·조작 대상 목록과 짧은 ID로 바꾸고, 행동 제안의 ID를 원래 semantic ID로 복원한다. 후속 수정에서는 큰 화면 perception이 원본 HTML의 내부 parser 속성만 제외한 뒤 1,400자 이하 조각으로 순차 요청하고, 각 결과를 다시 같은 크기로 나눠 한 관찰이 남을 때까지 합친다. 모델의 실제 512토큰 출력 한도에 맞춰 조각별 응답을 240자 이하로 요청하며, 모델이 500자를 넘게 반환하거나 빈 관찰을 반환하면 조용히 자르지 않고 오류로 남긴다. 각 요청의 단계·조각 번호와 입력/응답은 기존 로컬 호출 로그에 보존한다. 이 경로는 U의 전체 HTML 입력과 모든 문구 서술 계약을 충족하지 않으며 요약 손실 가능성이 남는다. 다른 제공자의 U 입력은 유지한다. [실패·검증 기록](../troubleshooting.md)을 참고한다.
 
+2026-10-19 라이브 Qwen이 첫 조각에서 관찰 5개를 반환해 기존 정확히 1개 조건에 막혔다. 조각 내 모든 비어 있지 않은 관찰을 순서대로 결합한다. 조각 요약 전체가 1,400자 이하가 되면 마지막 재요약 호출 없이 그대로 한 관찰로 전달한다. 더 크면 다시 나누어 요약한다. 실행기는 행동 후 기록한 관찰을 다음 Fast 차례에 재사용해 중복 DOM 대기를 없애고, 종료 후 독립 평가용 최종 관찰은 별도로 찍는다. [실제 기록](../verification.md)을 참고한다.
+
+2026-10-19 후속으로 큰 Qwen 화면의 perception도 기존 feedback/decision에서 쓰던 규칙 기반 텍스트·컨트롤·짧은 ID 표현을 먼저 생성한 다음 조각으로 읽는다. 이미지 alt/title과 `article`/`li`/`section`/`tr` 경계도 보존한다. 원본 observation JSON/PNG·원래 semantic ID는 유지하고, Qwen perception의 비공개 호출 기록에는 실제 압축된 입력을 남긴다. 작은 화면과 다른 제공자의 U HTML 입력은 그대로다. 이 입력 표현은 U 전체 정리 HTML과 다르며 문맥·이미지 의미를 완전히 보존한다는 주장은 하지 않는다. [측정과 한계](../verification.md)를 참고한다.
+
+2026-10-19 실제 Qwen이 큰 화면 조각의 마지막 닫는 괄호를 `}]`로 뒤집어 두 번 반환한 경우를 확인했다. 조각 프롬프트에는 단일 240자 이하 관찰과 닫는 순서를 명시한다. 파서는 GPU 조각 응답의 완전한 JSON 뒤 백틱 또는 `observations` 배열의 정확한 마지막 괄호 역순만 교정한 뒤 UPerception으로 검증한다. 원문 호출 로그와 그 밖의 문법 오류의 기존 복구/실패 처리는 유지한다. [재현·검증](../troubleshooting.md)을 참고한다.
+
+같은 날 후속 실행에서 Qwen이 배열의 마지막 `]` 자체를 빠뜨리고 복구 요청에도 반복하는 사례를 확인했다. GPU 조각의 `observations` 객체가 마지막 문자열 뒤 `"}`로 끝나는 경우에만 `]`를 넣은 후보를 다시 파싱·검증한다. 본문 안쪽 문법 오류는 기존 모델 복구/실패 처리에 남긴다.
+
+2026-10-20 검색·메뉴 보완: U 원본의 `valid_targets.inputs/selects`가 clickable을 재사용하는 결함은 실제 input/select 관찰 목록으로 교정했다. 데카트론의 판촉 placeholder가 붙은 상단 입력은 실제 `data-cy="search-bar-desktop"` 근거로 “상품 검색”이라고 관찰한다. 사용자 후속 결정에 따라 `available_search_inputs` 계획 필드와 검색 우선 지시는 제거했다. 검색을 선택한 경우에는 클릭 → Enter 없는 입력 → “모든 결과 보기” 클릭이 필요하다고 행동 모델에 설명한다. GPU용 큰 화면은 별도 `<navigation>`에 각 메뉴 항목의 보이는 열 경로와 짧은 대상 ID를 제공한다. 같은 이름의 러닝화도 `러닝 > 러닝화`와 `러닝 > 남성 > 러닝화`로 구분하며 세 번째 열은 `러닝 > 남성 > 러닝화 > 로드러닝/조깅`으로 표시한다. 실제 앱 실행기에서 검색 결과와 4단계 카테고리 이동을 각각 확인했다. 이는 U 원본의 입력 표현·행동 대상 목록과 다르며 Qwen 자율 전체 과업은 재검증하지 않았다.
+
 ## 원본 링크
 
 2026-10-19 후속: GPU 큰 화면의 feedback/act projection은 hover 전용 대상을 포함하고 각 조작 요소의 role·이름·현재 값·enabled/checked/focused·href와 select option의 실제 value/label을 보존한다. 모든 대상은 같은 짧은 ID 복원표를 사용하며 원래 observation/ElementInfo는 수정하지 않는다. U의 기존 valid_targets 구성 정책은 바꾸지 않는다.
@@ -60,3 +82,7 @@ U 프롬프트 네 개는 고정 커밋에서 변경 없이 `src/uxagent/prompts
 - [plan/act](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/agent.py#L248-L355)
 - [기억 검색](https://github.com/neuhai/UXAgent/blob/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/memory.py#L155-L226)
 - [프롬프트 원본](https://github.com/neuhai/UXAgent/tree/4d3b1f1c1fef93c5e2ea7d104153ea164ba1acbd/src/simulated_web_agent/agent/shop_prompts)
+
+2026-10-21 공통 전송 전 검사: 인식/피드백/계획/행동과 JSON 수정 차례가 prepare_model_messages를 거쳐 Qwen 한도를 재검사한다. 초과한 기억·관찰·이전 계획만 계층 요약하고 고정 지시/페르소나/과업/행동 대상·실행 결과는 보존한다. 추가 호출은 prompt_summary/parent_stage로 기록하고 공통 예산을 사용한다. 원본 기록과 생성 요약은 구분한다.
+
+2026-10-21 입력 검사2차: 고정 지침의 중복/예시를 줄이고 큰 대상 목록은 target_selection으로 관찰 구역→세부 컨트롤을 선택한다. 선택 자체는 행동/메모리 관찰 사실이 아니며 예산/호출 로그에만 추가한다. 같은 ID의 컨트롤 중복을 합치고 최종 제안의 원래 semantic ID 복원과 기존 실행 정책을 유지한다.

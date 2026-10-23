@@ -21,6 +21,8 @@
 
 새 U Fast의 `feedback` stage와 `thought` memory는 생성 기록이며 실행된 행동·관찰 사실·독립 evaluator 결과를 뜻하지 않는다. `brain_trace`는 과거 `perception`/`plan_review`/`wonder` 및 `adopted`/`discarded` 이벤트를 계속 읽고, 새 실행에 없는 draw/adoption 행을 만들어내지 않는다. 기록의 출처 ID는 추적용이고 모델 결과 채택 또는 행동 허가가 아니다.
 
+2026-10-20 사용자 후속 수정: 실행기가 반환한 ActionResult는 다음 feedback·plan·decision의 last_action_result로 전달한다. 대상은 실제 실행한 첫 제안이며 나머지는 미실행 제안으로 유지한다. 이 값은 도구의 성공·실패/URL 변화이고 과업 성공 판정이 아니다. 결과가 없으면 성공으로 추정하지 않는다. 설문 입력에는 generated/observed 상태를 가진 전체 기억과 별도의 실행 trace를 제공하고 evaluator 결과·기대값은 포함하지 않는다. 응답 meta.execution_error_count를 실제 오류 수와 대조하되 주관적 답변을 검증된 사실로 바꾸지 않는다.
+
 `summary.json`의 독립 `verification`은 `termination_reason`과 분리한다. `final_evaluation.json`은 해당 판정의 termination step과 최종 observation ID/URL/시각을 보존하며, 조회와 네 형식 내보내기에서 읽는다. 이전 실행에 파일이 없으면 `final_evaluation: null`이고 파일을 보충/수정하지 않는다.
 
 ## #85 현재 검색·제거·GPU 연결 계약
@@ -41,6 +43,8 @@
 ## #83 U Fast 계약 (작업 브랜치)
 
 현재 실행기의 Fast 계약은 [#83 구현 명세](tasks/83-u-fast.md)를 따른다. `UPerception.observations`, `UFeedback.thoughts`, `UPlan.plan/rationale/next_step`, `UActions.actions`를 소비한다. 후속 차례의 feedback과 perceive는 같은 현재 HTML에서 동시에 시작하고 공유 기억을 저장한 뒤 plan→act로 진행한다. plan 검색은 intent, act 검색은 next_step이다.
+
+2026-10-20 검색·메뉴 보완: 계획 입력에는 검색 우선 규칙이나 별도 검색 입력 필드를 넣지 않는다. DOM 관찰은 데카트론의 판촉 placeholder가 붙은 상단 입력을 “상품 검색”으로 표시하고, GPU 큰 화면의 `<navigation>`은 현재 열린 메뉴 열의 상위 경로·이웃 항목·짧은 대상 ID를 전달한다. 행동 `valid_targets.inputs/selects`는 실제 input/select 목록이며 메뉴 leaf ID도 클릭 후보에 포함한다. 실제 행동 선택은 모델에 맡기고 검색·메뉴를 강제하지 않는다.
 
 새 `thought` 기억과 모든 Action 제안은 generated다. 기억의 `timestamp`는 차례 순번, Action의 `raw_action`은 U 원본 제안이다. `AgentDecision.proposed_actions`·`next_step`, `BrainStageRecord.model_response`·feedback stage는 추가 필드다. 기록의 perception/plan/decision 이름은 기존 소비용이며 U 원본 응답은 model_response에 남긴다. 원본 필드가 없는 구버전 기록은 기존대로 읽는다. 결과 성공 여부는 Action 기억에 쓰지 않고 steps의 result/evaluation을 확인한다.
 
@@ -194,3 +198,33 @@ run_detail.brain은 stages/task_events/tasks/task_counts/memories/memory_changes
 ### macOS 저장 비밀번호 인증 (사용자 후속 결정)
 
 명시적인 gpu-password-setup은 두 서버 비밀번호를 macOS 키체인에 저장하며 이후 SSH askpass pipe로 전달한다. config에는 저장 방식/서버 식별자만 둔다. 비밀번호 평문 파일·JSON·env·argv·로그를 만들지 않는다. host key 자동 승인·OTP 응답은 하지 않는다. 저장 성공과 실제 원격 인증/health/반환 성공을 구분한다. 기존 키 인증과 별도 선택 경로다.
+
+AI StudyConfig.run_timeout_seconds는 양수 또는null이다. 기본null은 전체 실행 시간 제한 없음을 뜻한다. 중지·max_steps·호출 예산·개별 요청/행동 timeout과 Slurm walltime은 별개다.
+
+## 2026-10-21 Qwen 입력 검사와 계층 요약
+
+- LocalQwenProvider는 모든 chat 요청과 각 요약 요청을 전송/큐 진입 직전에 검사한다. 다른 제공자·임베딩의 계약은 바꾸지 않는다.
+- 확인한 원격 서버는 입력8192토큰·출력최대512토큰이다. 클라이언트는 ASCII2자/토큰·비ASCII UTF-8바이트/토큰에 메시지 비용을 더한 보수적 추정을 사용하고1024토큰 여유와 출력 예약을 둔다. 원격 tokenizer의 정확 계수는 아니며 호출 metadata의 exact_token_count=false로 표시한다.
+- 넘치는 context는 원문 전체를3500 UTF-8바이트 이하의 유니코드 조각으로 나눠 순서대로 읽고 요약을 병합한다. 병합본이 목표 크기보다 크면 다시 나눠 요약한다. 완성된 요청 전체를 다시 검사한다. 원본 run/관찰/누적 memory trace는 바꾸지 않는다. 요약은 generated_summary이며 관찰 사실이 아니다.
+- system, persona, intent/task/constraints, valid_targets, last_action/last_action_result, next_step, page_context, questionnaire/questions, execution_trace는 모델 요약으로 대체하지 않는다. 압축 화면의 controls/navigation/dialogs는 원문 그대로 요약 밖에 유지한다. 실행 가능한 원본 HTML의 조작 대상 대응을 보존할 수 없으면 임의 요약하지 않는다.
+- 보호 정보만으로 한도를 넘거나 요약이 유효하지 않거나 수렴하지 않으면 PromptSizeError/준비 오류로 멈춘다. 잘라서 보낸 요청·가짜 성공·무한 재시도는 없다. 최대128요약 호출·12병합 라운드·16준비 반복이며 기존 예산·취소가 우선한다.
+- Fast/Slow/설문의 추가 생성은 공유 budget과 llm_calls.jsonl의 stage=prompt_summary, parent_stage, round/chunk_index/chunk_count, usage, 원문 요청/응답에 기록한다. 최종 요청은 실제 준비된 메시지로 기록한다. prompt_guard에는 확인 여부·추정 입력·한도/예약만 담고 원문은 API/내보내기에 추가하지 않는다.
+
+## 2026-10-21 입력 검사2차: 정확 계수·대상 구역 선택
+
+이 절은 앞의 최초 문자 추정 기반 설명보다 우선한다.
+
+1. 기본 관리 GPU 세션은 tokenizer_enabled=true다. chat venv의 Python으로 tokenizer_server.py를 실행하고 기존 server_script에서 MODEL_PATH/MODEL_NAME의 문자열 상수만 AST로 읽는다. 사용자 서버를 실행해 설정을 추측하거나 원본 api_server.py를 수정하지 않는다. 같은 모델 파일과 transformers 환경을 쓰고 apply_chat_template(tokenize=true,add_generation_prompt=true,enable_thinking=false,return_dict=true,return_tensors=pt)로 GPU 이동/추론 전 토큰 수를 계산한다. 현재 지원하는 원격 채팅 서버의 템플릿 옵션이 바뀌면 계산 경로도 함께 검토해야 한다.
+2. 보조 서비스는 계산 노드127.0.0.1에만 bind하고 tokenizer_local_port/remote_port(기본8003)로 SSH 전달한다. GET /health와 POST /tokenize를 제공하며 입력8192/출력512와 모델명, tokenizer 파일 fingerprint를 확인한다. 추가 GPU 모델이나 가중치는 로드하지 않는다. 기존 chat/embedding과 같은 Slurm 작업의 자식이며 어느 서비스가 끝나도 작업을 정리한다. 종료 시 tokenizer URL 환경변수와 GPU 소유 기록을 복구/정리한다.
+3. 관리 세션이 PERSONA_QWEN_TOKENIZER_URL을 자식 실행기에 전달한다. PromptGuard는 원문별 정확 계수를 비동기로 얻고 해시/개수 metadata만 제한된 캐시에 둔다. 최종 전송과 모든 요약 요청을 다시 확인한다. exact_token_count=true이면 input_tokens가 실제 템플릿 계수이며128토큰 여유와 최대512 출력 예약을 둔다. 설정된 계산 서비스 장애는 실패로 기록하고 문자 추정으로 대체하지 않는다. 수동 세션에 해당 URL이 없으면 종전 보수적 추정과 exact_token_count=false를 유지한다.
+4. 1MiB보다 큰 원문은 채팅/계산 서비스 모두의 요청 본문 한도를 넘으므로 그대로 보내지 않는다. 먼저 영역 분할을 진행하고 마지막 요청은 반드시 계산한다. system/페르소나/의도/실제 실행 사실은 요약하지 않는다. 컨트롤은 중복 표현을 정리하고 ID/이름 대응과 현재 값/옵션을 유지한다.
+5. 대상 전체가 한 입력에 들어가지 않으면 Fast가 target_selection을 호출한다. 관찰된 상단/팝업/본문/상품 구역과 메뉴 상위 경로로 묶고, 큰 구역은 하위 묶음으로 나눠 선택한다. 안내 목록에는 각 구역의 개수와 예시만 보여주며 선택된 구역의 실제 ID/이름/값/옵션은 온전히 전달한다. 모든 원본 대상은 관찰/카탈로그에 남는다. 선택은 문맥 준비이며 클릭·탐색 실행/성공 판정이 아니다. ActionExecutor의 접근 허용 정책이나 실행 제한을 추가하지 않는다.
+6. 구역 선택은 최대12단계이며 제공하지 않은 group_id는1회 재선택 후 실패한다. 새 UTargetSelection 응답은 group_id/reason 문자열이다. target_selection/prompt_summary 호출도 기존 공유 예산과 llm_calls에 기록한다. 일반 실행은 분할할 필요가 없으면 이 호출을 하지 않는다.
+7. 조각 요약이 JSON/내용 검증에 실패하면 그 조각만1회 더 짧게 다시 요청한다. 모든 시도와 repair_attempt를 기록한다. 전송 장애·예산·취소는 이 JSON 복구와 구분한다. 최종 비수렴/고정 데이터 초과는 PromptSizeError로 중단하고 입력 토큰/한도/영역별 바이트 크기를 남긴다. 내용·비밀번호를 진단 문자열에 싣지 않는다. 실행기 오류 코드는 model_input_error, 토큰 서비스 연결 장애는 model_connection_error로 분리한다.
+
+2026-10-21 상호작용 후속(검증 대기): Observation.interaction_state/ElementInfo.in_viewport/ActionResult.interaction을 기본값과 함께 추가한다. 검색·팝업 연결은 일반 Fast 전체 재계획 사이에서 실제 관찰을 소비한다. search_query/popup_decision 호출은 로컬 llm_calls에 별도 stage로 남고, 연결 행동은 기존 decision/steps에 남는다. scroll amount는 양수 픽셀로 해석하며 선택적 target으로 내부 영역을 지정한다. U의 기존 방향키 반복과 다른 사용자 요청 변경이다. 상세한 출처 구분과 이미지 미지원 경계는 [상호작용 흐름](tasks/interaction-flows.md)을 따른다.
+
+
+## 공통 DOM 문맥 (2026-10-22)
+
+스키마 기준은 `schemas.py`다. ElementInfo.context는 이름 출처·explicit/nearby/unknown 상태·공유 group_ids·속성·설명·오류·관계·비활성 옵션을 담는다. Observation.context_groups는 kind/name/name_source/parent_id를 가진 공유 그룹 정의다. 두 필드는 기본 빈 값으로 구버전 관찰을 읽는다. Observation.context_only_elements는 비활성 요소 등 관찰 전용이며 실행 registry에 등록하지 않는다. 그룹 ID와 관찰 전용 ID는 행동 target이 아니다. 명시적 라벨과 구조적 추정을 구별하고, 모델 입력에서 선택한 대상의 그룹 참조와 정의를 함께 보존한다. 팝업 입력은 dialog 위 조상과 배경 관계를 제외한다. [상세](tasks/dom-context.md).

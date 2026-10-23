@@ -104,7 +104,7 @@ class StudyConfig(StrictModel):
     source_kind: Literal["unknown", "synthetic_fixture", "live_configured"] = "unknown"
     explicit_scroll: bool = False
     max_steps: int = Field(default=30, gt=0)
-    run_timeout_seconds: float = Field(default=300, gt=0)
+    run_timeout_seconds: float | None = Field(default=None, gt=0)
     action_timeout_ms: int = Field(default=5000, gt=0)
     settle_timeout_ms: int = Field(default=3000, gt=0)
     max_llm_requests: int | None = Field(default=None, gt=0)
@@ -174,6 +174,27 @@ class Persona(StrictModel):
         return value
 
 
+class ContextGroup(StrictModel):
+    id: str
+    kind: str
+    name: str = ''
+    name_source: str = 'unknown'
+    parent_id: str | None = None
+
+
+class ElementContext(StrictModel):
+    name_source: str = 'unknown'
+    label_status: Literal['explicit', 'nearby', 'unknown'] = 'unknown'
+    group_ids: list[str] = Field(default_factory=list)
+    attributes: dict[str, str] = Field(default_factory=dict)
+    descriptions: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    nearby_text: list[str] = Field(default_factory=list)
+    relations: dict[str, list[str]] = Field(default_factory=dict)
+    unresolved_relations: list[str] = Field(default_factory=list)
+    option_states: list[dict[str, str]] = Field(default_factory=list)
+
+
 class ElementInfo(StrictModel):
     id: str
     role: str
@@ -182,8 +203,10 @@ class ElementInfo(StrictModel):
     value: str | None = None
     checked: bool | None = None
     focused: bool = False
+    in_viewport: bool = True
     href: str | None = None
     options: list[dict[str, str]] = Field(default_factory=list)
+    context: ElementContext = Field(default_factory=ElementContext)
 
 
 class TabInfo(StrictModel):
@@ -220,6 +243,9 @@ class Observation(StrictModel):
     tabs: list[TabInfo] = Field(default_factory=list)
     error: dict[str, Any] | None = None
     capture: CaptureInfo = Field(default_factory=CaptureInfo)
+    interaction_state: dict[str, Any] = Field(default_factory=dict)
+    context_groups: list[ContextGroup] = Field(default_factory=list)
+    context_only_elements: list[ElementInfo] = Field(default_factory=list)
 
 
 class Action(StrictModel):
@@ -258,7 +284,7 @@ class Action(StrictModel):
                  "type":{"target_id","text","input_mode","enter"},"raw_type":{"text"},
                  "hover":{"target_id"},"select":{"target_id","option_value"},"clear":{"target_id"},
                  "key_press":{"target_id","key"},"keypress":{"target_id","key"},
-                 "scroll":{"scroll_y","scroll_direction","scroll_amount"},
+                 "scroll":{"scroll_y","scroll_direction","scroll_amount","target_id"},
                  "navigate":{"url"},"goto_url":{"url"},"new_tab":{"url"},"back":set(),
                  "forward":set(),"refresh":set(),"switch_tab":{"target_tab_id"},"close_tab":{"target_tab_id"}}
         fields={"target_id","text","option_value","url","target_tab_id","key","scroll_y","scroll_direction",
@@ -267,6 +293,8 @@ class Action(StrictModel):
         if supplied-allowed[self.type]:
             raise ValueError(f"fields {sorted(supplied-allowed[self.type])} are not allowed for {self.type}")
         if self.type == "scroll":
+            if self.scroll_amount is not None and self.scroll_amount <= 0:
+                raise ValueError("scroll_amount must be positive pixels")
             legacy = self.scroll_y is not None
             directional = self.scroll_direction is not None or self.scroll_amount is not None
             if legacy == directional or (directional and (self.scroll_direction is None or self.scroll_amount is None)):
@@ -286,6 +314,7 @@ class ActionResult(StrictModel):
     elapsed_ms: int
     settled: bool = True
     tab_events: list[dict[str, str]] = Field(default_factory=list)
+    interaction: dict[str, Any] = Field(default_factory=dict)
 
 
 class Finish(StrictModel):
@@ -320,6 +349,11 @@ class UPlan(StrictModel):
     next_step: str = Field(min_length=1)
 
 
+class UTargetSelection(StrictModel):
+    group_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
 class UAction(StrictModel):
     """Model proposal, deliberately independent of execution observation/tab IDs."""
 
@@ -339,19 +373,27 @@ class UAction(StrictModel):
     direction: Literal["up", "down", "left", "right"] | None = None
     amount: int | None = Field(default=None, strict=True)
 
-    @model_validator(mode="after")
-    def validate_arguments(self):
+    @staticmethod
+    def argument_contract():
+        """Shared required/allowed fields for validation and repair prompts."""
         required = {"click": {"target"}, "type": {"target", "text"}, "hover": {"target"},
                     "select": {"target", "value"}, "clear": {"target"}, "key_press": {"key"},
                     "goto_url": {"url"}, "switch_tab": {"tab_id"},
                     "close_tab": {"tab_id"}, "mouse_click": {"at_x", "at_y"},
                     "raw_type": {"text"}, "scroll": {"direction", "amount"}}
-        allowed = {**required, "type": {"target", "text", "enter"},
+        allowed = {**required, "type": {"target", "text", "enter"}, "scroll": {"direction", "amount", "target"},
                    "key_press": {"key", "target"}, "terminate": {"answer"}, "back": set(),
                    "forward": set(), "refresh": set(), "new_tab": {"url"}}
+        return required, allowed
+
+    @model_validator(mode="after")
+    def validate_arguments(self):
+        required, allowed = self.argument_contract()
         fields = {"target", "text", "enter", "value", "key", "url", "tab_id", "answer",
                   "at_x", "at_y", "direction", "amount"}
         supplied = {name for name in fields if getattr(self, name) is not None}
+        if self.action == "scroll" and (self.amount is None or self.amount <= 0):
+            raise ValueError("scroll amount must be positive pixels")
         if required.get(self.action, set()) - supplied:
             raise ValueError(f"missing arguments for {self.action}")
         if supplied - allowed.get(self.action, set()):
@@ -361,6 +403,30 @@ class UAction(StrictModel):
 
 class UActions(StrictModel):
     actions: list[UAction] = Field(min_length=1)
+
+
+class SearchChoice(StrictModel):
+    use_search: bool
+    query: str | None = None
+    reason: str = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def query_if_searching(self):
+        if self.use_search and (self.query is None or not self.query.strip()):
+            raise ValueError('query is required when use_search is true')
+        return self
+
+
+class PopupChoice(StrictModel):
+    choice: Literal['interact', 'ignore', 'stop']
+    reason: str = Field(min_length=1)
+    action: UAction | None = None
+
+    @model_validator(mode='after')
+    def action_if_interacting(self):
+        if (self.choice == 'interact') != (self.action is not None):
+            raise ValueError('Only interact requires an action')
+        return self
 
 
 class AgentDecision(StrictModel):

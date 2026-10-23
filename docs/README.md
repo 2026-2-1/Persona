@@ -1,6 +1,8 @@
 # 문서 안내
 
-- [2026-10-19 병합된 prototype 검증과 팀원 재현](handoffs/2026-10-19-prototype-verification.md) — 현재 통합 기준·실제 merge·CI·화면 검증·남은 확인.
+- [공통 DOM 요소 문맥](tasks/dom-context.md): 전체 컨트롤의 이름·소속·상태·관계와 실제 13개 사이트 검증.
+
+- [모델 연결·JSON 오류 운영 매뉴얼](model-json-operations.md): 공통 JSON 문법 검사·교정 범위·경로별 연결·오류 대응·중단 기준·필수 회귀 검사.
 
 - [2026-10-19 검토 5건 수정·기존 PR 관계](handoffs/2026-10-19-review-fixes.md)
 

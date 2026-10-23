@@ -307,6 +307,30 @@ def local_dashboard(tmp_path, monkeypatch):
     server.shutdown();server.server_close();thread.join(timeout=3)
 
 
+def test_timeout_cancellations_are_labeled_as_cleanup_in_call_table(local_dashboard):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        payload = page.request.get(local_dashboard + '/api/run/run-0').json()
+        payload['summary'] = {**payload.get('summary', {}), 'termination_reason': 'run_timeout'}
+        payload['calls'] = [
+            {'provider': 'gpu', 'model': 'persona-qwen', 'error': 'CancelledError',
+             'input_tokens': None, 'output_tokens': None, 'elapsed_ms': 30715,
+             'estimated_cost_usd': None},
+            {'provider': 'gpu', 'model': 'persona-qwen', 'error': 'model_output_error',
+             'input_tokens': 100, 'output_tokens': 20, 'elapsed_ms': 4000,
+             'estimated_cost_usd': None},
+        ]
+        page.route('**/api/run/run-0', lambda route: route.fulfill(json=payload))
+        page.goto(local_dashboard)
+        page.get_by_role('tab', name='실행 기록', exact=True).click()
+        page.locator('#run-select').select_option('run-0')
+        expect(page.locator('#call-list')).to_contain_text('실행 시간 초과로 취소됨')
+        expect(page.locator('#call-list')).not_to_contain_text('CancelledError')
+        expect(page.locator('#call-list')).to_contain_text('model_output_error')
+        browser.close()
+
+
 def test_tabs_preserve_form_and_run_selection_during_polling(local_dashboard):
     with sync_playwright() as p:
         browser=p.chromium.launch()

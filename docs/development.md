@@ -85,4 +85,6 @@ scripts/check_repo.py는 선택한 Git 파일의 민감 경로·일부 credentia
 .venv/Scripts/python.exe -m uxagent scenario --config configs/scenarios/decathlon-reset.json --defect reset
 ```
 
-대시보드의 `API 없는 과업 점검`은 별도 API 연결 없이 기록·개선 보드·내보내기로 이어진다. [사용법](offline-scenarios.md)에 네 합성 과업과 실제 공개 부분 검증을 구분한다. live config는 CI 기본 검사가 아니며 상품/사이트 변경 때문에 결과를 보장하지 않는다. `summary.json`의 판정·체크·종료 사유를 확인하고 실제 결과를 verification.md에 기록한다. `scenario` 명령의 종료 코드 0만으로 모든 체크 통과를 단정하지 않는다. AI `run` 명령의 성공 종료 코드는 최종 독립 verification을 따른다.
+대시보드의 `API 없는 과업 점검`은 별도 API 연결 없이 기록·개선 보드·내보내기로 이어진다. [사용법](offline-scenarios.md)에 네 합성 과업과 실제 공개 부분 검증을 구분한다. live config는 CI 기본 검사가 아니며 상품/사이트 변경 때문에 결과를 보장하지 않는다. `summary.json`의 판정·체크·종료 사유를 확인하고 실제 결과를 verification.md에 기록한다. CLI 종료 코드 0이 과업 성공을 뜻하지 않는다.
+
+로컬8000 fixture를 쓰는 전체 pytest와 Mock 통합은 직렬 실행한다. 둘을 병렬로 돌리면 한 실행이 fixture를 종료하는 동안 다른 실행의 Page.goto가 ERR_CONNECTION_RESET으로 실패할 수 있다. 실제 운영 runs 폴더 밖에 Mock 기록을 두는 것과 포트 수명 분리는 별개다.

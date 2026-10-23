@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from uxagent.brain import Brain
-from uxagent.fast_loop import FastLoop
+from uxagent.fast_loop import FastLoop, _GPU_CHUNK_CHARS
 from uxagent.llm import BudgetManager, BudgetExceeded
 from uxagent.memory import MemoryStore
 from uxagent.schemas import Observation, Persona, ElementInfo
@@ -321,7 +321,7 @@ async def test_gpu_large_page_preserves_action_targets_options_and_state(kind):
 @pytest.mark.asyncio
 async def test_gpu_large_page_perception_reads_every_chunk_and_merges_until_one():
     brain, obs, _, provider, _, _, _, calls, _ = setup()
-    markers = [f"상품{i:03d}" for i in range(300)]
+    markers = [f"상품{i:04d}" for i in range(2000)]
     obs.html = "<main>" + "".join(f"<p>{marker} 상세 설명과 가격 정보가 표시된다.</p>" for marker in markers) + "</main>"
     seen = []
 
@@ -338,7 +338,7 @@ async def test_gpu_large_page_perception_reads_every_chunk_and_merges_until_one(
     result = await brain.fast.perceive_page(obs)
     first = [payload for payload in seen if payload["round"] == 1]
     assert len(first) > 1
-    assert all(len(payload["content"]) <= 1400 for payload in seen)
+    assert all(len(payload["content"]) <= _GPU_CHUNK_CHARS for payload in seen)
     assert "".join(payload["content"] for payload in first) == brain.fast._model_html(obs, group_text=True)[0]
     assert all(marker in "".join(payload["content"] for payload in first) for marker in markers)
     assert len({payload["chunk_index"] for payload in first}) == len(first)

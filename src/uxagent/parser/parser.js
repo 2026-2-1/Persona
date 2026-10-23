@@ -55,6 +55,23 @@ const parse = () => {
     return name + i;
   };
 
+  // Page-wide text (banners, counts) in ancestor chains made IDs long and
+  // unstable on live sites. Keep only the nearest parent segment, and name
+  // product links by the number in their URL.
+  const semanticName = (parentName, base, original) => {
+    const href = original.tagName === 'A' ? (original.getAttribute('href') || '') : '';
+    const productNumber = href.split(/[?#]/)[0].match(/(\d{5,})(?:\.html?)?\/?$/);
+    if (productNumber) {
+      // Separate the duplicate suffix so it never reads as part of the number.
+      let name = `p_${productNumber[1]}`;
+      for (let i = 2; USED_SEMANTIC_IDS.has(name); i++) name = `p_${productNumber[1]}_${i}`;
+      USED_SEMANTIC_IDS.add(name);
+      return name;
+    }
+    const parent = parentName ? parentName.split('.').pop() : '';
+    return uniqueName(parent ? `${parent}.${base}` : base);
+  };
+
   const isEmpty = (el) => {
     // Stripping SVG must not strip an otherwise empty, named icon control.
     if (el.hasAttribute('parser-clickable') ||
@@ -210,11 +227,12 @@ const parse = () => {
 
     let thisName = '';
     if (isClickable) {
-      const base = slug((original.innerText || '').trim() ||
+      // A select's innerText is every option joined; name it by its field instead.
+      const base = tag === 'select' ? (slug(original.getAttribute('name') || original.id || '') || 'select') : slug((original.innerText || '').trim() ||
         original.getAttribute('title') ||
         original.getAttribute('placeholder') ||
         tag);
-      thisName = uniqueName(parentName ? `${parentName}.${base}` : base);
+      thisName = semanticName(parentName, base, original);
       for (const e of [clone, original]) {
         e.setAttribute('parser-semantic-id', thisName);
         e.setAttribute('parser-clickable', 'true');
@@ -224,7 +242,7 @@ const parse = () => {
     if (original.closest('[data-maybe-hoverable="true"]')) {
       if (!thisName) {
         const base = slug((original.innerText || '').trim() || original.getAttribute('title') || tag);
-        thisName = uniqueName(parentName ? `${parentName}.${base}` : base);
+        thisName = semanticName(parentName, base, original);
       }
       clone.setAttribute('parser-semantic-id', thisName);
       original.setAttribute('parser-semantic-id', thisName);
@@ -239,7 +257,7 @@ const parse = () => {
         const base = slug((original.getAttribute('placeholder') ||
           original.getAttribute('name') ||
           original.value || '').trim() || tag);
-        thisName = uniqueName(parentName ? `${parentName}.${base}` : base);
+        thisName = semanticName(parentName, base, original);
       }
       if (!inputIsDisabled && thisName) {
         clone.setAttribute('parser-semantic-id', thisName);
@@ -262,7 +280,7 @@ const parse = () => {
       if (!selectIsDisabled) {
         if (!thisName) {
           const base = slug((original.getAttribute('name') || tag));
-          thisName = uniqueName(parentName ? `${parentName}.${base}` : base);
+          thisName = semanticName(parentName, base, original);
         }
         clone.setAttribute('parser-semantic-id', thisName);
         clone.setAttribute('parser-value', original.value);

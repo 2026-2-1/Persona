@@ -60,6 +60,12 @@ class ActionExecutor:
                 locator = None
 
             if action.type == "click":
+                options = await locator.evaluate(
+                    "el => el.tagName === 'SELECT' ? Array.from(el.options, o => o.value) : null")
+                if options is not None:
+                    # Clicking a select only opens it; nothing is chosen.
+                    raise ActionFailure("not_interactable", "This is a select box; clicking does not choose an option. "
+                                        f"Use the select action with one of these values: {options[:20]}")
                 await locator.click(timeout=self.timeout_ms)
             elif action.type == "mouse_click":
                 await page.mouse.click(action.at_x, action.at_y)

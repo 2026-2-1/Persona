@@ -3,7 +3,7 @@
   "start_url": "https://www.decathlon.co.kr/search?query=러닝화",
   "task": "러닝화 검색 결과에서 8만원 이하인 러닝화를 하나 골라 상품 상세 화면에서 상품명과 가격을 확인하세요.",
   "allowed_origins": ["https://www.decathlon.co.kr", "https://decathlon.co.kr"],
-  "persona_file": "persona.json",
+  "persona_file": "persona-live.json",
   "evaluator_id": "decathlon-detail_basic-v1",
   "evaluation_profile_file": "decathlon_live_profile.json",
   "evaluation_expectations": {"product_name_contains": "러닝화", "max_price": 80000},

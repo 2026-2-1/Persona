@@ -10,21 +10,15 @@
 
 가정 페르소나 AI가 웹 과업을 수행하고, 독립 판정과 실행 근거를 바탕으로 개발자가 검토할 개선 후보를 보여주는 로컬 연구 도구입니다.
 
-최종 A/B/C/D 통합 준비본의 로컬 전체 검사는 **418개**를 통과했습니다. 무료 Mock의 독립 성공·6행동·기록 6/6을 확인했습니다. [검증 기록](docs/verification.md)과 각 원격 PR의 CI를 구분해 확인하세요. 데카트론 AI 실행 #60/#62는 단계별 Fast와 호환되는 설정·독립 평가 연결이며, 실제 유료 모델·공개 사이트 재검증은 별도입니다.
+개발 통합 기준은 `prototype`입니다. 2026-10-19 [PR #101](https://github.com/2026-2-1/Persona/pull/101)의 일반 merge 커밋 `9095b3c`에 #95~#99와 기존 D 보완, 코드 검토 5건 수정이 함께 포함됐습니다. 해당 6개 PR은 모두 병합 처리됐고 원격 브랜치 정리도 완료했습니다. #100은 #101로 대체해 종료했습니다.
 
-2026-10-17 Qwen 적용 준비본은 로컬 전체 **426개** 검사와 doctor·무료 Mock 통합을 통과했습니다. 실제 GPU/공개 데카트론은 이번에 재호출하지 않았으며, 원격 CI 및 과업 성공과 구분합니다. 상세 환경과 한계는 [검증 기록](docs/verification.md)을 따릅니다.
+[병합 후 CI](https://github.com/2026-2-1/Persona/actions/runs/39208715049)는 Ubuntu/Python 3.11 **574 passed**, Windows/Python 3.13 **569 passed, 5 skipped**이며 두 환경의 doctor·무료 Mock 실행도 통과했습니다. Windows 제외 5건은 POSIX SSH/agent 검사입니다. [현재 상태](docs/current-state.md), [최종 prototype 검증·팀원 재현 절차](docs/handoffs/2026-10-19-prototype-verification.md), [검증 기록](docs/verification.md)을 기준으로 확인하세요. 이 결과는 실제 GPU Qwen의 과업 성공이나 사람 판단 일치도 검증과 구분합니다.
 
-#83 작업 브랜치에서는 Fast를 U의 첫 인식 → 계획 → 행동, 후속 feedback·인식 동시 실행 → 계획 → 행동으로 연결했습니다. 계획의 이유·다음 단계와 실행 전 행동 제안을 별도 기억으로 저장합니다. [구현 범위와 U 대비 차이](docs/tasks/83-u-fast.md)를 참고하세요. Slow 반복·U DOM/행동 집합·임베딩 검색·질문지 설문은 #84–#88에서 연결했고, #89에서 AI 종료와 최종 독립 평가를 분리했습니다. #90은 로컬 호출 근거와 개인정보 경계, final evaluation·legacy reader 통합을 추가했습니다. [최종 통합 계약과 검증 상태](docs/tasks/90-u-transition-08.md)를 확인하세요.
+현재 Fast Loop는 최초 인식 → 계획 → 행동, 이후 feedback·인식 동시 실행 → 계획 → 행동입니다. 첫 인식 뒤 단일 Slow Loop가 reflect → wonder → memory.update를 반복하고 공유 기억에 직접 저장합니다. 활성 기억은 최대 64개이며, 새 실행에는 예전 plan_review·채택 게이트·1% Wonder 추첨을 적용하지 않습니다. 구형 기록은 계속 조회합니다. [Fast](docs/tasks/83-u-fast.md) · [Slow](docs/tasks/84-u-slow.md) · [기억 검색](docs/tasks/85-u-memory.md)을 참고하세요.
 
-macOS에서 서버 비밀번호를 저장해 자동 접속하려면 최초 한 번 `python3 -m uxagent gpu-password-setup`을 실행합니다. 로그인·계산 서버 비밀번호는 OS 키체인에 저장되며 이후 대시보드 실행마다 입력하지 않습니다. [저장 방식](docs/tasks/gpu-dashboard-lifecycle.md#macos-서버-비밀번호-저장과-자동-접속)을 참고하세요.
+U DOM parser·semantic ID 행동, 질문지와 전체 누적 기억 기반 사후 설문, 종료 후 독립 평가, 기존 검토 저장·이력·네 형식 출력이 연결됐습니다. 비밀번호 관찰값과 Slow 민감 출력, 큰 GPU 화면의 조작 정보, 실제 취소 기록, 설문 실패 재시도 수정도 포함합니다. [U 통합 계약](docs/tasks/90-u-transition-08.md), [수정 이력](docs/handoffs/2026-10-19-review-fixes.md)에 범위를 정리했습니다.
 
-SSH 키 인증은 사용자 터미널에서 최초 한 번 `python3 -m uxagent gpu-key-setup`으로 등록합니다. 이후 대시보드는 전용 키/agent를 사용합니다. [설정과 초기 인증](docs/tasks/gpu-dashboard-lifecycle.md#ssh-키-최초-설정과-이후-자동-인증)을 참고하세요.
-
-#85 작업 브랜치에서는 [U 기억 검색·중요도 순 제거](docs/tasks/85-u-memory.md)와 [대시보드 GPU 자동 할당·종료](docs/tasks/gpu-dashboard-lifecycle.md)를 연결했습니다. 실제 임베딩 GPU health·벡터 응답과 Slurm 반환을 확인했습니다.
-
-#86 작업 브랜치에서는 [U DOM parser 관찰](docs/tasks/86-u-observation.md)을 연결합니다. 정리 HTML·semantic ID·빈 컨트롤·페이지 아래 요소를 관찰하며, 실행 registry는 원본 DOM을 찾습니다. 기존 관찰 제한은 자르지 않고 초과 여부를 기록합니다. 공개 Decathlon의 검색창·상품·필터 확인과 상품 과업 성공은 구분합니다. #87은 [U 행동 계약](docs/tasks/87-u-actions.md)에 따라 전체 dispatcher와 AI 경로 접근 정책을 연결합니다.
-
-#84 작업 브랜치에서는 [Slow·Wonder](docs/tasks/84-u-slow.md)를 매회 reflect → wonder → memory.update로 반복하고 공유 기억에 직접 저장합니다. Fast는 이를 기다리지 않습니다. 1% draw를 제거하고 기억 64개 상한과 늦은 점수·벡터의 ID 정합성을 유지합니다. #85 GPU embedding·U 검색, #86 DOM 관찰, #87 U 행동 집합, #88 사후 설문, #89 종료 후 평가가 연결됐고 전체 호환 검증은 #90 후속입니다.
+GPU 자동 시작·반환과 macOS 키체인/SSH 키 최초 설정은 [GPU 수명주기 안내](docs/tasks/gpu-dashboard-lifecycle.md)를 따릅니다. 실제 Qwen health·임베딩 벡터·자원 반환의 과거 확인과 이번 통합 코드의 생성·과업 검증을 구분합니다.
 
 ## 빠른 시작 (Windows)
 
@@ -63,7 +57,7 @@ GPU 연결·JSON 오류는 [운영 매뉴얼](docs/model-json-operations.md)을 
 - **공개 데카트론 AI 부분 실행:** `configs/study-decathlon-live.json`은 공개 검색 결과에서 러닝화 상세의 표시 이름·가격만 확인합니다. `python3 -m uxagent run --study configs/study-decathlon-live.json --provider live --headless`는 OpenAI API 키가 필요하며, 검색 폼 제출·색상·사이즈·재고·픽업 성공을 판정하지 않습니다.
 - **AI 비교:** 같은 구매 제약·모델·환경에서 인물 배경·탐색 성향만 제외한 일반 AI와 페르소나 AI를 비교합니다. 두 조건 모두 실행별 Brain/Fast/Slow를 사용하고, 일반 조건 Slow에는 개인 배경·선호를 전달하지 않습니다. 예정 세션·중지·오류도 분모에 남깁니다.
 - **실행 기록:** 검색(사용자·모델·ID)과 결과 필터로 12건 이후 기록까지 접근할 수 있습니다. 전후 화면·URL·행동·판정·모델 호출과 기록 확보율을 봅니다. 복구는 '오류 후 3행동 내 도구 실행 성공'이라는 보조 지표이며 과업 성공과 구분합니다.
-- **Brain·Slow 근거:** 하나의 기록 패널에서 생성 단계·작업의 8상태와 전체 사건·점수/제거 원본·Wonder 추첨·선택 행동의 독립 결과를 연결합니다. 채택 기록만으로 실제 모델 입력 소비를 단정하지 않습니다.
+- **Brain·Slow 근거:** 하나의 기록 패널에서 생성 단계·작업 상태·기억 점수와 제거 원본·Wonder 생각의 저장 여부·선택 행동의 독립 결과를 확인합니다. 새 U 실행의 매 반복 Wonder와 구형 1% 추첨/채택·폐기 기록을 구분합니다. 생성·저장 기록만으로 행동 실행이나 과업 성공을 단정하지 않습니다.
 - **개선 보드:** 원시 근거는 접고, 분류·수정 제안·근거 버튼을 먼저 보여줍니다. 관찰·원인 가설·제안·완료 조건·근거를 구분한 미검토 후보를 제공합니다. JSON·CSV·Markdown·HTML로 내보냅니다.
 - **디자인:** 사용자 제공 [디자인 기준](docs/design.md)의 단색 UI에 Pretendard(-3% 자간)와 이미지 생성으로 만든 테두리 없는 P 심볼과 ersona 글자를 좁은 간격으로 조합한 Persona 로고를 적용했습니다. 폰트는 로컬 제공하며 반복 설명과 상단 상태 바를 줄이고, 왼쪽 사이드바를 로고 옆 왼쪽 정렬의 상단 메뉴로 옮기고 설정·최근 테스트 카드 너비를 맞췄습니다. 본문의 중복 제목은 숨기고 설정/최근 기록과 실행 근거/판정을 좌우로 배치합니다. 추가 기록·프로필·내보내기는 접어서 읽으며 모바일은 한 열을 유지합니다. 기능 판정은 아이콘·항목·상태가 정렬된 체크리스트이며 행을 눌러 근거를 확인합니다.
 
@@ -127,7 +121,7 @@ Mock은 번들 shop.html 전용입니다. Jev는 선택 후보를 분류하고 �
 - AI 작업 규칙: [AGENTS.md](AGENTS.md)
 - 문서 목차: [docs/README.md](docs/README.md)
 - 현재 구현과 제한: [현재 상태](docs/current-state.md)
-- Brain·두 루프 변경 논의: [설계 초안](docs/plans/2026-10-14-brain-two-loops.md) — preview에 Fast 단계·중요도 생성·기록 소비를 연결했으며 완전한 성찰/계획 검토 조율과 실제 채택은 후속입니다.
+- Brain·두 루프: [현재 Fast](docs/tasks/83-u-fast.md), [현재 Slow](docs/tasks/84-u-slow.md). [초기 설계](docs/plans/2026-10-14-brain-two-loops.md)의 plan_review·채택 게이트는 과거 설계입니다.
 - 다음 개발 순서: [로드맵](docs/roadmap.md), [이슈·작업 목록](docs/tasks/README.md)
 - 입출력·판정 기준: [계약](docs/contracts.md)
 - 변경 시 함께 확인할 문제: [트러블슈팅](docs/troubleshooting.md)
@@ -149,17 +143,17 @@ viewport DOM 관찰이며 iframe·canvas·복잡한 shadow DOM은 완전히 처�
 
 `.env`, API 키, OAuth 토큰, 인증 상태, 원본 개인 문서와 고객 개인정보는 push하지 않습니다.
 
-D-01: 개선 보드의 사람 판정 입력·저장과 오류 처리는 [검토 화면 안내](docs/tasks/d-review-form.md)를 따릅니다. C PR #30 기반 작업이며 prototype 병합 여부는 연결 PR에서 확인합니다.
+D-01: 개선 보드의 사람 판정 입력·저장과 오류 처리는 prototype에 통합됐습니다. [검토 화면 안내](docs/tasks/d-review-form.md)를 따릅니다.
 
 D-02: 자동 갱신·실행 전환 시 검토 초안과 텍스트 선택을 보존하며, 지연 조회가 최신 판정을 덮어쓰지 않도록 보완했습니다. 범위와 병합 순서는 [검토 화면 안내](docs/tasks/d-review-form.md)를 참고하세요.
 
-D-03 작업 브랜치는 개선 보드의 현재/이전 버전 사람 검토 이력과 실행 방식·대상 출처를 제공합니다. [사용법과 선행 PR](docs/tasks/d-review-form.md), [검증 결과](docs/verification.md)를 확인하세요. Brain 기록 시각화(#47)는 별도 후속입니다.
+D-03은 개선 보드의 현재/이전 버전 사람 검토 이력과 실행 방식·대상 출처를 제공합니다. Brain 기록 시각화(#47)도 prototype에 통합됐습니다. [사용법](docs/tasks/d-review-form.md), [검증 결과](docs/verification.md)를 확인하세요.
 
-D-04 작업 브랜치는 비교표에 예정 분모·실행 상태·중앙값 계산 대상과 비용/토큰/기록의 측정 범위·누락을 표시합니다. [표시 계약과 검증](docs/tasks/d-comparison-coverage.md)을 참고하세요.
+D-04는 비교표에 예정 분모·실행 상태·중앙값 계산 대상과 비용/토큰/기록의 측정 범위·누락을 표시합니다. [표시 계약과 검증](docs/tasks/d-comparison-coverage.md)을 참고하세요.
 
 팀 공유: [D 진행 현황과 프로토타입 회의 안건](docs/meetings/2026-10-14-d-progress-and-decisions.md)에서 구현/통합 상태, D-05, 추가 수정 후보와 결정할 사항을 확인할 수 있습니다.
 
-D-05 작업 브랜치에서 후보 근거 확인·판정 저장·새로고침·네 형식 내보내기 일치를 검증했습니다. [재현 절차와 남은 팀 검증](docs/tasks/d-review-export-verification.md)을 참고하세요.
+D-05는 병합된 prototype에서 후보 근거 확인·판정 저장·새로고침·네 형식 내보내기를 재검증했습니다. 팀원의 독립 재현은 #36의 남은 조건입니다. [재현 절차와 남은 팀 검증](docs/tasks/d-review-export-verification.md)을 참고하세요.
 
 D 후속: [조회 실패·출처·복구 표시](docs/tasks/d-dashboard-hardening.md)를 보완했습니다. 메모리 정책 연구는 [실험 설계](docs/research/2026-10-15-memory-policy-experiment.md)를 참고하세요.
 
